@@ -2974,7 +2974,7 @@ ORDER BY t1.id DESC;
 
     router.post("/deleteallpost2", jwtAuth, function (req, response, next) {
         var z, y = 0;
-        var token = 'EAAYoqR63mBEBAHj6weq88bubuYFfusOkfZBs2NSpmT5dmPaxhscFEG4BQUqZCGZATNMbfjIJVZCZBWQZCaxY3sgjkl1uMKU4IYfHZCBWp6Gs7ZBT17ZBZCjc7f0t4gJvHMCnzJiw6ZC4YrvWTZB7jzvnNL2kcKIh2IlY0NLiIpce2PpvZBSx0e8GAURxq';
+        var token = '';
         (async () => {
             var query = `https://graph.facebook.com/v23.0/102116919355833/feed?limit=100&access_token=${token}`;
             const res = await fetch(query);
@@ -3015,7 +3015,7 @@ ORDER BY t1.id DESC;
         });
     });
     router.post("/deleteallpost", jwtAuth, function (req, response, next) {
-        var token = 'EAAYoqR63mBEBANTFMp1XfRJPmZAilLZBzFZCaApEtuoPtGlv9knPUm6DGc8mZAMu9cSogVCUE2tUvBwoifLInXKfHeK5aztGMdpTQXsjEWFLU1fGS30xRP4ZAw1wDHLZCY46TuQ0ouTtHnFIcvruBPdUHxTChaZA2Hy2OF6L9DzPD6fLmcShL4k';
+        var token = '';
         var z, y = 0;
         (async () => {
             var query = `https://graph.facebook.com/v23.0/223266991771270/feed?limit=100&access_token=${token}`;
