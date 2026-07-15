@@ -1,0 +1,211 @@
+<%- include('headerafterlogin'); -%>
+
+<div class="container-fluid mt-3" style="max-width: 1200px;">
+    <div class="card shadow-sm border-0 mb-3 bg-white">
+        <div class="card-body p-3">
+            <form action="/donhang" method="GET" class="row g-2">
+                <div class="col-12 col-md-4">
+                    <div class="input-group">
+                        <span class="input-group-text bg-light border-end-0"><i class="bi bi-hash"></i></span>
+                        <input type="text" name="search" class="form-control border-start-0 ps-0" placeholder="Mã vận đơn" value="<%= locals.searchQuery || '' %>">
+                    </div>
+                </div>
+                
+                <div class="col-6 col-md-3">
+                    <label class="small fw-bold text-muted">Từ ngày</label>
+                    <input type="date" name="start_date" class="form-control vn-date-input" 
+                           value="<%= locals.startDate || '' %>" 
+                           data-date-format="DD MM YYYY">
+                </div>
+                <div class="col-6 col-md-3">
+                    <label class="small fw-bold text-muted">Đến ngày</label>
+                    <input type="date" name="end_date" class="form-control vn-date-input" 
+                           value="<%= locals.endDate || '' %>" 
+                           data-date-format="DD MM YYYY">
+                </div>
+
+                <div class="col-12 col-md-2 d-grid">
+                    <label class="d-none d-md-block">&nbsp;</label>
+                    <button type="submit" class="btn btn-primary fw-bold">LỌC</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <% 
+        const groups = [
+            { id: 'all', label: 'Tất cả', codes: [100,101,102,103,104,105,106,200,201,202,300,400,401,402,403,509,500,508,550,501,505,506,507,515,551,515,504], color: 'secondary' },
+            { id: 'receiving', label: 'Chờ nhận', codes: [100,101,102,103,104,105,106], color: 'secondary' },
+            { id: 'shipping', label: 'Vận chuyển', codes: [200,201,202,300,400,401,402,403,509], color: 'info' },
+            { id: 'delivering', label: 'Đang giao', codes: [500,508,550], color: 'primary' },
+            { id: 'success', label: 'Thành công', codes: [501], color: 'success' },
+            { id: 'issue', label: 'Vấn đề', codes: [505,506,507,515], color: 'warning' },
+            { id: 'issue2', label: 'Duyệt hoàn', codes: [515,551], color: 'danger' },
+            { id: 'returned', label: 'Đã hoàn', codes: [504], color: 'danger' }
+        ];
+
+        const allOrders = locals.orders || [];
+        function getFiltered(codes) {
+            return allOrders.filter(o => codes.includes(Number(o.statuscode)));
+        }
+
+        function formatVN(dateStr) {
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return dateStr;
+            return d.getDate().toString().padStart(2, '0') + '/' + (d.getMonth() + 1).toString().padStart(2, '0') + '/' + d.getFullYear() + ' ' + d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+        }
+    %>
+
+    <div class="sticky-top bg-light py-2" style="top: 0; z-index: 1020;">
+        <div class="d-flex flex-nowrap overflow-auto no-scrollbar px-2">
+            <ul class="nav nav-pills flex-nowrap" id="orderTabs" role="tablist">
+                <% groups.forEach((group, index) => { 
+                    const count = getFiltered(group.codes).length;
+                %>
+                <li class="nav-item">
+                    <button class="nav-link px-3 mb-1 fw-bold nav-link-<%= group.color %> <%= index === 0 ? 'active' : '' %>" 
+                            data-bs-toggle="pill" data-bs-target="#<%= group.id %>">
+                        <%= group.label %>
+                        <% if(count > 0) { %>
+                            <span class="badge rounded-pill bg-light text-dark ms-1 shadow-sm border"><%= count %></span>
+                        <% } %>
+                    </button>
+                </li>
+                <% }) %>
+            </ul>
+        </div>
+    </div>
+
+    <div class="tab-content mt-3">
+        <% groups.forEach((group, index) => { %>
+        <div class="tab-pane fade <%= index === 0 ? 'show active' : '' %>" id="<%= group.id %>">
+            <div class="row g-2 px-2">
+                <% 
+                    const list = getFiltered(group.codes);
+                    if(list.length > 0) { 
+                        list.forEach(order => { 
+                %>
+                <div class="col-12 col-md-6 col-lg-4">
+                    <div class="card h-100 shadow-sm border-0 border-start border-4 border-<%= group.color %>">
+                        <div class="card-body p-3">
+                            <div class="d-flex justify-content-between mb-2">
+                                <span class="text-primary small fw-bold"><i class="bi bi-upc-scan"></i> <%= order.realorderid %></span>
+                                <small class="text-muted"><%= formatVN(order.time) %></small>
+                            </div>
+
+                            <div class="d-flex align-items-center mb-2">
+                                <img src="/images/ava/<%= order.userid %>.jpg" onerror="this.src='/images/ava/default.jpg'" class="rounded-circle me-2 border" style="width: 30px; height: 30px; object-fit: cover;">
+                                <h6 class="fw-bold mb-0 text-dark text-nowrap overflow-hidden text1"><%= order.name %></h6>
+                            </div>
+
+                            <div class="mb-2">
+                                <a href="tel:<%= order.phone %>" class="text-decoration-none fw-bold text-primary small">
+                                    <i class="bi bi-telephone-fill me-1"></i><%= order.phone %>
+                                </a>
+                            </div>
+
+                            <p class="small text-muted mb-3 text-truncate-2" style="height: 2.5rem;">
+                                <i class="bi bi-geo-alt-fill me-1 text-primary"></i><%= order.address %>
+                            </p>
+
+                            <div class="row g-0 bg-light rounded p-2 text-center">
+                                <div class="col-6 border-end border-white">
+                                    <div style="font-size: 0.6rem;" class="text-muted uppercase">Trọng lượng</div>
+                                    <div class="fw-bold small"><%= order.kg %>kg</div>
+                                </div>
+                                <div class="col-6">
+                                    <div style="font-size: 0.6rem;" class="text-muted uppercase">COD</div>
+                                    <div class="fw-bold text-success small"><%= Number(order.cod).toLocaleString() %>đ</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card-footer bg-white border-0 d-flex justify-content-between align-items-center pb-3">
+                            <span class="small fw-bold text-<%= group.color %> text-truncate" style="max-width: 60%;"><%= order.statustext %></span>
+                            <div class="d-flex align-items-center gap-2">
+                                <a href="javascript:void(0);" 
+                                   data-customer-id="<%= order.userid %>" 
+                                   data-customer-name="<%= order.name %>" 
+                                   data-sender-page-id="<%= order.pageid %>" 
+                                   class="open-message-modal btn btn-light border btn-sm rounded-circle d-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
+                                    <i class="bi bi-chat-square-text-fill text-primary"></i>
+                                </a>
+                                <button class="btn btn-sm btn-outline-<%= group.color %> rounded-pill px-3 fw-bold" 
+                                        onclick="OrderJourney('<%= order.realorderid %>', '<%= order.name %>', '<%= order.userid %>', '<%= order.phone %>')">
+                                    Chi tiết
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <% }); } else { %>
+                <div class="col-12 text-center py-5 text-muted small">Không có dữ liệu đơn hàng.</div>
+                <% } %>
+            </div>
+        </div>
+        <% }) %>
+    </div>
+</div>
+
+<style>
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+    .vn-date-input { position: relative; }
+    .vn-date-input::-webkit-datetime-edit-year-field { position: absolute !important; border-left: 1px solid #ccc; padding-left: 5px; color: #000; left: 100px; }
+    .vn-date-input::-webkit-datetime-edit-month-field { position: absolute !important; border-left: 1px solid #ccc; padding-left: 5px; color: #000; left: 55px; }
+    .vn-date-input::-webkit-datetime-edit-day-field { position: absolute !important; color: #000; left: 10px; }
+    .vn-date-input::-webkit-datetime-edit-text { opacity: 0; }
+
+    .nav-pills .nav-link { white-space: nowrap; border-radius: 12px; margin-right: 6px; color: #555; background: #fff; border: 1px solid #eee; font-size: 0.85rem; }
+    .nav-link-primary.active { background-color: #0d6efd !important; color: #fff !important; }
+    .nav-link-info.active { background-color: #0dcaf0 !important; color: #fff !important; }
+    .nav-link-warning.active { background-color: #ffc107 !important; color: #000 !important; }
+    .nav-link-success.active { background-color: #198754 !important; color: #fff !important; }
+    .nav-link-danger.active { background-color: #dc3545 !important; color: #fff !important; }
+    .nav-link-secondary.active { background-color: #6c757d !important; color: #fff !important; }
+
+    .card { 
+        border-radius: 12px; 
+    }
+
+    @media (prefers-color-scheme: dark) {
+        .card {
+            background-color: #2c2c2e !important;
+            border: 1px solid #3a3a3c !important;
+        }
+        .card-body h6, .card-body .text-dark {
+            color: #f2f2f7 !important; 
+        }
+        .bg-light {
+            background-color: rgba(255, 255, 255, 0.137) !important; 
+            color: #f2f2f7 !important;
+        }
+    }
+
+    .text-truncate-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    
+    .card-body p.text-truncate-2 {
+        margin-bottom: 5px !important;
+        height: auto !important;
+        min-height: 0 !important;
+    }
+    
+    .card-body {
+        padding-bottom: 0 !important;
+    }
+
+    .card-footer {
+        margin-top: -15px !important; 
+        padding-top: 0 !important; 
+        padding-bottom: 12px !important;
+        border-top: none !important;
+        background-color: transparent !important;
+    }
+
+    .card-body .row.bg-light.rounded {
+        margin-bottom: 0 !important;
+    }
+</style>
+
+<%- include('footer'); -%>

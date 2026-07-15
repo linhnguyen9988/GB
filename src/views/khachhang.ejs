@@ -1,0 +1,173 @@
+<%- include('headerafterlogin'); -%>
+    <!--<button onclick="ScanQR2()" id="ScrollTop" title="Camera">📷</button>-->
+    <div id="notetoshow">
+    </div>
+    <div class="table-responsive">
+        <div class="table-wrapper">
+            <div class="card">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-sm-4">
+                            <div class="input-group mb-3">
+                                <input type="search" id="tenkhach" onfocus="SelectAll()" class="form-control input-sm"
+                                    placeholder="Tên hoặc số điện thoại" aria-describedby="basic-addon1">
+                                <button id="searchkhach" type="button" class="btn btn-primary btn-md"
+                                    onclick="SearchKhach()">Tìm</button>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-sm-9">
+                    <div class="card">
+                        <div class="card-body">
+                            <table class="table table-striped" id="tblkhachhang" style="width:100%">
+                                <thead>
+                                    <tr>
+                                        <th></th>
+                                        <th></th>
+                                        <th></th>
+                                        <th></th>
+                                        <th></th>
+                                        <th></th>
+                                        <th></th>
+                                        <th></th>
+                                        <th></th>
+                                        <th></th>
+                                        <th></th>
+                                        <th></th>
+                                        <th></th>
+                                        <th></th>
+                                        <th></th>
+                                        <th></th>
+                                        <th></th>
+                                        <th></th>
+                                        <th></th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-sm-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="row mt-2">
+                                <div class="col-md-12">
+                                    <div class="row mt-2">
+                                        <div class="input-group mb-3">
+                                            <input type="text" pattern="[0-9]+" inputmode="numeric" id="COD"
+                                                class="form-control input-sm" width="20px" value="0"
+                                                onfocus="SelectX(this)" onkeyup="onlyNumberAmount(this)">
+                                            <span class="input-group-text" id="basic-addon2">Đ</span>
+                                            <input type="text" pattern="[0-9]+" inputmode="numeric" id="KG"
+                                                class="form-control input-sm" width="20px" min="0" max="50"
+                                                onfocus="SelectX(this)">
+                                            <span class="input-group-text" id="labelkg">KG</span>
+                                        </div>
+                                        <div class="input-group mb-3">
+                                            <select id="diachilendon" class="form-select">
+                                            </select>
+                                            <!--<button type="button" class="btn btn-success  d-none d-md-block"
+                                                id="xuatexcel" onclick="saveFileVT()"><i
+                                                    class="bi bi-cloud-arrow-down"></i></button>
+                                            <button type="button" class="btn btn-success" id="btnlendon"
+                                                onclick="LenDonHang()"><i class="bi bi-cart-plus"></i></button>-->
+                                        </div>
+                                        <div class="input-group mb-3">
+                                            <select id="donhangdalen" class="form-select">
+                                            </select>
+                                            <button type="button" class="btn btn-primary" id="btncheckdon"
+                                                onclick="handleCheckDonHang()">🔍</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="row mt-2">
+                                <div class="col-md-12">
+                                    <div class="input-group mb-3">
+                                        <span class="input-group-text"><i class="bi bi-person-square"></i></span>
+                                        <input type="text" id="fbname" class="form-control input-sm" disabled>
+                                        <input type="text" id="aka" class="form-control input-sm" disabled>
+                                        <button onclick="CopyNameF()" type="button" class="btn btn-primary btn-md"><i
+                                                class="bi bi-files"></i></button>
+                                    </div>
+                                    <div class="input-group mb-3">
+                                        <input type="text" id="userid" class="form-control input-sm" disabled>
+                                        <input type="text" id="realfbid" class="form-control input-sm" disabled>
+                                        <button class="btn btn-primary" type="button" onclick="ShowEditRealID()"><i class="bi bi-pencil"></i></button>
+                                        <button class="btn btn-primary" type="button" onclick="UpdateRealFBID()"><i class="bi bi-arrow-up-circle"></i></button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row mt-2">
+                                <div class="col-md-6">
+                                    <div class="input-group mb-3">
+                                        <span class="input-group-text"><i class="bi bi-phone-fill"></i></span>
+                                        <input type="text" id="userphone" class="form-control input-sm"
+                                            onfocusout="OnUpdateUser()">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="input-group mb-3">
+                                        <span class="input-group-text"><i class="bi bi-tag-fill"></i></span>
+                                        <select id="labelkh" class="form-select" onchange="OnUpdateUser()">
+                                            <option value="Thân thiết">Thân thiết</option>
+                                            <option value="Bom hàng">Bom hàng</option>
+                                            <option value="Xả hàng">Xả hàng</option>
+                                            <option value="Có vấn đề">Có vấn đề</option>
+                                            <option value="Xóa">Xóa</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="input-group mb-5">
+                                    <input type="checkbox" id="nuocngoaix" data-toggle="toggle"
+                                        data-onlabel="Nước ngoài" data-offlabel="Trong nước" data-height="10"
+                                        data-onstyle="success">
+                                </div>
+                            </div>
+                            <div class="col-md-12">
+                                <div class="input-group mb-3">
+                                    <span class="input-group-text"><i class="bi bi-geo-alt-fill"></i></span>
+                                    <textarea class="form-control" id="diachi" rows="2"
+                                        onfocusout="OnUpdateUser()"></textarea>
+                                    <button onclick="AddDiaChi()" type="button"
+                                        class="btn btn-success btn-md">+</button>
+
+                                </div>
+                            </div>
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" id="checknote">
+                                <label class="form-check-label" for="checknote">
+                                    <div class="text1"><strong>Note quan trọng</strong></div>
+                                </label>
+                            </div>
+                            <div class="row mt-2">
+                                <div class="col-md-12"><textarea class="form-control" id="note" rows="5"
+                                        onfocusout="OnUpdateUser()"></textarea></div>
+                            </div>
+                            <div class="row mt-2">
+                                <div class="text-center">
+                                    <button class="btn btn-primary" type="button" onclick="OnUpdateUser()">Lưu</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <script src="/js/khachhang.js"></script>
+        <%- include('footer'); -%>

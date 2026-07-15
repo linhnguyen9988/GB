@@ -1,0 +1,10 @@
+/node_modules
+/vendor
+/.idea
+.idea/
+.env
+.zip
+src/public/images/
+src/public/donhang/
+/.vscode
+/uploads/

@@ -1,0 +1,1981 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Áo Dài Gia Bảo</title>
+  <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js"></script>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.1/dist/css/bootstrap.min.css" rel="stylesheet"
+    integrity="sha384-+0n0xVW2eSR5OomGNYDnhzAbDsOXxcvSN1TPprVMTNDbiYZCxYbOOl7+AMvyTG2x" crossorigin="anonymous">
+
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/chat.css">
+  <link rel="stylesheet" href="/css/all.min.css">
+  <link rel="stylesheet" href="/css/tw.css">
+  <link rel="stylesheet" href="/css/label.css">
+  <link rel="stylesheet" href="/css/pane.css">
+  <script src="/js/bs5utils.js"></script>
+
+  <link rel="icon" type="image/png" href="/images/icon/favicon.png" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/logo.png">
+
+  <link rel="icon" type="image/png" sizes="192x192" href="/images/logo.png">
+
+  <meta name="apple-mobile-web-app-title" content="Ao Dai Gia Bao">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.json">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@200;300;400;500;600&display=swap"
+    rel="stylesheet">
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.12.1/css/dataTables.bootstrap5.min.css" />
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap5-toggle@5.0.4/css/bootstrap5-toggle.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap5-toggle@5.0.4/js/bootstrap5-toggle.jquery.min.js"></script>
+  <link rel="stylesheet" type="text/css"
+    href="https://cdn.datatables.net/keytable/2.7.0/css/keyTable.bootstrap5.min.css" />
+  <script type="text/javascript" src="/js/html5-qrcode.min.js"></script>
+  <script type="text/javascript" src="/js/qrcode.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.3/JsBarcode.all.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
+</head>
+
+<script>
+  //var vConsole = new VConsole();
+  window.CURRENT_USER_ID = "<%= user.id %>";
+  const socket = io();
+  var lockToast = 0;
+  async function PrintFromMess(id, name, phone, url, text, diachi, nuocngoai) {
+    let giaValue = document.getElementById("gia").value;
+
+    var printData = {
+      date: ToDay(),
+      name: name.replace(/<[^>]*>?/gm, '').trim(),
+      phone: phone ? phone.replace(/<[^>]*>?/gm, '').trim() : "",
+      comment: text,
+      gia: giaValue ? giaValue.toString().replace(/[^0-9]/g, "") : "0",
+      id: id,
+      avabase64: url.startsWith('http') ? url : window.location.origin + url,
+      address: diachi,
+      region: nuocngoai
+    };
+
+    try {
+      const resPdf = await fetch('/api/generate-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(printData)
+      }).then(r => r.json());
+
+      if (resPdf.success) {
+        fetch('/print-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: window.CURRENT_USER_ID,
+            type: 'pdf',
+            content: resPdf.pdfBase64,
+            config: {
+              printerName: "XP-80C",
+              widthMm: 80,
+              heightMm: 100,
+              marginTopPx: 0
+            }
+          })
+        })
+          .then(r => r.json())
+          .then(res => {
+            if (res.success) {
+            } else {
+              alert("Máy in đang Offline!");
+            }
+          });
+      } else {
+        alert("Lỗi khi tạo file in trên Server!");
+      }
+    } catch (err) {
+      console.error("Lỗi hệ thống in:", err);
+    }
+  }
+
+  function tryAgain(e, maxRetries = 5, retryInterval = 1000) {
+    let retries = 0;
+    const checkAndReload = () => {
+      if (retries >= maxRetries) {
+        return;
+      }
+      const source = e.src;
+      const url = source.split('?')[0];
+      const newSrc = url + '?timestamp=' + new Date().getTime();
+
+      const newImg = new Image();
+
+      newImg.onload = function () {
+        e.src = newImg.src;
+      };
+      newImg.onerror = function () {
+        retries++;
+        setTimeout(checkAndReload, retryInterval);
+      };
+      newImg.src = newSrc;
+    };
+    checkAndReload();
+  }
+
+  function ScanQR2() {
+    $('#modalQR2').modal('show');
+    scanner.start().then(function () { _startRot(); });
+  }
+  function IDToBarcode(id, height) {
+    var canvas = document.createElement("canvas");
+    JsBarcode(canvas, id, { width: 2, format: "code128", height: height, displayValue: false });
+    return canvas.toDataURL("image/png");
+  }
+  function MakeQRCode(data, style) {
+    var qr = qrcode(0, 'H');//LMQH
+    qr.addData(data, style);//test style = byte
+    qr.make();
+    return qr.createImgTag(3);
+  }
+  function ToDay() {
+    var today = new Date();
+    var dd = String(today.getDate()).padStart(2, '0');
+    var mm = String(today.getMonth() + 1).padStart(2, '0');
+    var yyyy = today.getFullYear().toString().slice(2);
+    var hours = today.getHours();
+    var ampm = '';
+    if (hours > 2 && hours < 19) {
+      ampm = 'S';
+    } else {
+      ampm = 'T';
+    }
+    return dd + '/' + mm + '/' + yyyy + ' • ' + ampm;
+  }
+
+  var numx = 0;
+  var ff = 0;
+  function changeStyle() {
+    var element = document.getElementsByTagName('body')[0];
+    if (ff == 0) {
+      element.style.fontFamily = "Tahoma";
+      //element.style.fontFamily = "glr";
+      ff = 1;
+    } else {
+      element.style.fontFamily = "pfb";
+      ff = 0;
+    }
+  }
+
+  async function convertImageToBase64() {
+    let image = $('#attachimage')[0]['files']
+
+    if (image && image[0]) {
+
+      const reader = new FileReader();
+
+      return new Promise(resolve => {
+        reader.onload = ev => {
+          resolve(ev.target.result)
+        }
+        reader.readAsDataURL(image[0])
+      })
+    }
+  }
+  var i64 = '';
+  var waitx = 1;
+  async function ResizeB64() {
+    var canvas = document.createElement("canvas");
+    var ctx = canvas.getContext("2d");
+    var image = new Image();
+    image.src = await convertImageToBase64();
+    await document.getElementById("original").appendChild(image);
+
+    image.onload = async function (e) {
+      var x = 1;
+      if (image.width > 3000 || image.height > 3000) {
+        x = 2;
+      }
+      if (image.width > 5000 || image.height > 5000) {
+        x = 4;
+      }
+      canvas.width = image.width / x;
+      canvas.height = image.height / x;
+
+      await ctx.drawImage(image,
+        0, 0, image.width, image.height,
+        0, 0, canvas.width, canvas.height
+      );
+      i64 = await canvas.toDataURL();
+      waitx = 2;
+    };
+    $('#original').hide()
+  }
+  function WaitUntil(conditionFunction) {
+    const poll = resolve => {
+      if (conditionFunction()) resolve();
+      else setTimeout(_ => poll(resolve), 100);
+    }
+    return new Promise(poll);
+  }
+  function makeid(length) {
+    let result = '';
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const charactersLength = characters.length;
+    let counter = 0;
+    while (counter < length) {
+      result += characters.charAt(Math.floor(Math.random() * charactersLength));
+      counter += 1;
+    }
+    return result;
+  }
+
+  function UpdateAddress(userid) {
+    $.ajax({
+      url: "/updateaddress",
+      method: "POST",
+      data: { userid: userid, address: document.getElementById("diachimodal").value },
+      dataType: "JSON",
+      success: function (data) { }
+    })
+  }
+  function UpdateAddress2(userid) {
+    var diachi = document.getElementById("diachiviettel");
+    var add = document.getElementById("diachilendonviettel");
+    if (add.length > 0) {
+      if (add.selectedIndex != null) {
+        var address = add.options[add.selectedIndex].text;
+        if (diachi.value.length == 0 && address.length > 0) {
+          diachi.value = address.replace("✅ ", "");
+        }
+      }
+    }
+    $.ajax({
+      url: "/updateaddress2",
+      method: "POST",
+      data: { userid: userid, address: diachi.value },
+      dataType: "JSON",
+      success: function (data) { }
+    })
+  }
+  function OnUpdatePhone(userid) {
+    let phone = document.getElementById("phoneviettel").value;
+    if (!isNumeric(phone)) {
+      alert('Sai số điện thoại.')
+    }
+    $.ajax({
+      url: "/onupdatephone",
+      method: "POST",
+      data: { userid: userid, phone: phone },
+      dataType: "JSON",
+      success: function (data) {
+        removeOptions(document.getElementById('diachilendonviettel'));
+        FillDiaChiLenDon(document.getElementById("phoneviettel").value);
+      }
+    })
+  }
+  function OnUpdateNote(userid) {
+    $.ajax({
+      url: "/onupdatenote",
+      method: "POST",
+      data: { userid: userid, note: document.getElementById("notescan").value },
+      dataType: "JSON",
+      success: function (data) {
+      }
+    })
+  }
+
+  function RC() {
+    $.ajax({
+      url: "/restartchrome",
+      method: "POST",
+      data: {},
+      dataType: "JSON",
+      success: function (data) {
+        if (data.data.hasOwnProperty('error')) {
+          ShowToast('danger', `<i class="bi bi-calendar-x"></i>`, 'Lỗi khởi động Chrome', data.data.error, 3000);
+        } else {
+          ShowToast('success', `<i class="bi bi-check-square"></i>`, 'Khởi động Chrome', data.data.success, 3000);
+        }
+      }
+    });
+  }
+
+  $(document).ready(function () {
+    $('[data-toggle="tooltip"]').tooltip();
+  });
+  function GetToken() {
+    document.getElementById("btngettoken").disabled = true;
+    document.getElementById("btngettoken").innerHTML = '<span class="spinner-grow" style="width: 0.8rem; height: 0.8rem;" role="status"></span>&nbsp;Get Token';
+    $.ajax({
+      url: "/gettoken",
+      method: "POST",
+      dataType: "JSON",
+      success: function (data) {
+        if (data.data.hasOwnProperty('error')) {
+          ShowToast('danger', `<i class="bi bi-calendar-x"></i>`, 'ERROR', data.data.error, 3000);
+        }
+        $('#overlay').modal('show');
+        setTimeout(function () {
+          $('#overlay').modal('hide');
+        }, 3000);
+        //alert(data.data[0].access_token);
+        document.getElementById("btngettoken").disabled = false;
+        document.getElementById("btngettoken").innerHTML = 'Get Token';
+      }
+    });
+  };
+
+  function ShowEditRealID() {
+    var table = $('#tblkhachhang').DataTable();
+    var data = table.row(getRowIdx()).data();
+    document.getElementById("notetoshow").insertAdjacentHTML("afterend",
+      `<div class="modal" tabindex="-1" role="dialog" id="modalupdaterealid">
+    <div class="modal-dialog" role="document">
+    <div class="modal-content rounded-4 shadow">
+    <div class="modal-header p-5 pb-4 border-bottom-0">
+      <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+    </div>
+    <form id="myForm">
+    <div class="modal-body p-5 pt-0">
+    
+    <div class="row mt-2">
+        <div class="col-md-12">
+            <div class="input-group mb-3">
+                <span class="input-group-text"><i class="bi bi-credit-card"></i></span>
+                <input type="text" id="realfbidtoupdate" class="form-control input-sm">
+            </div>
+        </div>
+    </div>
+    <div class="row mt-2">
+                        <div class="text-center"><button class="btn btn-primary" type="button"
+                                onclick="UpdateRealID('${data[0]}')">Lưu</button></div>
+                    </div>
+                    </form>
+    </div>
+  </div>`);
+    const realfbidtoupdate = document.getElementById('realfbidtoupdate');
+    function handleInputLive() {
+      document.getElementById('realfbidtoupdate').value = document.getElementById('realfbidtoupdate').value.split('selected_item_id=').pop().split('&')[0];
+    }
+    realfbidtoupdate.addEventListener('input', handleInputLive);
+    document.getElementById("realfbidtoupdate").value = data[12];
+    if (numx == 0) {
+      $('#modalupdaterealid').modal('show');
+      numx = 1;
+    }
+    $('#modalupdaterealid').on('hidden.bs.modal', function () {
+      numx = 0
+      var div = document.getElementById('modalupdaterealid');
+      div.remove();
+    });
+  }
+  function UpdateRealID(userid) {
+    var realfbid = document.getElementById("realfbidtoupdate").value;
+    if (!isNumeric(realfbid) || realfbid.length < 3) {
+      ShowToast('danger', `<i class="bi bi-calendar-x"></i>`, 'ERROR', 'Must be number', 3000);
+      return;
+    }
+    $.ajax({
+      url: "/updaterealfbid",
+      method: "POST",
+      dataType: "JSON",
+      data: { userid: userid, realfbid: realfbid },
+      success: function (data) {
+        if (data.data.hasOwnProperty('error')) {
+          ShowToast('danger', `<i class="bi bi-calendar-x"></i>`, 'ERROR', data.data.error, 3000);
+        } else {
+          document.getElementById("realfbid").value = realfbid;
+          ShowToast('success', `<i class="bi bi-calendar-x"></i>`, 'Update Real FB ID', 'Done', 3000);
+        }
+        $('#modalupdaterealid').modal('hide');
+      }
+    });
+  }
+  function ShowNote() {
+    document.getElementById("notetoshow").insertAdjacentHTML("afterend",
+      `<div class="modal" tabindex="-1" role="dialog" id="modalnote">
+    <div class="modal-dialog" role="document">
+    <div class="modal-content rounded-4 shadow">
+    <div class="modal-header p-5 pb-4 border-bottom-0">
+      <img id="imageid" src="/images/ava/default.jpg"><h4 class="fw-bold mb-0" id="namexxx">Khách Mới</h4>
+      <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+    </div>
+    <form id="myForm">
+    <div class="modal-body p-5 pt-0">
+    <div class="row mt-2">
+        <div class="col-md-12">
+          <div class="alert alert-danger" id="success-alert" style="display:none;"></div>
+          <center><img id="loadinggif" src="/images/icon/loading.gif" width="32" height="32"></center>
+            <div class="input-group mb-3">
+                <span class="input-group-text"><i class="bi bi-link"></i></span>
+                <input type="text" placeholder="Paste Link khách hàng" id="link" class="form-control input-sm" onchange="GetNewUserInfo()" required>
+            </div>
+        </div>
+    </div>
+    <div class="row mt-2">
+        <div class="col-md-12">
+            <div class="input-group mb-3">
+                <span class="input-group-text"><i class="bi bi-credit-card"></i></span>
+                <input type="text" id="fbid" class="form-control input-sm" disabled>
+                <input type="text" id="realfbid" class="form-control input-sm" disabled>
+            </div>
+            <div class="input-group mb-3">
+                <span class="input-group-text"><i class="bi bi-person-badge"></i></span>
+                <input type="text" id="namefb" class="form-control input-sm" disabled>
+                <input type="hidden" id="avalink" class="form-control input-sm" disabled>
+            </div>
+        </div>
+    </div>
+    <div class="row mt-2">
+        <div class="col-md-6">
+            <div class="input-group mb-3">
+                <span class="input-group-text"><i class="bi bi-phone-fill"></i></i></span>
+                <input type="text" id="mobilephone" class="form-control input-sm">
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="input-group mb-3">
+                <span class="input-group-text"><i class="bi bi-tag-fill"></i></span>
+                <select id="labelkhach" class="form-select">
+                    <option selected hidden disabled></option>
+                    <option value="Thân thiết">Thân thiết</option>
+                    <option value="Bom hàng">Bom hàng</option>
+                    <option value="Xả hàng">Xả hàng</option>
+                    <option value="Có vấn đề">Có vấn đề</option>
+                    <option value="Xóa">Xóa</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row mt-2">
+        <div class="col-md-12">
+            <div class="input-group mb-3">
+                <span class="input-group-text"><i class="bi bi-geo-alt-fill"></i></span>
+                <textarea class="form-control" id="useraddress" rows="2"></textarea>
+            </div>
+        </div>
+    </div>
+    <div class="row mt-2">
+        <div class="col-md-12"><textarea class="form-control" id="usernote" rows="5"></textarea></div>
+    </div>
+    <div class="row mt-2">
+                        <div class="text-center"><button class="btn btn-primary" type="button"
+                                onclick="InsertUser()">Lưu</button></div>
+                    </div>
+                    </form>
+    </div>
+  </div>`);
+
+    if (numx == 0) {
+      $('#modalnote').modal('show');
+      numx = 1;
+    }
+    setImageVisible('loadinggif', false);
+    $('#modalnote').on('hidden.bs.modal', function () {
+      numx = 0
+      var div = document.getElementById('modalnote');
+      div.remove();
+    });
+  }
+  function ShowImportant(title, note) {
+    document.getElementById("notetoshow").insertAdjacentHTML("afterend",
+      `<div class="modal" tabindex="-1" role="dialog" id="modalimp">
+    <div class="modal-dialog" role="document">
+      <div class="modal-content rounded-4 shadow">
+        <div class="modal-header p-5 pb-4 border-bottom-0">
+          <!-- <h5 class="modal-title">Modal title</h5> -->
+          <h3 class="fw-bold mb-0">${title}</h3>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+  
+        <div class="modal-body p-5 pt-0">
+            <strong><div class="text1">${note}</div></strong>
+        </div>
+      </div>
+    </div>
+  </div>`);
+    if ($('#modalimp').hasClass('show')) {
+      console.log('Duplicated.');
+    } else {
+      $('#modalimp').modal('show');
+    }
+
+    $('#modalimp').on('hidden.bs.modal', function () {
+      var div = document.getElementById('modalimp');
+      div.remove();
+    });
+  }
+
+  function CancelViettelOrder(mavandon) {
+    $.ajax({
+      url: "/huydonviettel",
+      method: "POST",
+      data: { realorderid: mavandon, xoa: 0 },
+      dataType: "JSON",
+      success: function (data) {
+        alert(data.message + ': ' + mavandon);
+      }
+    });
+  }
+
+  function statusBadgeClass(statuscode) {
+    if (statuscode == null) return 'secondary';
+    const map = {
+      100: 'secondary', 101: 'secondary', 102: 'secondary', 103: 'secondary', 104: 'secondary', 105: 'secondary', 106: 'secondary',
+      200: 'info', 201: 'info', 202: 'info', 300: 'info', 400: 'info', 401: 'info', 402: 'info', 403: 'info', 509: 'info',
+      500: 'primary', 508: 'primary', 550: 'primary',
+      501: 'success',
+      505: 'warning', 506: 'warning', 507: 'warning',
+      515: 'danger', 551: 'danger',
+      504: 'danger'
+    };
+    return map[Number(statuscode)] ?? 'secondary';
+  }
+
+  function DetailDonHang(realorderid) {
+    let motphan = '';
+    if (realorderid.includes('1P1')) {
+      realorderid = realorderid.replace('1P1', '');
+      motphan = '(Hoàn 1 phần)';
+    }
+    $.ajax({
+      url: "/detaildonhang",
+      method: "POST",
+      data: { realorderid: realorderid },
+      dataType: "JSON",
+      success: function (data) {
+        var d = data.data[0];
+        var status = d.statuscode;
+        var badge = statusBadgeClass(status);
+        var button = '';
+        if (status < 105) {
+          button = `<button type="button" class="btn btn-outline-danger" onclick="CancelViettelOrder('${realorderid}')" data-bs-dismiss="modal"><i class="bi bi-x-circle"></i> Hủy đơn</button>`;
+        }
+        document.getElementById("notetoshow").insertAdjacentHTML("afterend",
+          `<div class="modal fade" tabindex="-1" role="dialog" id="modaldetail">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+      <div class="modal-content order-detail-card">
+        <div class="modal-header order-detail-head">
+          <div class="d-flex align-items-center gap-2">
+            <img src="/images/ava/${d.userid}.jpg" class="order-detail-avatar" onerror="this.src='/images/ava/default.jpg'">
+            <div>
+              <div class="order-detail-name">${d.name}</div>
+              <a href="tel:${d.phone}" class="order-detail-phone"><i class="bi bi-telephone-fill"></i> ${d.phone}</a>
+            </div>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+
+        <div class="modal-body order-detail-body">
+          <div class="order-detail-row order-detail-id">
+            <span class="order-detail-code" onclick="copyOrderNumber(this)"><i class="bi bi-upc"></i> ${d.realorderid}</span>
+            ${motphan ? `<span class="badge bg-secondary">${motphan}</span>` : ''}
+            <span class="badge bg-${badge} order-detail-status">${d.statustext || 'Đang xử lý'}</span>
+          </div>
+
+          <div class="order-detail-grid">
+            <div class="order-detail-item">
+              <i class="bi bi-coin"></i>
+              <div><span class="order-detail-label">COD</span><span class="order-detail-value">${d.cod.toLocaleString()} đ</span></div>
+            </div>
+            <div class="order-detail-item">
+              <i class="bi bi-aspect-ratio"></i>
+              <div><span class="order-detail-label">Khối lượng</span><span class="order-detail-value">${d.kg} Kg</span></div>
+            </div>
+            <div class="order-detail-item order-detail-item-wide">
+              <i class="bi bi-calendar-date"></i>
+              <div><span class="order-detail-label">Ngày lên đơn</span><span class="order-detail-value">${d.date}</span></div>
+            </div>
+            ${d.diachi ? `<div class="order-detail-item order-detail-item-wide">
+              <i class="bi bi-geo-alt-fill"></i>
+              <div><span class="order-detail-label">Địa chỉ</span><span class="order-detail-value">${d.diachi}</span></div>
+            </div>` : ''}
+          </div>
+        </div>
+
+        <div class="modal-footer order-detail-foot">
+          <button class="open-message-modal btn btn-outline-warning" data-customer-id="${d.userid}" data-customer-name="${d.name}" data-sender-page-id="${d.pageid}" data-bs-dismiss="modal"><i class="bi bi-send-fill"></i></button>
+          <button type="button" class="btn btn-outline-primary" onclick="OrderJourney('${d.realorderid}','${d.name}','${d.userid}','${d.phone}')" data-bs-dismiss="modal"><i class="bi bi-truck"></i> Hành trình</button>
+          ${button}
+        </div>
+      </div>
+    </div>
+  </div>`);
+        if ($('#modaldetail').hasClass('show')) {
+          console.log('Duplicated.');
+        } else {
+          $('#modaldetail').modal('show');
+        }
+        $('#modaldetail').on('hidden.bs.modal', function () {
+          var div = document.getElementById('modaldetail');
+          div.remove();
+        });
+      }
+    })
+
+  }
+
+  function copyOrderNumber(element) {
+    const orderNumber = element.innerText.trim();
+    const toast = document.getElementById('copy-toast');
+
+    if (!orderNumber || orderNumber === '...') return;
+
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(orderNumber).then(() => showSuccess(element, toast));
+    } else {
+      const textArea = document.createElement("textarea");
+      textArea.value = orderNumber;
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        showSuccess(element, toast);
+      } catch (err) {
+        alert('Lỗi: Trình duyệt không hỗ trợ copy');
+      }
+      document.body.removeChild(textArea);
+    }
+  }
+
+  function showSuccess(element, toast) {
+    const originalColor = element.style.color;
+    const originalBorder = element.style.borderColor;
+    element.style.color = "#28a745";
+    element.style.borderColor = "#28a745";
+
+    setTimeout(() => {
+      element.style.color = "";
+      element.style.borderColor = "";
+      element.style.fontWeight = "";
+    }, 1500);
+  }
+
+  function handleCheckDonHang2() {
+    const orderNum = document.getElementById("userorder").value;
+    const name = fbnamex;
+    const uId = userid;
+    const phone = phonex;
+
+    OrderJourney(orderNum, name, uId, phone);
+  }
+
+  function OrderJourney(orderNumber, customerName, userId, customerPhone) {
+    if (!orderNumber || orderNumber === 'undefined') {
+      alert("Mã vận đơn không hợp lệ!");
+      return;
+    }
+
+    document.getElementById('header-order-number').innerText = orderNumber;
+    document.getElementById('header-customer-name').innerText = customerName || 'Khách hàng';
+
+    const avatarImg = document.getElementById('header-customer-avatar');
+    avatarImg.src = userId ? `/images/ava/${userId}.jpg` : '/images/ava/default.jpg';
+
+    document.getElementById('header-customer-phone').innerText = customerPhone || '---';
+    const phoneLink = document.getElementById('header-customer-phone-link');
+    if (customerPhone) {
+      phoneLink.href = `tel:${customerPhone}`;
+      phoneLink.style.pointerEvents = "auto";
+    } else {
+      phoneLink.href = "#";
+      phoneLink.style.pointerEvents = "none";
+    }
+
+    $('#trackingModal').modal('show');
+
+    const content = document.getElementById('modal-tracking-content');
+    content.innerHTML = '<div class="text-center p-4"><i class="fa fa-spinner fa-spin"></i> Đang tải hành trình...</div>';
+
+    fetch(`/api/orders/logs/${orderNumber}`)
+      .then(response => {
+        if (!response.ok) throw new Error('Không thể kết nối API');
+        return response.json();
+      })
+      .then(res => {
+        const logs = Array.isArray(res) ? res : (res.data || []);
+        if (logs.length > 0) {
+          let html = '';
+          logs.forEach((log) => {
+            const formattedCOD = new Intl.NumberFormat('vi-VN').format(log.money_collection || 0) + ' ₫';
+            const phone = log.employee_phone || '';
+
+            html += `
+                    <div class="tracking-card">
+                        <span class="card-status">${log.status_name}</span>
+                        - <span class="card-time">${log.status_date_raw || ''}</span>
+                        <div class="card-location">📍 ${log.location || 'Đang cập nhật...'}</div>
+                        ${log.employee_name ? `<a href="tel:${phone}" class="shipper-tag"><b>${log.employee_name}</b>&nbsp;${phone ? '- ' + phone : ''}</a>` : ''}
+                        <div style="font-size: 0.8rem; color: #28a745; margin-top: 5px; font-weight: 600;">💰 COD: ${formattedCOD}</div>
+                        ${log.note ? `<div class="text-muted mt-1" style="font-size:0.8rem">📝 ${log.note}</div>` : ''}
+                    </div>`;
+          });
+          content.innerHTML = html;
+        } else {
+          content.innerHTML = `
+                    <div class="text-center p-4">
+                        <img src="https://cdn-icons-png.flaticon.com/512/4076/4076432.png" style="width: 80px; opacity: 0.5">
+                        <p class="mt-3 text-muted">Đơn hàng này chưa có hành trình chi tiết.</p>
+                    </div>`;
+        }
+      })
+      .catch(err => {
+        content.innerHTML = `<div class="alert alert-danger">Lỗi: ${err.message}</div>`;
+      });
+  }
+
+  function on() {
+    document.getElementById("overlayx").style.display = "block";
+    setTimeout(function () {
+      document.getElementById("overlayx").style.display = "none";
+    }, 2000);
+  }
+  var thuship, freeship = '';
+  var realid = '';
+  var userid = '';
+  let phonex = '';
+  let isCopyMessTriggered = false;
+  let copiedText = '';
+  let PageIDx = null;
+
+  async function CopyMess() {
+    try {
+      await navigator.clipboard.writeText(freeship);
+      window.copiedText = freeship;
+    } catch (err) {
+      console.error('Lỗi khi truy cập clipboard:', err);
+      alert('Lỗi: Vui lòng cho phép trang web truy cập clipboard và thử lại.');
+      window.copiedText = '';
+      return;
+    }
+    window.openMessageModalAndPaste(userid, fbnamex, PageIDx);
+  }
+
+  async function CopyMess2() {
+    try {
+      await navigator.clipboard.writeText(thuship);
+      window.copiedText = thuship; // Đã sửa lỗi chính tả ở đây
+    } catch (err) {
+      console.error('Lỗi khi truy cập clipboard:', err);
+      alert('Lỗi: Vui lòng cho phép trang web truy cập clipboard và thử lại.');
+      window.copiedText = '';
+      return;
+    }
+    window.openMessageModalAndPaste(userid, fbnamex, PageIDx);
+  }
+
+  function ShowAKA(title, note, aka, diachi) {
+    document.getElementById("notetoshow").insertAdjacentHTML("afterend",
+      `<div class="modal" tabindex="-1" role="dialog" id="modalaka">
+    <div class="modal-dialog" role="document">
+      <div class="modal-content rounded-4 shadow">
+        <div class="modal-header p-5 pb-4 border-bottom-0">
+          <!-- <h5 class="modal-title">Modal title</h5> -->
+          <h3 class="fw-bold mb-0">${title}</h3>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+  
+        <div class="modal-body p-5 pt-0">
+            <i class="bi bi-journal-bookmark-fill"></i>: ${note}<br>
+            <i class="bi bi-people-fill"></i>:${aka}<br>
+            <i class="bi bi-geo-alt-fill"></i>:${diachi}
+        </div>
+      </div>
+    </div>
+  </div>`);
+    if ($('#modalaka').hasClass('show')) {
+      console.log('Duplicated.');
+    } else {
+      $('#modalaka').modal('show');
+    }
+
+    $('#modalaka').on('hidden.bs.modal', function () {
+      var div = document.getElementById('modalaka');
+      div.remove();
+    });
+  }
+
+  function isNumeric(n) {
+    return !isNaN(parseFloat(n)) && isFinite(n);
+  }
+
+  function GetNewUserInfo() {
+    document.getElementById("success-alert").innerHTML = "";
+    setImageVisible('loadinggif', true);
+    var link = document.getElementById("link").value;
+    var userid = link.split('selected_item_id=').pop().split('&')[0].split('profile.php?id=').pop();
+    if (!userid.includes('facebook.com') && !isNumeric(userid)) {
+      userid = 'https://facebook.com/' + userid;
+    }
+    $.ajax({
+      url: "/getnewuser",
+      method: "POST",
+      data: { userid: userid },
+      dataType: "JSON",
+      success: function (x) {
+        setImageVisible('loadinggif', false);
+        if (x.data.hasOwnProperty('error')) {
+          document.getElementById("myForm").reset();
+          document.getElementById('success-alert').innerHTML += x.data.error;
+          $("#success-alert").fadeTo(2000, 500).slideUp(500, function () {
+            $("#success-alert").slideUp(500);
+          });
+          return;
+        }
+        if (x.data.hasOwnProperty('picture')) {
+          document.getElementById("myForm").reset();
+          document.getElementById("fbid").value = x.data.id;
+          document.getElementById("realfbid").value = x.data.id;
+          document.getElementById("namefb").value = x.data.name;
+          document.getElementById("imageid").src = x.data.picture.data.url;
+          document.getElementById("avalink").value = x.data.picture.data.url;
+          namexxx.innerText = x.data.name;
+        } else {
+          document.getElementById("myForm").reset();
+          document.getElementById("fbid").value = x.data.userid;
+          document.getElementById("realfbid").value = x.data.realfbid;
+          document.getElementById("namefb").value = x.data.fbname;
+          document.getElementById("imageid").src = '/images/ava/' + x.data.userid + '.jpg';
+          document.getElementById("avalink").value = x.data.avalink;
+          document.getElementById("mobilephone").value = x.data.phone;
+          document.getElementById("useraddress").value = x.data.diachi;
+          document.getElementById("labelkhach").value = x.data.label;
+          document.getElementById("usernote").value = x.data.note;
+          namexxx.innerText = x.data.fbname;
+        }
+      }
+    });
+  }
+  function setImageVisible(id, visible) {
+    var img = document.getElementById(id);
+    img.style.visibility = (visible ? 'visible' : 'hidden');
+  }
+  function InsertUser() {
+    var userid = document.getElementById("fbid").value;
+    var phone = document.getElementById("mobilephone").value;
+    var diachi = document.getElementById("useraddress").value;
+    var label = document.getElementById("labelkhach").value;
+    var note = document.getElementById("usernote").value;
+    var avalink = document.getElementById("avalink").value;
+    var fbname = document.getElementById("namefb").value;
+    var realfbid = document.getElementById("realfbid").value;
+    $.ajax({
+      url: "/insertuser",
+      method: "POST",
+      data: { phone: phone, diachi: diachi, label: label, note: note, userid: userid, avalink: avalink, fbname: fbname, realfbid: realfbid },
+      dataType: "JSON",
+      success: function (data) {
+      }
+    });
+    $('#modalnote').modal('hide');
+  }
+  function SelectX(element) {
+    element.select();
+    element.setSelectionRange(0, 99999);
+  }
+  function onlyNumberAmount(input) {
+    let v = input.value.replace(/\D+/g, '');
+    if (v.length > 14) v = v.slice(0, 14);
+    input.value = v.replace(/(^\d{1,3}|\d{3})(?=(?:\d{3})+(?:,|$))/g, '$1.').replace(/^0+/, '');
+  }
+
+  function SendConfirmShip(userid, chat, pageid) {
+    $.ajax({
+      url: "/replycomment",
+      method: "POST",
+      data: { commentid: '', pageid: pageid, userid: userid, chat: chat },
+      dataType: "JSON",
+      success: function (x) {
+        if (x.data.hasOwnProperty('message_id')) {
+          ShowToast('success', '', '', 'Đã gửi tin nhắn.', 3000);
+        } else {
+          var mess = x.data.error.message;
+          ShowToast('danger', '', '', mess, 3000);
+        }
+      }
+    });
+  }
+
+  async function PrintKH(id, userid, name, phone) {
+    var avatarUrl = window.location.origin + `/images/ava/${userid}.jpg`;
+
+    var printData = {
+      date: ToDay(),
+      name: name.replace(/<[^>]*>?/gm, '').trim(),
+      phone: phone ? phone.replace(/<[^>]*>?/gm, '').trim() : "",
+      comment: "",
+      gia: "",
+      id: id,
+      avabase64: avatarUrl
+    };
+
+    const resPdf = await fetch('/api/generate-pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(printData)
+    }).then(r => r.json());
+
+    if (resPdf.success) {
+      fetch('/print-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: window.CURRENT_USER_ID,
+          type: 'pdf',
+          content: resPdf.pdfBase64,
+          config: {
+            printerName: "XP-80C",
+            widthMm: 80,
+            heightMm: 100,
+            marginTopPx: -5
+          }
+        })
+      })
+        .then(r => r.json())
+        .then(res => {
+          if (res.success) {
+          } else {
+            alert("Máy in đang Offline!");
+          }
+        });
+    } else {
+      alert("Lỗi tạo PDF từ Server!");
+    }
+  }
+
+  function PrintOrderAgain() {
+    TuDocFileVaIn(document.getElementById("userorder").value);
+    /*
+    $.ajax({
+      url: "/printviettelcu",
+      method: "POST",
+      dataType: "JSON",
+      data: { realorderid: document.getElementById("userorder").value },
+      success: function (data) {
+        $('#qrresult').empty();
+        document.getElementById("video-container").style.display = "block";
+      }
+    });*/
+  }
+
+  function PrintOrderAgain2() {//cho nay code chay bang c# luon
+    $.ajax({
+      url: "/printviettelmanual",
+      method: "POST",
+      dataType: "JSON",
+      data: { realorderid: document.getElementById("userorder").value },
+      success: function (data) {
+        $('#qrresult').empty();
+        document.getElementById("video-container").style.display = "block";
+      }
+    });
+  }
+  function AddOptions(select, value, innerHTML) {
+    var opt = document.createElement('option');
+    opt.value = value;
+    opt.innerHTML = innerHTML;
+    select.appendChild(opt);
+  }
+  function catGonChuoi(chuoi, doDaiToiDa) {
+    if (chuoi.length <= doDaiToiDa) {
+      return chuoi;
+    }
+    return chuoi.substring(0, doDaiToiDa) + "...";
+  }
+  var fbnamex = ``;
+  var khid = '';
+
+  async function TuDocFileVaIn(realorderid) {
+    const htmlTuFile = await fetch(`https://aodaigiabao.com/donhang/${realorderid}.txt`)
+      .then(res => {
+        if (!res.ok) throw new Error("Không tìm thấy file trên Server");
+        return res.text();
+      })
+      .catch(err => {
+        console.error(err);
+        return null;
+      });
+
+    if (!htmlTuFile) {
+      alert("Không lấy được nội dung file!");
+      return;
+    }
+
+    $.ajax({
+      url: "/print-order",
+      method: "POST",
+      contentType: "application/json",
+      data: JSON.stringify({
+        userId: window.CURRENT_USER_ID,
+        type: 'html',
+        content: htmlTuFile,
+        config: {
+          printerName: "HPRT N41",
+          widthMm: 150,
+          heightMm: 100
+        }
+      }),
+      success: function (res) {
+        if (res.success) {
+          $('#qrresult').empty();
+          document.getElementById("video-container").style.display = "block";
+        } else {
+          alert("Máy in đang Offline!");
+        }
+      },
+      error: function () {
+        console.log("Lỗi kết nối route in");
+      }
+    });
+  }
+
+  function PushJTOrder() {
+    var phone = document.getElementById('phoneviettel').value;
+    var add = document.getElementById("diachilendonviettel");
+    var selectedOpt = add.options[add.selectedIndex];
+    var address = selectedOpt.text.replace(/^[✅⚠️🔄❌]\s*/, '');
+    var cod = document.getElementById("CODX").value;
+    var kg = document.getElementById("SOKG").value;
+
+    var xa = selectedOpt.dataset.xa || '';
+    var huyen = selectedOpt.dataset.huyen || '';
+    var tinh = selectedOpt.dataset.tinh || '';
+    var xajt = selectedOpt.dataset.xa || '';
+    var huyenjt = selectedOpt.dataset.huyen || '';
+    var tinhjt = selectedOpt.dataset.tinh || '';
+    var jtready = selectedOpt.dataset.jtready === '1';
+
+    xajt = selectedOpt.dataset.xajt || '';
+    huyenjt = selectedOpt.dataset.huyenjt || '';
+    tinhjt = selectedOpt.dataset.tinhjt || '';
+
+    if (!jtready || !xajt) {
+      alert('Địa chỉ chưa có dữ liệu J&T. Bấm + để validate địa chỉ mới.');
+      return;
+    }
+    if (phone.length != 10 && phone.substring(0, 2) != '02') {
+      alert('Sai SDT');
+      return;
+    }
+    if (address.length < 5) {
+      alert('Chưa có địa chỉ');
+      return;
+    }
+    if (cod == '' || cod < 0) cod = 0;
+    if (kg == '' || kg < 0) kg = 1;
+
+    cod = cod.toString().replaceAll('.', '');
+    kg = parseFloat(kg);
+
+    document.getElementById("pushjtorder").disabled = true;
+
+    $.ajax({
+      url: "/pushorderjtex",
+      method: "POST",
+      contentType: "application/json",
+      data: JSON.stringify({
+        fbname: fbnamex,
+        phone: phone,
+        address: address,
+        cod: cod,
+        kg: kg,
+        khid: khid,
+        userid: userid,
+        realfbid: realid,
+        tinh: tinhjt,
+        huyen: huyenjt,
+        xa: xajt
+      }),
+      success: function (data) {
+        document.getElementById("pushjtorder").disabled = false;
+        if (data.success) {
+          alert('✅ J&T: ' + data.order_code);
+        } else {
+          alert('❌ ' + data.message);
+        }
+      },
+      error: function () {
+        document.getElementById("pushjtorder").disabled = false;
+        alert('Lỗi kết nối server');
+      }
+    });
+  }
+
+  function PushViettelOrder() {
+    var phone = document.getElementById('phoneviettel').value;
+    var add = document.getElementById("diachilendonviettel");
+    var address = add.options[add.selectedIndex].text.replace(/^[✅⚠️🔄❌]\s*/, '');
+    var cod = document.getElementById("CODX").value;
+    var kg = document.getElementById("SOKG").value;
+
+    if (phone.length != 10 && phone.substring(0, 2) != '02') {
+      alert('Sai SDT');
+      return;
+    }
+    if (address.length < 5) {
+      alert('Chưa có địa chỉ');
+      return;
+    }
+    if (cod == '' || cod < 0) {
+      cod = 0;
+    }
+    if (kg == '' || kg < 0) {
+      kg = 2;
+    }
+
+    document.getElementById("pushviettelorder").disabled = true;
+
+    $.ajax({
+      url: "/createorderviettel",
+      method: "POST",
+      dataType: "JSON",
+      data: { fbname: fbnamex, phone: phone, address: address, cod: cod, kg: kg, khid: khid, userid: userid, realfbid: realid },
+      success: function (data) {
+        if (data.hasOwnProperty('error')) {
+          document.getElementById("pushviettelorder").disabled = false;
+          alert(data.error);
+          return;
+        }
+        kg = kg * 1000;
+        if (kg <= 1000) {
+          kg = 500
+        } else if (kg > 1000 && kg <= 2000) {
+          kg = 1000;
+        } else if (kg > 2000 && kg <= 3000) {
+          kg = 1500;
+        } else if (kg > 3000 && kg <= 4000) {
+          kg = 2000;
+        } else if (kg > 4000 && kg <= 6000) {
+          kg = kg - 2000;
+        } else if (kg > 6000 && kg <= 9000) {
+          kg = kg - 3000;
+        } else if (kg > 9000 && kg <= 15000) {
+          kg = kg - 4000;
+        } else {
+          kg = kg - 5000;
+        }
+
+        var html = `<html><head>
+            <style>
+                body { width: 360px; margin: 2mm 0mm 2mm 2mm; line-height: 1.6; }
+                table { width: 360px; font-family: "tahoma"; border-collapse: collapse; }
+                @media print{@page {size: landscape}}
+                *, html {margin:0;padding:0;}
+            </style>
+            </head>
+            <body> 
+            <table>
+                <tr><td colspan="2">Tỉnh/TP: <p style="font-size:14px;display:inline;font-weight: bold;">${data.tinh}</p></td></tr>
+                <tr><td colspan="2">Quận/Huyện: <p style="font-size:13px;display:inline;font-weight: bold;">${data.huyen}</p></td></tr>
+                <tr><td colspan="2">Phường/Xã: <p style="font-size:13px;display:inline;font-weight: bold;">${data.xa}</p></td></tr>
+                <tr><td colspan="2" align="right"><p style="font-size:10px;display:inline;">${kg / 1000} KG</p></td></tr>
+                <tr><td colspan="2"><center><img src="${IDToBarcode(data.realorderid, 30)}"/><br><p style="font-size:10px;display:inline;vertical-align: top;">${data.realorderid}</p></center></td></tr>
+                <tr><td colspan="2"><h5>${fbnamex} • ${phone}</h5></td></tr>
+                <tr><td colspan="2"><p style="font-size:10px;display:inline;vertical-align: top;">${catGonChuoi(address, 60)}</p></td></tr>
+                <tr><td><p style="font-size:10px;display:inline;vertical-align: top;">Cho xem hàng, không nhận thu 30k</p><br>
+                <p style="font-size:10px;display:inline;">1 x Vải</p><br>
+                <p style="font-size:18px;display:inline;">Tiền thu hộ: <b>${cod.toLocaleString()} đ</b></p></td> 
+                <td>${MakeQRCode(data.realorderid, "Byte")}</td></tr>
+            </table>
+            </body></html>`;
+
+        document.getElementById("pushviettelorder").disabled = false;
+
+        $.ajax({
+          url: "/printviettel",
+          method: "POST",
+          dataType: "JSON",
+          data: { html: html, realorderid: data.realorderid }
+        });
+
+        $.ajax({
+          url: "/print-order",
+          method: "POST",
+          contentType: "application/json",
+          data: JSON.stringify({
+            userId: window.CURRENT_USER_ID,
+            type: 'html',
+            content: html,
+            config: {
+              printerName: "HPRT N41",
+              widthMm: 150,
+              heightMm: 100
+            }
+          }),
+          success: function (res) {
+            if (res.success) {
+              $('#qrresult').empty();
+              document.getElementById("video-container").style.display = "block";
+            } else {
+              alert("Máy in đang Offline!");
+            }
+          },
+          error: function () {
+            console.log("Lỗi kết nối route in");
+          }
+        });
+      }
+    });
+  }
+
+  function titleCase(str) {
+    var splitStr = str.toLowerCase().split(' ');
+    for (var i = 0; i < splitStr.length; i++) {
+      splitStr[i] = splitStr[i].charAt(0).toUpperCase() + splitStr[i].substring(1);
+    }
+    return splitStr.join(' ');
+  }
+  function FillDiaChiLenDon(phone) {
+    $.ajax({
+      url: "/getdiachilendon",
+      method: "POST",
+      data: { phone: phone, userid: userid },
+      dataType: "JSON",
+      success: function (data) {
+        const select = document.getElementById('diachilendonviettel');
+
+        for (var i = 0; i < data.data.length; i++) {
+          var item = data.data[i];
+          var opt = document.createElement('option');
+          opt.value = item.id;
+          opt.text = (item.jtready ? '✅ ' : '⚠️ ') + item.address;
+          opt.dataset.xa = item.xa || '';
+          opt.dataset.huyen = item.huyen || '';
+          opt.dataset.tinh = item.tinh || '';
+          opt.dataset.xajt = item.xajt || '';
+          opt.dataset.huyenjt = item.huyenjt || '';
+          opt.dataset.tinhjt = item.tinhjt || '';
+          opt.dataset.address = item.address || '';
+          opt.dataset.jtready = item.jtready ? '1' : '0';
+          opt.dataset.dbid = item.id;
+          select.appendChild(opt);
+        }
+
+        const autoCheck = (opt) => {
+          if (opt && opt.dataset.jtready === '0' && !opt.disabled) {
+            AutoValidateJT(opt);
+          }
+        };
+
+        if (select.options.length > 0) {
+          autoCheck(select.options[select.selectedIndex || 0]);
+        }
+
+        select.onchange = function () {
+          autoCheck(this.options[this.selectedIndex]);
+        };
+      }
+    });
+  }
+
+  async function AutoValidateJT(opt) {
+    var address = opt.dataset.address;
+    var phoneEl = document.getElementById('phoneviettel') || document.getElementById('userphone');
+    var phone = phoneEl ? phoneEl.value : '';
+
+    if (!address || address.length < 5) return;
+
+    var oldText = opt.text;
+    opt.text = '🔄 ' + address;
+    opt.disabled = true;
+
+    try {
+      const res = await fetch('/checkaddress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          phone: phone,
+          diachi: address,
+          name: window.fbnamex || '',
+          khid: window.khid || '',
+          userid: window.userid || ''
+        })
+      });
+      const data = await res.json();
+
+      // HIỆN SNACKBAR ADX NGAY
+      if (data.adx) {
+        ShowToast('info', '<i class="bi bi-geo-alt-fill"></i>', 'Viettel chuẩn hóa', data.adx, 4000);
+      }
+
+      if (data.error) {
+        opt.text = '❌ ' + address;
+        opt.disabled = false;
+        ShowToast('danger', '<i class="bi bi-exclamation-triangle"></i>', 'Lỗi địa chỉ', data.error, 4000);
+        return;
+      }
+
+      if (data.jtready && data.xajt) {
+        opt.dataset.xajt = data.xajt || '';
+        opt.dataset.huyenjt = data.huyenjt || '';
+        opt.dataset.tinhjt = data.tinhjt || '';
+        opt.dataset.xa = data.adx.split(',')[0]?.trim() || '';
+        opt.dataset.huyen = data.adx.split(',')[1]?.trim() || '';
+        opt.dataset.tinh = data.adx.split(',')[2]?.trim() || '';
+        opt.dataset.jtready = '1';
+        opt.text = '✅ ' + address;
+      } else {
+        opt.text = '⚠️ ' + address;
+        ShowToast('warning', '<i class="bi bi-truck"></i>', 'J&T', data.jtError || 'Chưa có dữ liệu J&T', 4000);
+      }
+      opt.disabled = false;
+    } catch (e) {
+      opt.text = oldText;
+      opt.disabled = false;
+      ShowToast('danger', '<i class="bi bi-wifi-off"></i>', 'Lỗi mạng', e.message, 4000);
+    }
+  }
+
+  function removeOptions(selectElement) {
+    var i, L = selectElement.options.length - 1;
+    for (i = L; i >= 0; i--) {
+      selectElement.remove(i);
+    }
+  }
+  function ThemDiaChi(userid) {
+    var diachi = titleCase(document.getElementById("diachiviettel").value.trim());
+    var phone = document.getElementById("phoneviettel").value.trim();
+
+    if (phone.length !== 10 && !(phone.length === 11 && phone.startsWith("02"))) {
+      alert('Sai số điện thoại, kiểm tra lại');
+      return;
+    }
+    if (diachi.length < 10) {
+      alert('Địa chỉ phải trên 10 ký tự');
+      return;
+    }
+
+    $.ajax({
+      url: "/checkaddress",
+      method: "POST",
+      data: { name: fbnamex, phone: phone, diachi: diachi, khid: khid, userid: userid },
+      dataType: "JSON",
+      success: function (data) {
+        if (data.hasOwnProperty('error')) {
+          alert(data.error);
+          return;
+        }
+
+        const select = document.getElementById('diachilendonviettel');
+
+        [...select.options].forEach(opt => {
+          if (opt.dataset.address === diachi) opt.remove();
+        });
+
+        const adxParts = (data.adx || '').split(',').map(s => s.trim());
+        const xa = adxParts[0] || '';
+        const huyen = adxParts[1] || '';
+        const tinh = adxParts[2] || '';
+
+        const opt = document.createElement('option');
+        opt.value = data.id || diachi;
+        opt.text = (data.jtready ? '✅ ' : '⚠️ ') + diachi;
+
+        opt.dataset.address = diachi;
+        opt.dataset.xa = xa;
+        opt.dataset.huyen = huyen;
+        opt.dataset.tinh = tinh;
+        opt.dataset.xajt = data.xajt || '';
+        opt.dataset.huyenjt = data.huyenjt || '';
+        opt.dataset.tinhjt = data.tinhjt || '';
+        opt.dataset.jtready = data.jtready ? '1' : '0';
+        opt.dataset.dbid = data.id || '';
+
+        select.appendChild(opt);
+        select.value = opt.value;
+
+        alert(`GB: ${diachi}\nViettel: ${data.adx}`);
+        UpdateAddress2(userid);
+      }
+    });
+  }
+</script>
+<script type="module">
+  import { BarcodeDetectorPolyfill } from "https://cdn.jsdelivr.net/npm/@undecaf/barcode-detector-polyfill@0.9.21/dist/main.js";
+  try {
+    window['BarcodeDetector'].getSupportedFormats()
+  } catch {
+    window['BarcodeDetector'] = BarcodeDetectorPolyfill
+  }
+
+  import QrScanner from "/js/qr-scanner.min.js";
+  const video = document.getElementById('qr-video');
+  const videoContainer = document.getElementById('video-container');
+  const camList = document.getElementById('cam-list');
+  function setResult(result) {
+    if (result.data.length < 5) {
+      $('#qrresult').empty();
+      return;
+    }
+    scanner.stop();
+    document.getElementById("video-container").style.display = "none";
+    if (isNumeric(result.data) || result.data.includes('1P1')) {
+      if (result.data.length == 12 || result.data.includes('1P1')) {
+        DetailDonHang(result.data);
+      }
+      khid = result.data;
+      $.ajax({
+        url: "/getfullinfo",
+        method: "POST",
+        data: { id: result.data },
+        dataType: "JSON",
+        success: function (data) {
+          var bomxa = '';
+          var note;
+          if (data.data[0].note === undefined || data.data[0].note === null || data.data[0].note == 'null') {
+            note = '';
+          } else {
+            note = data.data[0].note;
+          }
+          if (data.data[0].label.includes('Bom')) {
+            bomxa = '[Bom]';
+          }
+          if (data.data[0].label.includes('Xả')) {
+            bomxa = '[Xả]';
+          }
+          if (data.data[0].label.includes('Có')) {
+            bomxa = '[Vấn đề]';
+          }
+          realid = data.data[0].realfbid;
+          fbnamex = data.data[0].fbname;
+          userid = data.data[0].userid;
+          phonex = data.data[0].phone;
+          if (data.data[0].phone.length != 10 && data.data[0].phone.substring(0, 2) != '02') {
+            alert('Số điện thoại của khách bị sai, kiểm tra lại.')
+          }
+          var buttonBusinessSuite = '';
+          if (realid.length > 1) {
+            buttonBusinessSuite = `<a href='https://business.facebook.com/latest/inbox/messenger?asset_id=223266991771270&selected_item_id=${data.data[0].realfbid}&mailbox_id=&thread_type=FB_MESSAGE' target="blank" class="btn btn-outline-primary" role="button">✉️</a>
+            <a href='https://business.facebook.com/latest/inbox/messenger?asset_id=102116919355833&selected_item_id=${data.data[0].realfbid}&mailbox_id=&thread_type=FB_MESSAGE' target="blank" class="btn btn-outline-info" role="button">✉️</a>`;
+          } else {
+            $.ajax({
+              url: "/getrealfbid",
+              method: "POST",
+              data: { phone: data.data[0].phone, userid: data.data[0].userid, tag: data.data[0].tag },
+              dataType: "JSON",
+              success: function (x) {
+                console.log(x.data);
+              }
+            });
+          }
+
+          $('#qrresult').empty().append(`
+            <div class="qr-customer-card">
+              <div class="qr-customer-head">
+                <img src="/images/ava/${data.data[0].userid}.jpg" class="qr-customer-avatar" onerror="this.src='/images/ava/default.jpg'">
+                <div class="qr-customer-info">
+                  <div class="qr-customer-name"></div>
+                  ${data.data[0].fbname} ${bomxa ? `<span class="qr-bomxa-badge">${bomxa}</span>` : ''}
+                </div>
+                <div class="qr-customer-actions">
+                  ${buttonBusinessSuite}
+                  <button type="button" class="btn btn-outline-secondary btn-sm" onclick="PrintKH('${result.data}','${data.data[0].userid}','${data.data[0].fbname}','${data.data[0].phone}')" title="In KH"><i class="bi bi-printer"></i></button>
+                  <button class="open-message-modal btn btn-outline-warning btn-sm" data-customer-id="${data.data[0].userid}" data-customer-name="${data.data[0].fbname}" data-sender-page-id="${data.data[0].pageid}" title="Nhắn tin"><i class="bi bi-send-fill"></i></button>
+                </div>
+              </div>
+
+              <div class="qr-section-label"><i class="bi bi-box-seam"></i> Lên đơn</div>
+              <div class="qr-lendon-row">
+                <div class="input-group">
+                  <span class="input-group-text qr-ig-icon"><i class="bi bi-coin"></i></span>
+                  <input type="text" pattern="[0-9]+" inputmode="numeric" id="CODX" placeholder="COD" class="form-control" value="0" onfocus="SelectX(this)" onkeyup="onlyNumberAmount(this)">
+                  <input type="text" pattern="[0-9]+" inputmode="numeric" id="SOKG" placeholder="KG" class="form-control" style="max-width:70px" value="1" onfocus="SelectX(this)" onkeyup="onlyNumberAmount(this)">
+                  <button type="button" id="pushviettelorder" class="btn btn-success" onclick="PushViettelOrder()" title="Lên đơn Viettel"><i class="bi bi-printer-fill"></i> Lên đơn</button>
+                </div>
+              </div>
+              <select id="diachilendonviettel" class="form-select qr-select mb-2"></select>
+
+              <div class="qr-section-label"><i class="bi bi-person-lines-fill"></i> Thông tin</div>
+              <div class="input-group mb-2">
+                <a href="tel:${data.data[0].phone}" class="btn btn-outline-success" role="button">📱</a>
+                <input type="text" id="phoneviettel" class="form-control" value="${data.data[0].phone}" onfocusout="OnUpdatePhone('${userid}')">
+              </div>
+              <div class="input-group mb-2">
+                <span class="input-group-text qr-ig-icon"><i class="bi bi-house"></i></span>
+                <textarea class="form-control" id="diachiviettel" rows="2" onfocusout="UpdateAddress2('${userid}')" placeholder="Địa chỉ">${data.data[0].diachi}</textarea>
+                <button onclick="ThemDiaChi('${userid}')" type="button" class="btn btn-success" title="Thêm địa chỉ"><i class="bi bi-plus-lg"></i></button>
+              </div>
+              <div class="input-group mb-2">
+                <span class="input-group-text qr-ig-icon"><i class="bi bi-card-text"></i></span>
+                <textarea class="form-control" id="notescan" rows="2" onfocusout="OnUpdateNote('${userid}')" placeholder="Ghi chú">${note}</textarea>
+              </div>
+            </div>
+            `);
+
+          FillDiaChiLenDon(data.data[0].phone);
+          $.ajax({
+            url: "/getuserorder",
+            method: "POST",
+            dataType: "JSON",
+            data: { userid: userid },
+            success: function (order) {
+              if (order.data.length > 0) {
+                $('#qrresult').append(`
+                  <div class="qr-section-label"><i class="bi bi-bag-check"></i> Đơn hàng</div>
+                  <div class="input-group mb-2">
+                    <span class="input-group-text qr-ig-icon"><i class="bi bi-cart3"></i></span>
+                    <select id="userorder" class="form-select"></select>
+                    <button type="button" class="btn btn-outline-secondary" id="btnprintagain" onclick="PrintOrderAgain2()" title="In lại (in thường)"><i class="bi bi-printer-fill"></i></button>
+                    <button type="button" class="btn btn-outline-secondary" onclick="PrintOrderAgain()" title="In lại (in nhanh)"><i class="bi bi-printer"></i></button>
+                    <button type="button" class="btn btn-primary" id="btncheckdon" onclick="handleCheckDonHang2()" title="Tra hành trình"><i class="bi bi-truck"></i></button>
+                    <button type="button" class="btn btn-outline-primary" id="btnchitietdon" title="Xem chi tiết đơn" onclick="DetailDonHang(document.getElementById('userorder').value)"><i class="bi bi-receipt"></i></button>
+                  </div>`);
+                for (var i = 0; i < order.data.length; i++) {
+                  let date = order.data[i].date.substring(9);
+                  if (order.data[i].realorderid.includes('1P1')) {
+                    date = '[1P] ' + date;
+                  }
+                  if (order.data[i].statuscode == 107) {
+                    continue;
+                  }
+                  var statustext = '';
+                  if (order.data[i].statustext == '' || order.data[i].statustext == null) {
+                    statustext = 'TK Cũ';
+                  } else {
+                    statustext = order.data[i].statustext;
+                  }
+                  AddOptions(document.getElementById("userorder"), order.data[i].realorderid, `${date} • ${order.data[i].name} • ${order.data[i].cod.toLocaleString()} • ${order.data[i].kg}KG • ${statustext}`);
+                }
+              }
+            }
+          });
+          var idlive = document.getElementById("liveidcombobox");
+          var sllivecbb = document.getElementById("soluonglive");
+          var idvalue = idlive.options[idlive.selectedIndex].value;
+          var sllive = sllivecbb.options[sllivecbb.selectedIndex].value;
+          if (idvalue != null) {
+            $.ajax({
+              url: "/getcommentchot",
+              method: "POST",
+              dataType: "JSON",
+              data: { userid: data.data[0].userid, sllive: sllive },
+              success: function (chot) {
+                if (chot.data.length > 0) {
+                  var j = 0;
+                  var t = 0;
+                  var slchotx = 0, tongchot = 0;
+                  PageIDx = chot.data[0].pageid;
+                  const arr = [];
+                  $('#qrresult').append(`
+                  <div class="qr-section-label"><i class="bi bi-chat-dots"></i> Comment chốt</div>
+                  <div class="input-group mb-2">
+                    <span class="input-group-text qr-ig-icon"><i class="bi bi-list-ul"></i></span>
+                    <select id="commentchot" class="form-select"></select>
+                    <button type="button" class="btn btn-outline-success" id="btncopyfree" onclick="CopyMess()" title="Copy miễn ship"><i class="bi bi-truck"></i> Miễn</button>
+                    <button type="button" class="btn btn-outline-warning" id="btncopyship" onclick="CopyMess2()" title="Copy có ship"><i class="bi bi-currency-dollar"></i> Ship</button>
+                  </div>`);
+                  for (var i = 0; i < chot.data.length; i++) {
+                    slchotx = chot.data[i].slchot;
+                    if (chot.data[i].gia != '') {
+                      var gia = chot.data[i].gia;
+                      for (var sl = 0; sl < slchotx; sl++) {
+                        tongchot++;
+                        arr.push(gia);
+                      }
+                      AddOptions(document.getElementById("commentchot"), i, `${chot.data[i].message} 🔸 ${gia}`);
+                      j++;
+                    } else {
+                      AddOptions(document.getElementById("commentchot"), i, `${chot.data[i].message}`);
+                    }
+                  }
+                  var tong = 0;
+                  var fmess = 'Đơn hàng chị có:\r\n';
+                  var sortedArr = [], count = 1;
+                  sortedArr = arr.sort(function (a, b) {
+                    return a - b
+                  });
+                  for (var a = 0; a < sortedArr.length; a = a + count) {
+                    count = 1;
+                    for (var s = a + 1; s < sortedArr.length; s++) {
+                      if (sortedArr[a] === sortedArr[s])
+                        count++;
+                    }
+                    tong += count * sortedArr[a];
+                    fmess += count + ' áo giá ' + sortedArr[a] + ' = ' + count * sortedArr[a] + '\r\n';
+                  }
+                  var diachi = document.getElementById("diachiviettel") ? document.getElementById("diachiviettel").value.trim() : '';
+                  var diachiLenDon = document.getElementById("diachilendonviettel");
+                  var hasAddress = diachi.length > 5 || (diachiLenDon && diachiLenDon.options.length > 0);
+                  var addtext = hasAddress ? 'Em ship nha.' : 'Chị cho em xin địa chỉ gửi hàng nha.';
+                  freeship = fmess + 'Miễn ship. Tổng ' + tong + '\r\n' + addtext;
+                  thuship = fmess + 'Phí ship 20. Tổng ' + (tong + 20) + '\r\n' + addtext;
+                  $('#qrresult').append(`<div class="qr-chot-summary"><i class="bi bi-check2-circle"></i> Chốt được: <strong>${tongchot}</strong> vải</div>`);
+                } else {
+                  $('#qrresult').append(`<div class="qr-chot-summary text-muted"><i class="bi bi-inbox"></i> Không có comment nào</div>`);
+                }
+              }
+            });
+          }
+          //chatbox o day
+          /* ty le giao hang
+          $.ajax({
+            url: "/checktyle",
+            method: "POST",
+            dataType: "JSON",
+            data: { phone: data.data[0].phone },
+            success: function (data) {
+              if(data.data0.length > 0){
+                $('#qrresult').append(`<strong><div class="text1">${data.data0}</div></strong>`);
+              }else if(data.data1.length > 0){
+                $('#qrresult').append(`<strong><div class="text1">${data.data1}</div></strong>`);
+              }else if(data.data3.length > 0){
+                $('#qrresult').append(`<strong><div class="text1">${data.data3}</div></strong>`);
+              }
+              
+            }
+          });*/
+        }
+      });
+    } else {
+      var searchkh = document.getElementById("tenkhach");
+      var qrarray = result.data.split(';');
+      searchkh.value = qrarray[1];
+      document.getElementById("COD").value = qrarray[0];
+      document.getElementById("searchkhach").click();
+      $('#modalQR2').modal('hide');
+    }
+  }
+  $('#modalQR2').on('hidden.bs.modal', function () { scanner.stop(); _stopRot(); });
+
+  // -- Song song 18 goc (0..170 buoc 10), lay ket qua nhanh nhat --
+  // Da bo co che xoay 18 goc/150ms (tao qua nhieu canvas -> crash Safari iOS).
+  // Gio chi dung 1 engine quet duy nhat, tang toc do quet (maxScansPerSecond)
+  // de van nhay nhung khong tao canvas thua.
+  var _rotLast = '';
+  var _rotCool = false;
+
+  // Giu lai 2 ham rong de cac cho goi _startRot()/_stopRot() khong loi.
+  function _startRot() { }
+  function _stopRot() { }
+
+  const scanner = new QrScanner(video, function (result) {
+    if (!_rotCool && result.data !== _rotLast) {
+      _rotLast = result.data;
+      _rotCool = true;
+      setTimeout(function () { _rotCool = false; _rotLast = ''; }, 300);
+      setResult(result);
+    }
+  }, {
+    onDecodeError: function () { },
+    highlightScanRegion: true,
+    highlightCodeOutline: true,
+    maxScansPerSecond: 15, // quet nhanh hon de bat nhay, khong tao canvas phu
+    calculateScanRegion: function (v) {
+      return {
+        x: 0, y: 0,
+        width: v.videoWidth || 640,
+        height: v.videoHeight || 480,
+        downScaledWidth: Math.min(v.videoWidth || 640, 640),
+        downScaledHeight: Math.min(v.videoHeight || 480, 480),
+      };
+    },
+  });
+  QrScanner.listCameras(true).then(cameras => cameras.forEach(camera => {
+    const option = document.createElement('option');
+    option.value = camera.id;
+    option.text = camera.label;
+    camList.add(option);
+    if (option.text == 'Back Ultra Wide Camera' || option.text == 'Camera cực rộng mặt sau') {//3 camera lay 
+      option.selected = true;
+      scanner.setCamera(option.value)
+    }
+  }));
+  // for debugging
+  window.scanner = scanner;
+  //document.getElementById('scanstyle').addEventListener('change', (e) => {
+  //  videoContainer.className = e.target.value;
+  //  scanner._updateOverlay(); // reposition the highlight because style 2 sets position: relative
+  //});
+
+  camList.addEventListener('change', event => {
+    scanner.setCamera(event.target.value);
+  });
+
+  document.getElementById('start-button').addEventListener('click', () => {
+    document.getElementById("video-container").style.display = "block";
+    scanner.start().then(function () { _startRot(); });
+  });
+
+  //document.getElementById('stop-button').addEventListener('click', () => {
+  //  scanner.stop();
+  //});
+</script>
+<div class="modal" tabindex="-1" id="overlay">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content rounded-3 shadow">
+      <div class="modal-body p-4 text-center">
+        <h5 class="mb-0">Lấy Token Page</h5>
+        <p class="mb-0">Đã lấy thành công token. Có thể nhắn tin cho khách hàng.</p>
+      </div>
+      <div class="modal-footer flex-nowrap p-0">
+        <button type="button" data-bs-dismiss="modal"
+          class="btn btn-lg btn-link fs-6 text-decoration-none col-12 m-0 rounded-0 border-end"><strong>Đã
+            hiểu</strong></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<body>
+  <header class="header-container d-flex flex-wrap align-items-center justify-content-center justify-content-lg-start">
+    <ul class="nav col-12 col-lg-auto me-lg-auto mb-2 justify-content-center mb-md-0">
+      <li><a href="/" class="d-flex align-items-center mb-2 mb-lg-0 text-dark text-decoration-none me-lg-auto me-xl-5">
+          <img src="/images/logo.png" alt="Logo" width="40" height="40" class="rounded-circle me-2">
+        </a></li>
+      <li class="nav-item"><a href="/" class="nav-link">
+          <i class="bi bi-clipboard-check me-1"></i> C. Đơn
+        </a></li>
+      <li class="nav-item"><a href="/khachhang" class="nav-link">
+          <i class="bi bi-person-circle me-1"></i> K.Hàng
+        </a></li>
+      <!--<li class="nav-item"><a href="#" onclick="RC()" id="RC" class="nav-link">
+          <i class="bi bi-browser-chrome"></i>
+        </a></li>-->
+      <li class="nav-item"><a href="/donhang" class="nav-link">
+          <i class="bi bi-box-seam"></i>
+        </a></li>
+      <li class="nav-item"><a href="#" id="open-messenger-btn" class="nav-link">
+          <i class="bi bi-briefcase-fill"></i>
+        </a></li>
+      <li class="nav-item"><a href="#" onclick="ScanQR2()" id="SQ" class="nav-link">
+          <i class="bi bi-qr-code-scan"></i>
+        </a></li>
+    </ul>
+
+    <div class="modal fade" id="message-modal" tabindex="-1" aria-labelledby="message-modal-label" aria-hidden="true">
+      <div class="modal-dialog modal-fullscreen-sm-down modal-dialog-centered">
+        <div class="modal-content modal-content-messenger">
+          <div class="modal-header modal-header-messenger">
+            <div class="customer-info-messenger">
+              <img id="customer-avatar" src="" class="avatar-messenger" alt="Avatar">
+              <div class="customer-details-messenger">
+                <span id="customer-name" class="customer-name-messenger text1">Tên Khách Hàng</span>
+                <div id="last-order-info" class="last-order-info-container">
+                </div>
+              </div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+
+          <div id="modal-messages-container" class="modal-body messages-container-messenger">
+            <div id="pull-to-refresh-indicator" class="pull-to-refresh-indicator">
+              <i class="bi bi-arrow-repeat pull-icon"></i>
+              <span class="pull-text">Kéo xuống nữa để tải...</span>
+            </div>
+            <div id="load-more-btn" class="text-center load-more-btn" style="cursor: pointer; display: none;">
+              <i class="bi bi-arrow-clockwise spinner-icon" style="display: none;"></i>
+              <span class="load-more-text">Tải thêm tin nhắn...</span>
+            </div>
+
+          </div>
+
+          <div id="send-error-message" class="error-message"></div>
+
+          <div class="modal-footer message-input-container">
+            <div class="messenger-file-buttons">
+              <button id="btn-take-photo" class="btn btn-icon-messenger">
+                <i class="bi bi-camera"></i>
+              </button>
+              <button id="btn-choose-file" class="btn btn-icon-messenger">
+                <i class="bi bi-image-fill"></i>
+              </button>
+            </div>
+
+            <input type="file" id="input-take-photo" accept="image/*" capture="environment" style="display: none;">
+            <input type="file" id="input-choose-file" accept="image/*" style="display: none;">
+
+            <div id="image-preview-container" style="display: none;">
+              <img id="image-preview" src="#" alt="Image preview" />
+              <span id="remove-image-btn">&times;</span>
+            </div>
+
+            <div class="input-with-button-wrapper">
+              <textarea id="message-input" class="form-control" placeholder="Nhập tin nhắn..." rows="1"></textarea>
+              <button id="send-message-button" class="send-button">
+                <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="64"
+                  height="64" viewBox="0 0 64 64">
+                  <image
+                    xlink:href="data:image/png;base64,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"
+                    x="0" y="0" width="64" height="64" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="image-viewer-modal" class="image-viewer-modal">
+      <span class="image-viewer-close">&times;</span>
+      <img class="image-viewer-content" id="full-size-image">
+    </div>
+
+    <div class="messenger-pane" id="messenger-pane">
+      <div class="pane-header">
+        <h3 style="color:#1a5dee;"><i class="bi bi-messenger"></i> Tin nhắn</h3>
+        <button class="pane-close-btn" id="close-messenger-btn">&times;</button>
+      </div>
+      <div class="pane-body" id="chat-list">
+      </div>
+    </div>
+
+    <div class="modal fade" id="trackingModal" tabindex="-1" role="dialog" aria-hidden="true">
+      <div class="modal-dialog" role="document">
+        <div class="modal-content">
+          <div class="modal-header d-flex flex-column align-items-start pt-2">
+            <div class="d-flex justify-content-between w-100 align-items-center">
+              <h5 class="m-0 d-flex align-items-center">
+                <img id="header-customer-avatar" src="/images/ava/default.jpg" class="rounded-circle me-2 border"
+                  style="width: 30px; height: 30px; object-fit: cover;">
+                <span id="header-customer-name" class="fw-bold text-dark text1">...</span>
+              </h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="d-flex gap-3 mt-1" style="font-size: 0.85rem;">
+              <div>
+                <span class="text-muted">📱</span>
+                <a id="header-customer-phone-link" href="tel:" class="text-decoration-none">
+                  <span id="header-customer-phone" class="order-copy-badge">...</span>
+                </a>
+              </div>
+              <div>
+                <span class="text-muted">📦</span>
+                <span id="header-order-number" class="order-copy-badge" onclick="copyOrderNumber(this)"></span>
+              </div>
+            </div>
+          </div>
+          <div class="modal-body" id="modal-tracking-content">
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <div class="modal" id="modalQR2" tabindex="-1" role="dialog">
+      <div class="modal-dialog" role="document">
+        <div class="modal-content">
+          <div class="modal-header">
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body text-center">
+            <div id="video-container">
+              <video id="qr-video" width="85%"></video>
+            </div>
+            <div id="qrcontainer">
+              <div id="qrresult"></div>
+            </div>
+            <br>
+            <div id="overlayx" onclick="off()">
+              <div id='copytext'><svg id='Copy_to_Clipboard_24' width='24' height='24' viewBox='0 0 24 24'
+                  xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink'>
+                  <rect width='24' height='24' stroke='none' fill='#000000' opacity='0' />
+                  <g transform="matrix(0.25 0 0 0.25 12 12)">
+                    <g transform="matrix(1 0 0 1 0 -1)">
+                      <path
+                        style="stroke: none; stroke-width: 1; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(245,194,118); fill-rule: nonzero; opacity: 1;"
+                        transform=" translate(-40, -39)"
+                        d="M 12.728 73.5 C 11.5 73.5 10.5 72.482 10.5 71.23 L 10.5 6.769 C 10.5 5.518000000000001 11.5 4.5 12.728 4.5 L 33.693 4.5 C 33.563 5.01 33.5 5.505 33.5 6 C 33.5 9.584 36.416 12.5 40 12.5 C 43.584 12.5 46.5 9.584 46.5 6 C 46.5 5.505 46.437 5.01 46.308 4.5 L 67.273 4.5 C 68.5 4.5 69.5 5.518 69.5 6.769 L 69.5 71.23 C 69.5 72.48100000000001 68.5 73.5 67.272 73.5 L 12.728 73.5 z"
+                        stroke-linecap="round" />
+                    </g>
+                    <g transform="matrix(1 0 0 1 0 -1)">
+                      <path
+                        style="stroke: none; stroke-width: 1; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(194,150,83); fill-rule: nonzero; opacity: 1;"
+                        transform=" translate(-40, -39)"
+                        d="M 67.273 5 C 68.225 5 69 5.794 69 6.769 L 69 71.23100000000001 C 69 72.206 68.225 73 67.273 73 L 12.727 73 C 11.775 73 11 72.206 11 71.231 L 11 6.769 C 11 5.794 11.775 5 12.727 5 L 33.079 5 C 33.026 5.335 33 5.667 33 6 C 33 9.86 36.14 13 40 13 C 43.86 13 47 9.86 47 6 C 47 5.667 46.974 5.335 46.921 5 L 67.273 5 M 67.273 4 L 45.632999999999996 4 C 45.856 4.628 46 5.295 46 6 C 46 9.314 43.314 12 40 12 C 36.686 12 34 9.314 34 6 C 34 5.295 34.144 4.628 34.367 4 L 12.726999999999997 4 C 11.221 4 10 5.24 10 6.769 L 10 71.23100000000001 C 10 72.76 11.221 74 12.727 74 L 67.272 74 C 68.779 74 70 72.76 70 71.231 L 70 6.769 C 70 5.24 68.779 4 67.273 4 L 67.273 4 z"
+                        stroke-linecap="round" />
+                    </g>
+                    <g transform="matrix(1 0 0 1 0 -35)">
+                      <path
+                        style="stroke: none; stroke-width: 1; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(102,121,143); fill-rule: nonzero; opacity: 1;"
+                        transform=" translate(-40, -5)"
+                        d="M 40 1 C 42.206 1 44 2.794 44 5 C 44 7.2059999999999995 42.206 9 40 9 C 37.794 9 36 7.2059999999999995 36 5 C 36 2.7940000000000005 37.794 1 40 1 M 40 0 C 37.239 0 35 2.239 35 5 C 35 7.761 37.239 10 40 10 C 42.761 10 45 7.761 45 5 C 45 2.239 42.761 0 40 0 L 40 0 z"
+                        stroke-linecap="round" />
+                    </g>
+                    <g transform="matrix(1 0 0 1 0 -30)">
+                      <path
+                        style="stroke: none; stroke-width: 1; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(102,121,143); fill-rule: nonzero; opacity: 1;"
+                        transform=" translate(-40, -10)"
+                        d="M 44.38 4 C 44.453 4.323 44.5 4.655 44.5 5 C 44.5 7.484999999999999 42.485 9.5 40 9.5 C 37.515 9.5 35.5 7.485 35.5 5 C 35.5 4.655 35.547 4.323 35.62 4 L 26 4 L 26 12 C 26 14.209 27.791 16 30 16 L 50 16 C 52.209 16 54 14.209 54 12 L 54 4 L 44.38 4 z"
+                        stroke-linecap="round" />
+                    </g>
+                    <g transform="matrix(1 0 0 1 14 14)">
+                      <path
+                        style="stroke: none; stroke-width: 1; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(242,250,255); fill-rule: nonzero; opacity: 1;"
+                        transform=" translate(-54, -54)" d="M 30.5 30.5 L 77.5 30.5 L 77.5 77.5 L 30.5 77.5 z"
+                        stroke-linecap="round" />
+                    </g>
+                    <g transform="matrix(1 0 0 1 14 14)">
+                      <path
+                        style="stroke: none; stroke-width: 1; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(120,139,156); fill-rule: nonzero; opacity: 1;"
+                        transform=" translate(-54, -54)"
+                        d="M 77 31 L 77 77 L 31 77 L 31 31 L 77 31 M 78 30 L 30 30 L 30 78 L 78 78 L 78 30 L 78 30 z"
+                        stroke-linecap="round" />
+                    </g>
+                    <g transform="matrix(1 0 0 1 14 14)">
+                      <path
+                        style="stroke: none; stroke-width: 1; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(242,250,255); fill-rule: nonzero; opacity: 1;"
+                        transform=" translate(-54, -54)"
+                        d="M 68 30 L 70 30 L 70 78 L 68 78 z M 58 30 L 60 30 L 60 78 L 58 78 z M 48 30 L 50 30 L 50 78 L 48 78 z M 38 30 L 40 30 L 40 78 L 38 78 z"
+                        stroke-linecap="round" />
+                    </g>
+                    <g transform="matrix(0 1 -1 0 14 29)">
+                      <path
+                        style="stroke: none; stroke-width: 1; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(242,250,255); fill-rule: nonzero; opacity: 1;"
+                        transform=" translate(-54, -69)" d="M 53 45 L 55 45 L 55 93 L 53 93 z" stroke-linecap="round" />
+                    </g>
+                    <g transform="matrix(0 1 -1 0 14 19)">
+                      <path
+                        style="stroke: none; stroke-width: 1; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(242,250,255); fill-rule: nonzero; opacity: 1;"
+                        transform=" translate(-54, -59)" d="M 53 35 L 55 35 L 55 83 L 53 83 z" stroke-linecap="round" />
+                    </g>
+                    <g transform="matrix(0 1 -1 0 14 9)">
+                      <path
+                        style="stroke: none; stroke-width: 1; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(242,250,255); fill-rule: nonzero; opacity: 1;"
+                        transform=" translate(-54, -49)" d="M 53 25 L 55 25 L 55 73 L 53 73 z" stroke-linecap="round" />
+                    </g>
+                    <g transform="matrix(0 1 -1 0 14 -1)">
+                      <path
+                        style="stroke: none; stroke-width: 1; stroke-dasharray: none; stroke-linecap: butt; stroke-dashoffset: 0; stroke-linejoin: miter; stroke-miterlimit: 4; fill: rgb(242,250,255); fill-rule: nonzero; opacity: 1;"
+                        transform=" translate(-54, -39)" d="M 53 15 L 55 15 L 55 63 L 53 63 z" stroke-linecap="round" />
+                    </g>
+                  </g>
+                </svg>Đã Copy</div>
+            </div>
+            <div>
+              <!--<select id="scanstyle">
+                  <option value="default-style">Kiểu 1</option>
+                  <option value="example-style-1">Kiểu 2</option>
+                  <option value="example-style-2">Kiểu 3</option>
+                </select>-->
+              <select id="cam-list">
+                <option value="environment" selected>Mặc định</option>
+              </select>
+            </div>
+            <hr class="mt-1 mb-1" />
+            <button class="btn btn-outline-success" id="start-button"><svg fill="#000000" width="16px" height="16px"
+                viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
+                <g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g>
+                <g id="SVGRepo_iconCarrier">
+                  <path
+                    d="M4,4h6v6H4V4M20,4v6H14V4h6M14,15h2V13H14V11h2v2h2V11h2v2H18v2h2v3H18v2H16V18H13v2H11V16h3V15m2,0v3h2V15H16M4,20V14h6v6H4M6,6V8H8V6H6M16,6V8h2V6H16M6,16v2H8V16H6M4,11H6v2H4V11m5,0h4v4H11V13H9V11m2-5h2v4H11V6M2,2V6H0V2A2,2,0,0,1,2,0H6V2H2M22,0a2,2,0,0,1,2,2V6H22V2H18V0h4M2,18v4H6v2H2a2,2,0,0,1-2-2V18H2m20,4V18h2v4a2,2,0,0,1-2,2H18V22Z">
+                  </path>
+                </g>
+              </svg></button>
+            <!--<button class="btn btn-outline-danger" id="stop-button">🎬 Dừng</button>-->
+          </div>
+        </div>
+      </div>
+    </div>
+    </div>
+  </header>

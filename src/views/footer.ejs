@@ -1,0 +1,1326 @@
+<div id="referral-widget" class="ref-bubble" style="display: none;">
+  <div class="ref-header">
+    <span>Ads Tracking</span>
+    <button onclick="closeWidget()" class="close-btn">&times;</button>
+  </div>
+  <div class="ref-body">
+    <div class="ref-icon">📢</div>
+    <div class="ref-info">
+      <span id="referral">0</span>
+      <small>Tương tác</small>
+    </div>
+  </div>
+  <div id="ref-customer" class="ref-customer-name">Đang đợi khách...</div>
+</div>
+<script>
+  socket.on('new-referral', (data) => {
+    const span = document.getElementById('referral');
+    const cusName = document.getElementById('ref-customer');
+    const widget = document.getElementById('referral-widget');
+
+    if (span) {
+      span.innerText = data.total_interactions || 0;
+
+      if (cusName) cusName.innerText = data.fbname || "Khách hàng mới";
+
+      widget.classList.add('bump');
+      setTimeout(() => widget.classList.remove('bump'), 500);
+    }
+  });
+
+  function closeWidget() {
+    document.getElementById('referral-widget').style.display = 'none';
+  }
+
+  dragElement(document.getElementById("referral-widget"));
+
+  function dragElement(elmnt) {
+    var pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+
+    elmnt.onmousedown = dragMouseDown;
+    elmnt.ontouchstart = dragMouseDown;
+
+    function dragMouseDown(e) {
+      e = e || window.event;
+      var clientX = e.type === "touchstart" ? e.touches[0].clientX : e.clientX;
+      var clientY = e.type === "touchstart" ? e.touches[0].clientY : e.clientY;
+
+      pos3 = clientX;
+      pos4 = clientY;
+
+      if (e.type === "mousedown") {
+        document.onmouseup = closeDragElement;
+        document.onmousemove = elementDrag;
+      } else if (e.type === "touchstart") {
+        document.ontouchend = closeDragElement;
+        document.ontouchmove = elementDrag;
+      }
+    }
+
+    function elementDrag(e) {
+      e = e || window.event;
+
+      var clientX = e.type === "touchmove" ? e.touches[0].clientX : e.clientX;
+      var clientY = e.type === "touchmove" ? e.touches[0].clientY : e.clientY;
+
+      pos1 = pos3 - clientX;
+      pos2 = pos4 - clientY;
+      pos3 = clientX;
+      pos4 = clientY;
+
+      let newTop = elmnt.offsetTop - pos2;
+      let newLeft = elmnt.offsetLeft - pos1;
+
+      if (newTop < 0) newTop = 0;
+      if (newLeft < 0) newLeft = 0;
+      if (newTop > window.innerHeight - elmnt.offsetHeight) newTop = window.innerHeight - elmnt.offsetHeight;
+      if (newLeft > window.innerWidth - elmnt.offsetWidth) newLeft = window.innerWidth - elmnt.offsetWidth;
+
+      elmnt.style.top = newTop + "px";
+      elmnt.style.left = newLeft + "px";
+      elmnt.style.right = "auto";
+      elmnt.style.transform = "none";
+    }
+
+    function closeDragElement() {
+      document.onmouseup = null;
+      document.onmousemove = null;
+      document.ontouchend = null;
+      document.ontouchmove = null;
+    }
+  }
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.5/dist/umd/popper.min.js"
+  integrity="sha384-Xe+8cL9oJa6tN/veChSP7q+mnSPaj5Bcu9mPX5F5xIGE0DVittaqT5lorf0EI7Vk" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/js/bootstrap.min.js"
+  integrity="sha384-ODmDIVzN+pFdexxHEHFBQH3/9/vQ9uori45z4JjnFsRydbmQbmL5t1tQ0culUzyK" crossorigin="anonymous"></script>
+
+<script>
+  let currentPageID = null;
+  let currentCustomerId = null;
+  let currentImageFile = null;
+  let customerNameEl = null;
+  let customerAvatarEl = null;
+  let messageInput = null;
+  let imagePreviewContainer = null;
+  let messageModal = null;
+  let messageModalEl = null;
+  const GlobalPageID = "223266991771270";
+  const GlobalPageID2 = '102116919355833';
+  const PAGE_IDS = [GlobalPageID, GlobalPageID2];
+  let lastOrderEl = null;
+  let loadMoreBtn = null;
+  let refreshIndicator = null;
+  let pullTextEl = null;
+  let pullIconEl = null;
+  let startY = 0;
+  let isPulling = false;
+  const PULL_THRESHOLD = 80;
+  let numMess = 0;
+
+  window.openMessageModalAndPaste = function (customerId, customerName, pageId) {
+    if (!messageModal || !customerId) {
+      console.error('Lỗi: Modal hoặc ID khách hàng chưa được khởi tạo.');
+      return;
+    }
+    currentPageID = pageId;
+    currentCustomerId = customerId;
+    customerNameEl.textContent = customerName || 'Khách hàng';
+    customerAvatarEl.src = `/images/ava/${customerId}.jpg`;
+
+    messageInput.value = '';
+    currentImageFile = null;
+    imagePreviewContainer.style.display = 'none';
+
+    messageModal.show();
+  };
+  const activeBlobUrls = [];
+
+  function createAndTrackBlobUrl(blob) {
+    const url = URL.createObjectURL(blob);
+    activeBlobUrls.push(url);
+    return url;
+  }
+
+  function revokeAllBlobs() {
+    activeBlobUrls.forEach(url => {
+      URL.revokeObjectURL(url);
+    });
+    activeBlobUrls.length = 0;
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    const modalMessagesContainer = document.querySelector('.messages-container-messenger');
+    customerNameEl = document.getElementById('customer-name');
+    customerAvatarEl = document.getElementById('customer-avatar');
+    messageInput = document.getElementById('message-input');
+    imagePreviewContainer = document.getElementById('image-preview-container');
+    const imagePreview = document.getElementById('image-preview');
+    const removeImageBtn = document.getElementById('remove-image-btn');
+    const sendMessageButton = document.getElementById('send-message-button');
+    messageModalEl = document.getElementById('message-modal');
+    lastOrderEl = document.getElementById('last-order-info');
+    refreshIndicator = document.getElementById('pull-to-refresh-indicator');
+    pullTextEl = document.querySelector('#pull-to-refresh-indicator .pull-text');
+    pullIconEl = document.querySelector('#pull-to-refresh-indicator .pull-icon');
+
+    if (sendMessageButton) {
+      sendMessageButton.addEventListener('click', sendMessage);
+    }
+
+    messageModal = new bootstrap.Modal(messageModalEl);
+
+    messageModalEl.addEventListener('hidden.bs.modal', function (event) {
+      revokeAllBlobs();
+    });
+    const chatState = {
+      isFetchingMessages: false,
+      hasMoreMessages: true,
+      messageOffset: 0,
+      pageSize: 10
+    };
+
+    const imageViewerModal = document.getElementById('image-viewer-modal');
+    const fullSizeImage = document.getElementById('full-size-image');
+    const imageViewerClose = document.querySelector('.image-viewer-close');
+
+    function isMobile() {
+      const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+      return /android|iphone|ipad|ipod|windows phone|iemobile|mobile/i.test(userAgent);
+    }
+
+    function showFullImage(src) {
+      fullSizeImage.src = src;
+      imageViewerModal.style.display = "flex";
+    }
+
+    if (imageViewerClose) {
+      imageViewerClose.onclick = function () {
+        imageViewerModal.style.display = "none";
+      };
+    }
+    if (imageViewerModal) {
+      imageViewerModal.onclick = function (event) {
+        if (event.target !== fullSizeImage) {
+          imageViewerModal.style.display = "none";
+        }
+      };
+    }
+
+    function formatTimestamp(timestampString) {
+      if (!timestampString) return '';
+      const date = new Date(timestampString);
+      const day = date.getDate().toString().padStart(2, '0');
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const year = date.getFullYear();
+      const time = date.toLocaleTimeString('en-US', { hour12: true });
+      return `${day}/${month}/${year}, ${time}`;
+    }
+
+    async function getMimeTypeFromUrl(url) {
+      try {
+        const response = await fetch(url, { method: 'HEAD' });
+        if (response.ok) {
+          const contentType = response.headers.get('Content-Type');
+          return contentType ? contentType.split(';')[0] : '';
+        }
+      } catch (error) {
+        console.error('Lỗi khi lấy MIME type từ URL:', error);
+      }
+      return '';
+    }
+
+    async function renderMessage(msg, shouldShowAvatar) {
+      const isPageSender = PAGE_IDS.includes(msg.sender);
+
+      const messageRow = document.createElement('div');
+      let avatarHtml = '';
+
+      if (!isPageSender) {
+        if (shouldShowAvatar) {
+          avatarHtml = `<img src="${customerAvatarEl.src}" class="avatar-messenger" style="width: 25px; height: 25px; margin-right: 5px;">`;
+        } else {
+          avatarHtml = `<div class="avatar-messenger-placeholder" style="width: 25px; height: 25px; margin-right: 5px;"></div>`;
+        }
+      }
+
+      const formattedTime = formatTimestamp(msg.time);
+      const timestampHtml = `<span class="message-timestamp">${formattedTime}</span>`;
+
+      let textContentHtml = '';
+      if (msg.message) {
+        const formattedMessage = msg.message.replace(/\n/g, '<br>');
+        textContentHtml = `<div class="message-text-content">${formattedMessage}</div>`;
+      }
+
+      let mediaHtml = '';
+      if (msg.image) {
+        if (typeof msg.image === 'string' && (msg.image.includes('like') || msg.image.includes('39178562_1505197616293642') || msg.image.includes('851587_369239346556147') || msg.image.includes('851582_369239386556143'))) {
+          mediaHtml = `<div class="like-message-container"><span class="like-message-icon">👍</span></div>`;
+        } else {
+          const mediaUrls = (typeof msg.image === 'string' ? msg.image.split(';') : [msg.image]);
+          const messageImagesContainer = document.createElement('div');
+          messageImagesContainer.classList.add('message-images-container');
+
+          for (const url of mediaUrls) {
+            if (url) {
+              let fileType = msg.fileType || await getMimeTypeFromUrl(url);
+              let isAudio = false;
+              let isVideo = false;
+              let isImage = false;
+
+              if (url.toLowerCase().includes('audioclip')) {
+                isAudio = true;
+              } else {
+                isAudio = fileType.startsWith('audio/');
+                isVideo = fileType.startsWith('video/');
+                isImage = fileType.startsWith('image/');
+                if (!isAudio && !isVideo && !isImage) {
+                  const cleanedUrl = url.split('?')[0];
+                  const fileExtension = cleanedUrl.split('.').pop().toLowerCase();
+                  const videoExtensions = ['mp4', 'webm', 'ogg', 'mov', 'mkv', 'avi'];
+                  const audioExtensions = ['mp3', 'wav', 'aac', 'flac', 'm4a'];
+                  const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg'];
+                  isImage = imageExtensions.includes(fileExtension);
+                  isVideo = videoExtensions.includes(fileExtension);
+                  isAudio = audioExtensions.includes(fileExtension);
+                }
+              }
+
+              if (isAudio) {
+                const audioDiv = document.createElement('div');
+                audioDiv.classList.add('message-media-container');
+                audioDiv.innerHTML = `<audio src="${url}" controls class="message-audio"></audio>`;
+                messageImagesContainer.appendChild(audioDiv);
+              } else if (isVideo) {
+                const videoDiv = document.createElement('div');
+                videoDiv.classList.add('message-media-container');
+                videoDiv.innerHTML = `<video src="${url}" controls class="message-video"></video>`;
+                messageImagesContainer.appendChild(videoDiv);
+              } else if (isImage) {
+                const img = document.createElement('img');
+                img.src = url;
+                img.classList.add('message-image', 'message-clickable');
+                img.alt = 'Attachment';
+                messageImagesContainer.appendChild(img);
+              } else {
+                console.log('Không thể xác định loại file cho URL:', url, 'và fileType:', fileType);
+              }
+            }
+          }
+          mediaHtml = messageImagesContainer.outerHTML;
+        }
+      }
+
+      let reactionsHtml = '';
+      if (msg.reactions && msg.reactions.length > 0) {
+        reactionsHtml = '<div class="message-reactions-container">';
+        msg.reactions.forEach(reaction => {
+          if (reaction.emoji === '❤') {
+            reaction.emoji = '❤️';
+          }
+          const reactionCount = reaction.count > 1 ? `<span class="reaction-count">${reaction.count}</span>` : '';
+          reactionsHtml += `<span class="reaction-item" title="${reaction.count} reaction">${reaction.emoji}${reactionCount}</span>`;
+        });
+        reactionsHtml += '</div>';
+      }
+
+      let statusHtml = '';
+      if (isPageSender) {
+        if (msg.isread) {
+          statusHtml = `<div class="message-status-read"><img src="${customerAvatarEl.src}" alt="Đã xem" class="avatar-seen"></div>`;
+        } else {
+          statusHtml = `<div class="message-status-sent"><i class="bi bi-check2"></i></div>`;
+        }
+      }
+
+      messageRow.dataset.sender = msg.sender;
+      messageRow.classList.add('message-row-messenger');
+      messageRow.dataset.messageId = msg.id;
+
+      if (isPageSender) {
+        messageRow.classList.add('message-sent-messenger');
+        let innerHTML = `<div class="message-content-wrapper">`;
+        if (textContentHtml) {
+          innerHTML += `<div class="message-text-messenger">${textContentHtml}</div>`;
+        }
+        innerHTML += `${mediaHtml}${reactionsHtml}`;
+        innerHTML += `<div class="message-status-time-wrapper">${timestampHtml}${statusHtml}</div>`;
+        innerHTML += `</div>`;
+        messageRow.innerHTML = innerHTML;
+      } else {
+        messageRow.classList.add('message-received-messenger');
+        let innerHTML = `${avatarHtml}<div class="message-content-wrapper">`;
+        if (textContentHtml) {
+          innerHTML += `<div class="message-text-messenger">${textContentHtml}</div>`;
+        }
+        innerHTML += `${mediaHtml}${reactionsHtml}`;
+        innerHTML += `<div class="message-status-time-wrapper">${timestampHtml}${statusHtml}</div>`;
+        innerHTML += `</div>`;
+        messageRow.innerHTML = innerHTML;
+      }
+
+      messageRow.addEventListener('click', function (event) {
+        if (event.target.closest('.message-row-messenger') === this) {
+          this.classList.toggle('show-timestamp');
+        }
+      });
+
+      return messageRow;
+    }
+
+    function safeScrollToBottom() {
+      modalMessagesContainer.scrollTop = modalMessagesContainer.scrollHeight;
+    }
+
+    async function addMessageToContainer(msg) {
+      const firstChild = modalMessagesContainer.firstElementChild;
+      let shouldShowAvatar = true;
+      if (firstChild && firstChild.dataset.sender === msg.sender) {
+        shouldShowAvatar = false;
+      }
+
+      const messageRow = await renderMessage(msg, shouldShowAvatar);
+      modalMessagesContainer.appendChild(messageRow);
+
+      safeScrollToBottom();
+
+      if (msg.sender === GlobalPageID || msg.sender === GlobalPageID2) {
+        const statusIconWrapper = document.createElement('div');
+        statusIconWrapper.classList.add('message-status-icon-wrapper');
+        statusIconWrapper.dataset.status = 'sending';
+        statusIconWrapper.innerHTML = `<span class="message-status-icon message-status-sending"></span>`;
+        messageRow.querySelector('.message-content-wrapper').appendChild(statusIconWrapper);
+      }
+
+      const images = messageRow.querySelectorAll('img.message-image');
+      if (images.length > 0) {
+        await Promise.all(Array.from(images).map(img => {
+          return new Promise(resolve => {
+            img.addEventListener('load', resolve, { once: true });
+            img.addEventListener('error', resolve, { once: true });
+          });
+        }));
+        safeScrollToBottom();
+      }
+
+      return messageRow;
+    }
+
+    async function prependMessages(messages) {
+      if (messages.length === 0) {
+        return;
+      }
+
+      const oldScrollHeight = modalMessagesContainer.scrollHeight;
+      const messageFragment = document.createDocumentFragment();
+      const imagesToLoad = [];
+
+      if (loadMoreBtn) {
+        modalMessagesContainer.removeChild(loadMoreBtn);
+      }
+
+      const sortedMessages = messages.sort((a, b) => new Date(a.time) - new Date(b.time));
+      const senderOfOldestExistingMessage = modalMessagesContainer.firstElementChild ? modalMessagesContainer.firstElementChild.dataset.sender : null;
+
+      for (let i = 0; i < sortedMessages.length; i++) {
+        const msg = sortedMessages[i];
+        let shouldShowAvatar = true;
+        if (i > 0) {
+          if (sortedMessages[i - 1].sender === msg.sender) {
+            shouldShowAvatar = false;
+          }
+        } else {
+          if (senderOfOldestExistingMessage && senderOfOldestExistingMessage === msg.sender) {
+            shouldShowAvatar = false;
+          }
+        }
+        const messageRow = await renderMessage(msg, shouldShowAvatar);
+        messageFragment.appendChild(messageRow);
+
+        const images = messageRow.querySelectorAll('img.message-image');
+        images.forEach(img => {
+          imagesToLoad.push(new Promise(resolve => {
+            img.addEventListener('load', resolve, { once: true });
+            img.addEventListener('error', resolve, { once: true });
+          }));
+        });
+      }
+
+      modalMessagesContainer.prepend(messageFragment);
+      if (loadMoreBtn) {
+        modalMessagesContainer.prepend(loadMoreBtn);
+      }
+
+      await Promise.all(imagesToLoad);
+
+      const newScrollHeight = modalMessagesContainer.scrollHeight;
+      modalMessagesContainer.scrollTop = newScrollHeight - oldScrollHeight;
+    }
+
+    async function loadMoreMessages() {
+      if (chatState.isFetchingMessages || !chatState.hasMoreMessages) {
+        return;
+      }
+      chatState.isFetchingMessages = true;
+
+      if (loadMoreBtn) {
+        loadMoreBtn.innerHTML = 'Đang tải...';
+      }
+
+      try {
+        const response = await fetch(`/api/messages/${currentCustomerId}?offset=${chatState.messageOffset}&limit=${chatState.pageSize}`);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const messages = await response.json();
+
+        if (messages.length === 0) {
+          chatState.hasMoreMessages = false;
+          if (loadMoreBtn) {
+            loadMoreBtn.style.display = 'none';
+          }
+        } else {
+          await prependMessages(messages);
+          chatState.messageOffset += messages.length;
+          if (loadMoreBtn) {
+            loadMoreBtn.innerHTML = 'Tải thêm tin nhắn...';
+          }
+        }
+      } catch (error) {
+        console.error('Lỗi khi fetch API:', error);
+        if (loadMoreBtn) {
+          loadMoreBtn.innerHTML = 'Lỗi tải. Thử lại.';
+        }
+      } finally {
+        chatState.isFetchingMessages = false;
+      }
+    }
+
+    async function fetchInitialMessages() {
+      if (chatState.isFetchingMessages) {
+        return;
+      }
+      chatState.isFetchingMessages = true;
+
+      try {
+        const response = await fetch(`/api/messages/${currentCustomerId}?offset=0&limit=${chatState.pageSize}`);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const messages = await response.json();
+
+        modalMessagesContainer.innerHTML = '';
+
+        if (messages.length >= chatState.pageSize) {
+          loadMoreBtn = document.createElement('div');
+          loadMoreBtn.id = 'load-more-btn';
+          loadMoreBtn.className = 'text-center load-more-btn';
+          loadMoreBtn.style.cursor = 'pointer';
+          loadMoreBtn.innerHTML = 'Tải thêm tin nhắn...';
+          modalMessagesContainer.appendChild(loadMoreBtn);
+
+          if (!isMobile()) {
+            loadMoreBtn.addEventListener('click', loadMoreMessages);
+          } else {
+            loadMoreBtn.style.display = 'none';
+          }
+        } else {
+          if (loadMoreBtn) {
+            loadMoreBtn.remove();
+          }
+          loadMoreBtn = null;
+        }
+
+        if (isMobile()) {
+          if (refreshIndicator.parentNode) {
+            refreshIndicator.parentNode.removeChild(refreshIndicator);
+          }
+          modalMessagesContainer.prepend(refreshIndicator);
+          refreshIndicator.style.display = 'none';
+        }
+
+        if (messages.length < chatState.pageSize) {
+          chatState.hasMoreMessages = false;
+        } else {
+          chatState.hasMoreMessages = true;
+        }
+
+        if (messages.length === 0) {
+          return;
+        }
+
+        const sortedMessages = messages.sort((a, b) => new Date(a.time) - new Date(b.time));
+        const messageFragment = document.createDocumentFragment();
+        const imagesToLoad = [];
+        let previousSender = null;
+
+        for (const msg of sortedMessages) {
+          const shouldShowAvatar = previousSender !== msg.sender;
+          const messageRow = await renderMessage(msg, shouldShowAvatar);
+          messageFragment.appendChild(messageRow);
+          previousSender = msg.sender;
+
+          const images = messageRow.querySelectorAll('img.message-image');
+          images.forEach(img => {
+            imagesToLoad.push(new Promise(resolve => {
+              img.addEventListener('load', resolve, { once: true });
+              img.addEventListener('error', resolve, { once: true });
+            }));
+          });
+        }
+
+        modalMessagesContainer.appendChild(messageFragment);
+
+        await Promise.all(imagesToLoad);
+
+        chatState.messageOffset = sortedMessages.length;
+        safeScrollToBottom();
+        const lastMessage = modalMessagesContainer.lastElementChild;
+        if (lastMessage && lastMessage.id !== 'load-more-btn') {
+          lastMessage.classList.add('show-timestamp');
+        }
+
+      } catch (error) {
+        console.error('Lỗi khi fetch API hoặc render tin nhắn:', error);
+      } finally {
+        chatState.isFetchingMessages = false;
+      }
+    }
+
+    function debounce(func, delay) {
+      let timeout;
+      return function (...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), delay);
+      };
+    }
+
+    function setupMobilePullToRefresh() {
+      if (!isMobile()) return;
+
+      modalMessagesContainer.addEventListener('touchstart', (e) => {
+        if (modalMessagesContainer.scrollTop > 0) return;
+        startY = e.touches[0].pageY;
+        isPulling = false;
+      });
+
+      modalMessagesContainer.addEventListener('touchmove', (e) => {
+        if (modalMessagesContainer.scrollTop > 0 || chatState.isFetchingMessages || !chatState.hasMoreMessages) {
+          return;
+        }
+        const currentY = e.touches[0].pageY;
+        const distance = currentY - startY;
+
+        if (distance > 0) {
+          isPulling = true;
+          e.preventDefault();
+          const pullDistance = Math.min(distance, PULL_THRESHOLD + 20);
+          modalMessagesContainer.style.transform = `translateY(${pullDistance}px)`;
+          refreshIndicator.style.display = 'flex';
+
+          if (distance > PULL_THRESHOLD) {
+            pullTextEl.textContent = 'Thả ra để tải thêm...';
+          } else {
+            pullTextEl.textContent = 'Kéo xuống nữa để tải...';
+          }
+        }
+      });
+
+      modalMessagesContainer.addEventListener('touchend', async (e) => {
+        if (!isPulling) return;
+
+        const endY = e.changedTouches[0].pageY;
+        const distance = endY - startY;
+
+        modalMessagesContainer.style.transform = '';
+        modalMessagesContainer.style.transition = 'transform 0.2s ease-out';
+        setTimeout(() => {
+          modalMessagesContainer.style.transition = '';
+        }, 200);
+
+        if (distance > PULL_THRESHOLD && chatState.hasMoreMessages && !chatState.isFetchingMessages) {
+          refreshIndicator.classList.add('refreshing');
+          pullTextEl.textContent = 'Đang tải...';
+          await loadMoreMessages();
+        }
+
+        setTimeout(() => {
+          refreshIndicator.style.display = 'none';
+          refreshIndicator.classList.remove('refreshing');
+          pullTextEl.textContent = 'Kéo xuống nữa để tải...';
+        }, 500);
+
+        isPulling = false;
+      });
+    }
+
+    const sendErrorMessageEl = document.getElementById('send-error-message');
+
+    function displayError(message) {
+      sendErrorMessageEl.textContent = message;
+      sendErrorMessageEl.style.display = 'block';
+    }
+
+    function hideError() {
+      sendErrorMessageEl.style.display = 'none';
+      sendErrorMessageEl.textContent = '';
+    }
+
+    function sendMessage() {
+      const messageText = messageInput.value.trim();
+      if (!messageText && !currentImageFile) return;
+      hideError();
+      if (messageText) {
+        numMess++;
+      }
+      if (currentImageFile) {
+        numMess++;
+      }
+      const tempMessageText = messageInput.value;
+      const tempImageFile = currentImageFile;
+
+      messageInput.value = '';
+      currentImageFile = null;
+      imagePreviewContainer.style.display = 'none';
+      autoResizeInput();
+
+      const formData = new FormData();
+      formData.append('customerId', currentCustomerId);
+      formData.append('currentPageID', currentPageID);
+      if (tempMessageText) formData.append('message', tempMessageText);
+      if (tempImageFile) formData.append('image', tempImageFile);
+
+      const tempMessage = {
+        sender: currentPageID,
+        message: tempMessageText || null,
+        image: tempImageFile ? createAndTrackBlobUrl(tempImageFile) : null,
+        fileType: tempImageFile ? tempImageFile.type : null,
+        time: Date.now()
+      };
+
+      let messageRow = null;
+      addMessageToContainer(tempMessage).then(row => {
+        messageRow = row;
+        if (modalMessagesContainer) {
+          modalMessagesContainer.scrollTop = modalMessagesContainer.scrollHeight;
+        }
+
+        messageInput.focus({ preventScroll: true });
+      });
+      messageInput.focus();
+      fetch('/api/send-message', {
+        method: 'POST',
+        body: formData
+      })
+        .then(response => response.json())
+        .then(data => {
+          const statusIconWrapper = messageRow.querySelector('.message-status-icon-wrapper');
+          const statusIcon = statusIconWrapper.querySelector('.message-status-icon');
+          if (data.success) {
+            hideError();
+            statusIconWrapper.dataset.status = 'sent';
+            statusIcon.classList.remove('message-status-sending');
+            statusIcon.classList.add('message-status-sentx');
+            statusIcon.innerHTML = `<i class="bi bi-check-circle-fill"></i>`;
+          } else {
+            console.error('Lỗi khi gửi tin nhắn:', data.error);
+            displayError(data.error);
+            statusIconWrapper.dataset.status = 'error';
+            statusIcon.classList.remove('message-status-sending');
+            statusIcon.classList.add('message-status-error');
+            statusIcon.innerHTML = `<i class="bi bi-x-circle-fill"></i>`;
+          }
+        })
+        .catch(error => {
+          console.error('Lỗi fetch:', error);
+          displayError('Lỗi kết nối. Vui lòng kiểm tra lại mạng và thử lại.');
+
+          const statusIconWrapper = messageRow.querySelector('.message-status-icon-wrapper');
+          const statusIcon = statusIconWrapper.querySelector('.message-status-icon');
+          statusIconWrapper.dataset.status = 'error';
+          statusIcon.classList.remove('message-status-sending');
+          statusIcon.classList.add('message-status-error');
+          statusIcon.innerHTML = `<i class="bi bi-x-circle-fill"></i>`;
+        });
+    }
+
+    async function fetchLastOrder(customerId) {
+      try {
+        const response = await fetch(`/getuserorder`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ userid: customerId })
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+
+        if (data.data && Array.isArray(data.data) && data.data.length > 0) {
+          var lastOrder = data.data[0];
+          if (lastOrder.statuscode == 107) {
+            lastOrder = data.data[1];
+          }
+          if (lastOrder.statuscode == 107) {
+            lastOrder = data.data[2];
+          }
+          renderLastOrder(lastOrder);
+        } else {
+          lastOrderEl.innerHTML = '<span class="last-order-no-info">Khách hàng chưa có đơn hàng nào.</span>';
+        }
+      } catch (error) {
+        console.error('Lỗi khi lấy đơn hàng cuối cùng:', error);
+        lastOrderEl.innerHTML = '';
+      }
+    }
+
+    function renderLastOrder(order) {
+      if (!order) {
+        lastOrderEl.innerHTML = '<span class="last-order-no-info">Khách hàng chưa có đơn hàng nào.</span>';
+        return;
+      }
+      const dateString = order.date.split(' ')[1];
+      const [day, month, year] = dateString.split('/');
+      const orderDate = `${day}/${month}/${year.slice(-2)}`;
+
+      const statustext = order.statustext || 'N/A';
+      const cod = order.cod ? `${order.cod.toLocaleString('vi-VN')} đ` : '0đ';
+      const kg = order.kg ? `${order.kg}KG` : 'N/A';
+
+      let statusClass = '';
+      if (statustext.includes('Phát thành công')) {
+        statusClass = 'last-order-status-completed';
+      } else if (statustext.includes('Hủy') || statustext.includes('Hoàn Thành công') || statustext.includes('duyệt hoàn') || statustext.includes('Đang chuyển hoàn') || statustext.includes('Chuyển hoàn bưu cục gốc')) {
+        statusClass = 'last-order-status-canceled';
+      } else if (statustext.includes('Tồn')) {
+        statusClass = 'last-order-status-pending';
+      } else if (statustext.includes('Đang vận chuyển') || statustext.includes('Nhận bảng kê đến')) {
+        statusClass = 'last-order-status-ontheway';
+      } else if (statustext.includes('Giao bưu tá đi phát') || statustext.includes('yêu cầu phát tiếp')) {
+        statusClass = 'last-order-status-continue';
+      }
+
+      const lastOrderHtml = `
+            <div class="last-order-item">
+                <a onclick="OrderJourney('${order.realorderid}', '${order.name}', '${order.userid}', '${order.phone}')"><span class="last-order-value">${orderDate} - ${cod} - ${kg} - <span class="${statusClass}">${statustext}</span></span></a>
+            </div>
+        `;
+      lastOrderEl.innerHTML = lastOrderHtml;
+    }
+
+    if (messageInput) {
+      messageInput.addEventListener('input', autoResizeInput);
+      messageInput.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+          if (!isMobile()) {
+            event.preventDefault();
+            sendMessage();
+          }
+        }
+      });
+    }
+
+    const btnTakePhoto = document.getElementById('btn-take-photo');
+    const btnChooseFile = document.getElementById('btn-choose-file');
+    const inputTakePhoto = document.getElementById('input-take-photo');
+    const inputChooseFile = document.getElementById('input-choose-file');
+
+    if (btnTakePhoto && !isMobile()) {
+      btnTakePhoto.style.display = 'none';
+    }
+    if (btnTakePhoto) {
+      btnTakePhoto.addEventListener('click', () => inputTakePhoto.click());
+    }
+    if (btnChooseFile) {
+      btnChooseFile.addEventListener('click', () => inputChooseFile.click());
+    }
+
+    function handleFileSelection(event) {
+      const file = event.target.files[0];
+      if (file) {
+        currentImageFile = file;
+        const reader = new FileReader();
+        reader.onload = e => {
+          imagePreview.src = e.target.result;
+          imagePreviewContainer.style.display = 'flex';
+          autoResizeInput();
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    if (inputTakePhoto) {
+      inputTakePhoto.addEventListener('change', handleFileSelection);
+    }
+    if (inputChooseFile) {
+      inputChooseFile.addEventListener('change', handleFileSelection);
+    }
+
+    if (removeImageBtn) {
+      removeImageBtn.addEventListener('click', () => {
+        currentImageFile = null;
+        if (inputTakePhoto) inputTakePhoto.value = null;
+        if (inputChooseFile) inputChooseFile.value = null;
+        imagePreviewContainer.style.display = 'none';
+        imagePreview.src = '#';
+        autoResizeInput();
+      });
+    }
+
+    if (modalMessagesContainer) {
+      modalMessagesContainer.addEventListener('click', function (event) {
+        if (event.target.classList.contains('message-clickable')) {
+          showFullImage(event.target.src);
+        }
+      });
+
+      setupMobilePullToRefresh();
+    }
+
+    const modalQR2El = document.getElementById('modalQR2');
+    if (modalQR2El) {
+      modalQR2El.addEventListener('focusin.bs.modal', function (event) {
+        if (event.target.closest('#message-modal')) {
+          event.preventDefault();
+        }
+      });
+    }
+
+    modalMessagesContainer.addEventListener('click', function (event) {
+      if (event.target && event.target.id === 'load-more-btn') {
+        loadMoreMessages();
+      }
+    });
+
+    messageModalEl.addEventListener('shown.bs.modal', async function () {
+      if (!currentCustomerId) return;
+
+      chatState.isFetchingMessages = false;
+      chatState.hasMoreMessages = true;
+      chatState.messageOffset = 0;
+
+      modalMessagesContainer.style.transform = '';
+
+      await Promise.all([
+        fetchInitialMessages(),
+        fetchLastOrder(currentCustomerId)
+      ]);
+
+      if (window.copiedText) {
+        messageInput.value = window.copiedText;
+        messageInput.focus();
+        setTimeout(() => {
+          autoResizeInput();
+        }, 300);
+        window.copiedText = '';
+      } else {
+        messageInput.value = '';
+        autoResizeInput();
+      }
+    });
+
+    messageModalEl.addEventListener('hidden.bs.modal', function () {
+      modalMessagesContainer.innerHTML = '';
+      lastOrderEl.innerHTML = '';
+      chatState.isFetchingMessages = false;
+      chatState.hasMoreMessages = true;
+      chatState.messageOffset = 0;
+      hideError();
+      autoResizeInput();
+    });
+
+    function autoResizeInput() {
+      if (messageInput) {
+        messageInput.style.height = 'auto';
+        const newHeight = messageInput.scrollHeight;
+        messageInput.style.height = `${newHeight}px`;
+      }
+    }
+
+    document.addEventListener('click', function (event) {
+      const element = event.target.closest('.open-message-modal');
+      if (element) {
+        event.preventDefault();
+        const customerId = element.dataset.customerId;
+        const customerName = element.dataset.customerName;
+        const pageId = element.dataset.senderPageId;
+        if (customerId) {
+          window.openMessageModalAndPaste(customerId, customerName, pageId);
+        }
+      }
+    });
+
+    const openBtn = document.getElementById('open-messenger-btn');
+    const closeBtn = document.getElementById('close-messenger-btn');
+    const messengerPane = document.getElementById('messenger-pane');
+    const chatList = document.getElementById('chat-list');
+
+    function addMessageToTop(msg) {
+      const isPageSender = PAGE_IDS.includes(msg.senderId);
+
+      const customerId = isPageSender ? msg.recipientId : msg.senderId;
+
+      const senderPageId = isPageSender ? msg.senderId : msg.recipientId;
+
+      const avatarUrl = (msg.picture && msg.picture != '') ? msg.picture : `/images/ava/${customerId}.jpg`;
+      let PIcon = '<i class="bi bi-1-square"></i>';
+      if (senderPageId == GlobalPageID2) {
+        PIcon = '<i class="bi bi-2-square"></i>';
+      }
+      if (msg.label == null || msg.label == undefined || !msg.label.includes('hàng')) {
+        msg.label = '';
+      } else {
+        msg.label = ' - ' + msg.label.replace(' hàng', '');
+      }
+
+      const customerName = msg.fbname || 'Khách hàng';
+      const customerAvatar = `<img src="${avatarUrl}" class="chat-avatar" onerror="this.src='/images/ava/default.jpg'">`;
+
+      let imagesHtml = '';
+      let messageText = msg.messageText;
+
+      if (msg.messageImg && (msg.messageImg.includes('like') || msg.messageImg.includes('39178562_1505197616293642') || msg.messageImg.includes('851587_369239346556147') || msg.messageImg.includes('851582_369239386556143'))) {
+        messageText = '';
+        imagesHtml = '👍';
+      } else if (msg.messageImg) {
+        const medias = msg.messageImg.split(';').filter(url => url.trim() !== '');
+        let Tags = '';
+        if (medias.length > 0) {
+          let classtag = '';
+          if (msg.messageImg.includes('mp3')) {
+            classtag = 'message-audio';
+            Tags = medias.map(url => `<audio controls><source class="message-audio" src="${url}" type="audio/mpeg"></audio>`).join('');
+          } else if (msg.messageImg.includes('mp4')) {
+            classtag = 'message-video';
+            Tags = medias.map(url => `<video class="message-video" src="${url}" onerror="tryAgain(this)">`).join('');
+          } else if (msg.messageImg.includes('jpg') || msg.messageImg.includes('png')) {
+            classtag = 'message-images';
+            Tags = medias.map(url => `<img src="${url}" onerror="tryAgain(this)">`).join('');
+          }
+          imagesHtml = `<div class="${classtag}">${Tags}</div>`;
+          if (!messageText || messageText.trim() === '') {
+            messageText = '';
+          }
+        }
+      }
+
+      const chatItem = document.createElement('a');
+      chatItem.classList.add('chat-item', 'open-message-modal', 'no-underline-link');
+      chatItem.href = 'javascript:void(0);';
+      chatItem.dataset.customerId = customerId;
+      chatItem.dataset.customerName = customerName;
+      chatItem.dataset.senderPageId = senderPageId;
+
+      chatItem.innerHTML = `
+        ${customerAvatar}
+        <div class="chat-info">
+            <p class="chat-name">${customerName} ${PIcon} ${msg.label}</p>
+            <p class="last-message">${isPageSender ? 'Bạn: ' : ''}${messageText}</p>
+            ${imagesHtml}
+        </div>
+    `;
+
+      const oldItem = chatList.querySelector(`[data-customer-id="${customerId}"]`);
+      if (oldItem) {
+        oldItem.remove();
+      }
+      chatList.prepend(chatItem);
+    }
+
+    function fetchLastMessages() {
+      fetch('/api/last-messages')
+        .then(response => {
+          if (!response.ok) {
+            throw new Error(`Lỗi HTTP: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then(messages => {
+          chatList.innerHTML = '';
+
+          messages.reverse().forEach(msg => {
+            const formattedMsg = {
+              senderId: msg.sender,
+              recipientId: msg.recipient,
+              messageText: msg.message,
+              fbname: msg.ten_khach,
+              messageImg: msg.image,
+              label: msg.label
+            };
+            addMessageToTop(formattedMsg);
+          });
+        })
+        .catch(error => {
+          console.error('Không thể lấy dữ liệu tin nhắn:', error);
+          chatList.innerHTML = '<p style="text-align: center; color: #888;">Không thể tải tin nhắn.</p>';
+        });
+    }
+
+    openBtn.addEventListener('click', () => {
+      const isOpenClass = messengerPane.classList.contains('is-open');
+      if (isOpenClass) {
+        messengerPane.classList.remove('is-open');
+      } else {
+        messengerPane.classList.add('is-open');
+        fetchLastMessages();
+      }
+    });
+
+    closeBtn.addEventListener('click', () => {
+      messengerPane.classList.remove('is-open');
+    });
+    document.addEventListener('click', (event) => {
+      const isClickInsidePane = messengerPane.contains(event.target);
+      const isClickOnOpenButton = openBtn.contains(event.target);
+      if (!isClickInsidePane && !isClickOnOpenButton) {
+        //messengerPane.classList.remove('is-open');//click ra ngoai thi dong pane
+      }
+    });
+
+    socket.on('new-message', (data) => {
+      var toastduration = 4000;
+      if (lockToast != 0) {
+        toastduration = 999999;
+      }
+      var phone = data.phone;
+      if (phone.length > 0) {
+        phone = '<i class="bi bi-phone-fill"></i>';
+      } else {
+        phone = '';
+      }
+      let url = `/images/ava/${data.senderId}.jpg`;
+      var ava = `<img src="/images/ava/${data.senderId}.jpg" class="rounded-circle" width="32" height="32">`;
+      var bomxa = ''
+      if (data.label.includes('Bom')) {
+        bomxa = '[Bom]'
+      }
+      if (data.label.includes('Xả')) {
+        bomxa = '[Xả]'
+      }
+      if (data.label.includes('vấn đề')) {
+        bomxa = '[Vấn đề]'
+      }
+      if (data.hasOwnProperty('picture') && data.picture != '') {
+        url = data.picture;
+        ava = `<img src="${data.picture}" class="rounded-circle" width="32" height="32">`;
+      }
+      let printButton = `<a href="javascript:void(0);" class="no-underline-link" onclick="PrintFromMess(${data.id},'${data.fbname}','${data.phone}','${url}','${data.messageText}')"><i class="bi bi-printer-fill"></i></a>`;
+      let nameButton = `<a href="javascript:void(0);" data-customer-id="${data.senderId}" data-customer-name="${data.fbname}" data-sender-page-id="${data.pageid}" class="open-message-modal no-underline-link">${data.fbname} ${phone} ${bomxa}</a>`;
+      let messageContent = '';
+      if (data.messageText != null && data.senderId != GlobalPageID && data.senderId != GlobalPageID2) {
+        messageContent = data.messageText;
+      } else if (data.senderId != GlobalPageID && data.senderId != GlobalPageID2) {
+        const mediaUrls = data.messageImg.split(';');
+        mediaUrls.forEach(mediaUrl => {
+          const trimmedUrl = mediaUrl.trim();
+          if (trimmedUrl) {
+            if (trimmedUrl.includes('.mp3')) {
+              messageContent += `<audio controls><source src="${trimmedUrl}" type="audio/mpeg">Your browser does not support the audio element.</audio>`;
+            } else if (trimmedUrl.includes('.mp4')) {
+              messageContent += `<video width="200" height="150" controls><source src="${trimmedUrl}" type="video/mp4">Your browser does not support the video tag.</video>`;
+            } else {
+              if (trimmedUrl.includes('like') || trimmedUrl.includes('39178562_1505197616293642') || trimmedUrl.includes('851587_369239346556147') || trimmedUrl.includes('851582_369239386556143')) {
+                messageContent += '👍';
+              } else {
+                messageContent += `<img src="${trimmedUrl}" width="50" height="50">`;
+              }
+            }
+          }
+        });
+      }
+      if (messageContent) {
+        ShowMess(ava, nameButton, messageContent, toastduration, printButton);
+      }
+      addMessageToTop(data);
+      const srcValue = $('#customer-avatar').attr('src');
+      const match = srcValue.match(/\/(\d+)\.jpg$/);
+      let customerIdx = null;
+      if (match && match[1]) {
+        customerIdx = match[1];
+      }
+      if (numMess > 0 && (data.senderId == GlobalPageID || data.senderId == GlobalPageID2)) {
+        numMess--;
+        return;
+      }
+      if (customerIdx == data.senderId || data.recipientId == customerIdx) {
+        let contentMess = data.messageText;
+        let urlx = null;
+        let type = null;
+        const mediaUrls = data.messageImg.split(';');
+        mediaUrls.forEach(mediaUrl => {
+          const trimmedUrl = mediaUrl.trim();
+          if (trimmedUrl) {
+            if (trimmedUrl.includes('.mp3')) {
+              contentMess = null;
+              urlx = trimmedUrl;
+              type = 'mp3';
+            } else if (trimmedUrl.includes('.mp4')) {
+              contentMess = null;
+              urlx = trimmedUrl;
+              type = 'mp4';
+            } else {
+              if (trimmedUrl.includes('like') || trimmedUrl.includes('39178562_1505197616293642') || trimmedUrl.includes('851587_369239346556147') || trimmedUrl.includes('851582_369239386556143')) {
+                contentMess = '👍';
+              } else {
+                contentMess = null;
+                urlx = trimmedUrl;
+                type = 'jpg';
+              }
+            }
+          }
+        });
+        const newMess = {
+          sender: data.senderId,
+          message: contentMess || null,
+          image: urlx,
+          fileType: type,
+          time: Date.now()
+        };
+
+        let messageRow = null;
+        addMessageToContainer(newMess).then(row => {
+          messageRow = row;
+        });
+        setTimeout(function () {
+          const elementsToHide = document.querySelectorAll('.message-status-icon-wrapper');
+          elementsToHide.forEach(element => {
+            element.style.display = 'none';
+          });
+        }, 500);
+      }
+    });
+    const messageInputEl = document.getElementById('message-input');
+    const modalContent = document.querySelector('.modal-content-messenger');
+    if (messageInputEl && modalContent) {
+      messageInputEl.addEventListener('blur', function () {
+        setTimeout(function () {
+          window.scrollTo(0, 0);
+          modalContent.style.transform = 'translateY(1px)';
+          window.requestAnimationFrame(() => {
+            modalContent.style.transform = 'translateY(0)';
+            safeScrollToBottom();
+          });
+          document.body.scrollTop = 0;
+        }, 150);
+      });
+    }
+  });
+
+  function toDataUrl(url, callback) {
+    var xhr = new XMLHttpRequest();
+    xhr.onload = function () {
+      var reader = new FileReader();
+      reader.onloadend = function () {
+        callback(reader.result);
+      }
+      reader.readAsDataURL(xhr.response);
+    };
+    xhr.open('GET', url);
+    xhr.responseType = 'blob';
+    xhr.send();
+  }
+
+  function PrintLabelx(html) {
+    var xx = `<html>
+        <head>
+            <style>
+                @import url("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.9.1/font/bootstrap-icons.css");
+        body {
+            width: 300;
+            margin: 2mm 0mm 2mm 2mm;
+            line-height: 1.6;
+        }
+        img.top { 
+            vertical-align: text-top; 
+        }
+        .lead {
+            border: 1px solid;
+            width: 300;
+            height: auto;
+            text-align: center;
+            padding: 5px 5px;
+            border-radius: 4px;
+            margin: 5px auto;
+        }
+        table {
+            width: 300;
+            font-family: "tahoma";
+        }
+        @media print{@page {size: portrait}}
+        *, html {margin:0;padding:0;}
+            </style>
+        </head>
+        <body>
+            ${html}
+        </body></html>`;
+    $.ajax({
+      url: "/printchot",
+      method: "POST",
+      dataType: "JSON",
+      data: { html: xx },
+      success: function (data) {
+        if (data.hasOwnProperty('error')) {
+          ShowToast('error', '', '', data.data.error, 3000);
+        }
+      }
+    });
+  }
+
+
+  function makeid(length) {
+    var result = '';
+    var characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    var charactersLength = characters.length;
+    for (var i = 0; i < length; i++) {
+      result += characters.charAt(Math.floor(Math.random() *
+        charactersLength));
+    }
+    return result;
+  }
+  function Notify(image, name, time, message) {
+    var id = makeid(10);
+    document.getElementById("notix").insertAdjacentHTML("afterend",
+      `<div id="` + id + `" class="toast hide toast" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="3000">
+                <div class="toast-header">
+                    <img src='`+ image + `' class="rounded me-2" alt="..." width="30px" height="30px">
+                    <strong class="me-auto">`+ name + `</strong>
+                    <small class="text-muted">`+ time + `</small>
+                    <button type="button" class="btn-close" data-bs-dismiss="toast"
+                        aria-label="Close"></button>
+                </div>
+                <div class="toast-body">
+                    `+ message + `
+                </div>
+            </div>`);
+    $('.toast').toast('show');
+    $('.toast').on('hidden.bs.toast', function () {
+      var div = document.getElementById(id);
+      div.remove();
+    });
+  }
+</script>
+<script type="text/javascript" src="https://cdn.datatables.net/v/bs5/dt-1.12.1/datatables.min.js"></script>
+<script type="text/javascript" src="https://cdn.datatables.net/select/1.4.0/js/dataTables.select.min.js"></script>
+<script type="text/javascript" src="https://cdn.datatables.net/keytable/2.7.0/js/dataTables.keyTable.min.js"></script>
+
+<script src="https://cdn.jsdelivr.net/alasql/0.3/alasql.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.7.12/xlsx.core.min.js"></script>
+
+</body>
+<script>
+  const navItems = document.getElementsByClassName('nav1-item');
+
+  for (let i = 0; i < navItems.length; i++) {
+    navItems[i].addEventListener('click', () => {
+      for (let j = 0; j < navItems.length; j++)
+        navItems[j].classList.remove('active');
+      navItems[i].classList.add('active');
+    });
+  }
+</script>
+
+</html>

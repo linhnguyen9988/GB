@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>QR + Code 128 Scanner</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0f0f0f; color: #f0f0f0;
+    min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; padding: 20px 16px;
+  }
+  h1 { font-size: 18px; font-weight: 500; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: #888; margin-bottom: 16px; text-align: center; }
+
+  .status-bar {
+    width: 100%; max-width: 480px; display: flex; align-items: center;
+    font-size: 13px; color: #666; margin-bottom: 10px;
+  }
+  .dot { width:8px; height:8px; border-radius:50%; background:#555; margin-right:6px; flex-shrink:0; }
+  .dot.on { background:#63dc96; animation:pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .badge {
+    margin-left:auto; font-size:11px; padding:2px 8px;
+    border-radius:6px; background:#1e2e1e; color:#63dc96; border:1px solid #2a3d2a;
+    white-space:nowrap;
+  }
+
+  /* Bọc vùng camera của html5-qrcode */
+  #reader-wrap {
+    width: 100%; max-width: 480px;
+    border-radius: 16px; overflow: hidden;
+    border: 1px solid #2a2a2a; background: #000;
+    min-height: 280px;
+  }
+
+  /* Override style mặc định của html5-qrcode cho phù hợp dark theme */
+  #reader { border: none !important; }
+  #reader video { border-radius: 0 !important; }
+  #reader__scan_region { background: transparent !important; }
+  #reader__scan_region img { display: none !important; } /* ẩn icon mặc định */
+  #reader__dashboard { background: #111 !important; border-top: 1px solid #222 !important; padding: 10px !important; }
+  #reader__dashboard_section_csr button {
+    background: #1a1a1a !important; color: #f0f0f0 !important;
+    border: 1px solid #333 !important; border-radius: 10px !important;
+    padding: 10px 16px !important; font-size: 14px !important; cursor: pointer !important;
+  }
+  #reader__dashboard_section_csr button:hover { background: #252525 !important; }
+  #reader__camera_selection {
+    background: #1a1a1a !important; color: #f0f0f0 !important;
+    border: 1px solid #333 !important; border-radius: 8px !important;
+    padding: 6px 10px !important; font-size: 13px !important;
+  }
+  #reader__status_span { color: #888 !important; font-size: 12px !important; }
+  #reader__header_message { display: none !important; }
+  /* Đổi màu khung quét sang xanh lá */
+  #reader__scan_region svg { stroke: #63dc96 !important; }
+
+  .result-area { width:100%; max-width:480px; margin-top:14px; }
+  .section-label { font-size:11px; color:#555; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; }
+  .result-card {
+    background:#1a1a1a; border:1px solid #2a2a2a; border-radius:12px;
+    padding:14px 16px; min-height:64px; display:flex; flex-direction:column;
+    gap:4px; justify-content:center; transition:border-color 0.3s;
+  }
+  .result-card.flash { border-color:#63dc96; }
+  .result-fmt { font-size:12px; color:#63dc96; }
+  .result-val { font-size:15px; font-weight:500; color:#fff; word-break:break-all; }
+  .result-empty { font-size:14px; color:#444; }
+
+  .history { width:100%; max-width:480px; margin-top:16px; padding-bottom:24px; }
+  .history-header {
+    display:flex; justify-content:space-between; font-size:11px; color:#555;
+    text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;
+  }
+  .history-clear { cursor:pointer; }
+  .history-list { display:flex; flex-direction:column; gap:6px; }
+  .h-item {
+    background:#141414; border:1px solid #222; border-radius:8px;
+    padding:8px 12px; display:flex; justify-content:space-between; align-items:center;
+    animation:fadeIn .2s ease;
+  }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1} }
+  .h-val { color:#ccc; font-size:13px; word-break:break-all; flex:1; margin-right:8px; }
+  .h-fmt { color:#63dc96; font-size:11px; white-space:nowrap; }
+</style>
+</head>
+<body>
+
+<h1>QR + Code 128 Scanner</h1>
+<p class="subtitle">html5-qrcode + ZXing — quét mọi góc, tối ưu iPhone</p>
+
+<div class="status-bar">
+  <span class="dot" id="dot"></span>
+  <span id="statusTxt">Đang tải...</span>
+  <span class="badge">QR &amp; Code 128</span>
+</div>
+
+<div id="reader-wrap">
+  <div id="reader"></div>
+</div>
+
+<div class="result-area">
+  <div class="section-label">Kết quả gần nhất</div>
+  <div class="result-card" id="resultCard">
+    <span class="result-empty">Chưa quét được gì</span>
+  </div>
+</div>
+
+<div class="history">
+  <div class="history-header">
+    <span>Lịch sử</span>
+    <span class="history-clear" onclick="clearHistory()">Xóa</span>
+  </div>
+  <div class="history-list" id="historyList"></div>
+</div>
+
+<!-- html5-qrcode bundle nhúng inline -->
+<script>
+HTML5QRCODE_PLACEHOLDER
+</script>
+
+<script>
+let historyArr = [];
+let scanner    = null;
+let cooldown   = false;
+let lastCode   = '';
+
+function setStatus(txt, active) {
+  document.getElementById('statusTxt').textContent = txt;
+  document.getElementById('dot').className = 'dot' + (active ? ' on' : '');
+}
+
+function onScanSuccess(decodedText, decodedResult) {
+  if (cooldown && decodedText === lastCode) return;
+  lastCode = decodedText;
+  cooldown = true;
+  setTimeout(() => { cooldown = false; }, 1500);
+
+  const fmt = decodedResult.result.format.formatName || 'Barcode';
+  const fmtLabel = fmt.includes('QR') ? 'QR Code' : 'Code 128';
+
+  showResult(decodedText, fmtLabel);
+  addHistory(decodedText, fmtLabel);
+
+  // Flash
+  const card = document.getElementById('resultCard');
+  card.classList.add('flash');
+  setTimeout(() => card.classList.remove('flash'), 600);
+}
+
+function onScanFailure(err) {
+  // Bình thường khi không có mã trong frame — bỏ qua
+}
+
+function init() {
+  setStatus('Đang khởi động camera...');
+
+  scanner = new Html5Qrcode('reader', {
+    verbose: false,
+    // experimentalFeatures: false → KHÔNG dùng native BarcodeDetector
+    // Bắt buộc đi qua ZXing để support CODE_128 trên Safari iOS
+    experimentalFeatures: {
+      useBarCodeDetectorIfSupported: false
+    }
+  });
+
+  const config = {
+    fps: 15,
+    // qrbox: chiều rộng vùng quét — dùng function để responsive
+    qrbox: (viewfinderWidth, viewfinderHeight) => {
+      const size = Math.min(viewfinderWidth, viewfinderHeight) * 0.75;
+      return { width: Math.floor(size * 1.5), height: Math.floor(size) };
+    },
+    // Support cả QR lẫn Code 128
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.QR_CODE,
+      Html5QrcodeSupportedFormats.CODE_128,
+    ],
+    // Tắt beep mặc định (tuỳ thích)
+    disableFlip: false,
+    aspectRatio: 1.333, // 4:3 — phù hợp camera iPhone
+  };
+
+  scanner.start(
+    { facingMode: 'environment' }, // camera sau
+    config,
+    onScanSuccess,
+    onScanFailure
+  ).then(() => {
+    setStatus('Đang quét...', true);
+  }).catch(err => {
+    setStatus('Lỗi camera: ' + err);
+  });
+}
+
+function showResult(code, fmt) {
+  document.getElementById('resultCard').innerHTML =
+    `<span class="result-fmt">${fmt}</span><span class="result-val">${esc(code)}</span>`;
+}
+function addHistory(code, fmt) {
+  if (historyArr.length && historyArr[0].code === code) return;
+  historyArr.unshift({ code, fmt });
+  if (historyArr.length > 30) historyArr.pop();
+  document.getElementById('historyList').innerHTML = historyArr.map(h =>
+    `<div class="h-item"><span class="h-val">${esc(h.code)}</span><span class="h-fmt">${h.fmt}</span></div>`
+  ).join('');
+}
+function clearHistory() { historyArr = []; document.getElementById('historyList').innerHTML = ''; }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function waitForLib(cb, tries = 0) {
+  if (window.Html5Qrcode && window.Html5QrcodeSupportedFormats) { cb(); return; }
+  if (tries > 80) { setStatus('Không tải được thư viện'); return; }
+  setTimeout(() => waitForLib(cb, tries + 1), 100);
+}
+window.addEventListener('load', () => waitForLib(init));
+</script>
+</body>
+</html>
