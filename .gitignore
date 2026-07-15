@@ -8,3 +8,4 @@ src/public/images/
 src/public/donhang/
 /.vscode
 /uploads/
+src/routes/firebase-service-account.json

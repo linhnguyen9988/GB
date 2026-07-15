@@ -59,7 +59,7 @@ const mime = require('mime-types');
 const path = require('path');
 const PDFDocument = require('pdfkit');
 const bwipjs = require('bwip-js');
-const FB_TOKEN = 'EAABsbCS1iHgBPYXzMFwCI6WZAM7j2mM4SWZAgxR9wbEtWsWqPqBR7VNMt1LctZBQiL4KvipZBmJPVIj1S7VReHhSKxS75kx2a3P4RAA6CtZAwTat6dapTzXBJWoYPKMOQtsKqxl1ZBaUqG7XYbGL3lcrEi44RElavGBYl9tDCqdGi1648KxCPErnWy9jAFCHJYBPo2ctHrgdkZB9gZDZD';
+
 import { v2 as cloudinary } from 'cloudinary';
 
 const CHROME_PATH = 'C:\\GB\\node_modules\\puppeteer\\.local-chromium\\win64-1022525\\chrome-win\\chrome.exe';
