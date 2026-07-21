@@ -2,20 +2,8 @@ const router = require('express').Router();
 const db = require('../../configs/DBConnection');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-
-const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret';
-
-function authMiddleware(req, res, next) {
-  const header = req.headers['authorization'];
-  if (!header) return res.status(401).json({ message: 'Không có token' });
-  const token = header.startsWith('Bearer ') ? header.slice(7) : header;
-  try {
-    req.user = jwt.verify(token, JWT_SECRET);
-    next();
-  } catch (_) {
-    return res.status(401).json({ message: 'Token không hợp lệ' });
-  }
-}
+const { JWT_SECRET, JWT_EXPIRES_IN } = require('../../configs/jwtConfig');
+const { apiAuth } = require('../../middleware/jwtAuth');
 
 // POST /api/auth/login
 router.post('/login', async (req, res) => {
@@ -30,19 +18,14 @@ router.post('/login', async (req, res) => {
     if (!user)
       return res.status(401).json({ message: 'Tài khoản không tồn tại' });
 
-    let valid = false;
-    if (user.password && user.password.startsWith('$2')) {
-      valid = await bcrypt.compare(password, user.password);
-    } else {
-      valid = password === user.password;
-    }
+    const valid = await bcrypt.compare(password, user.password);
     if (!valid)
       return res.status(401).json({ message: 'Mật khẩu không đúng' });
 
     const token = jwt.sign(
       { id: user.id, username: user.username },
       JWT_SECRET,
-      { expiresIn: '30d' }
+      { expiresIn: JWT_EXPIRES_IN }
     );
 
     res.json({
@@ -55,7 +38,7 @@ router.post('/login', async (req, res) => {
 });
 
 // POST /api/auth/change-password
-router.post('/change-password', authMiddleware, async (req, res) => {
+router.post('/change-password', apiAuth, async (req, res) => {
   const { oldPassword, newPassword } = req.body;
   if (!oldPassword || !newPassword)
     return res.status(400).json({ success: false, message: 'Thiếu thông tin' });
@@ -67,13 +50,7 @@ router.post('/change-password', authMiddleware, async (req, res) => {
     if (!user)
       return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản' });
 
-    let match = false;
-    if (user.password && user.password.startsWith('$2')) {
-      match = await bcrypt.compare(oldPassword, user.password);
-    } else {
-      match = oldPassword === user.password;
-    }
-
+    const match = await bcrypt.compare(oldPassword, user.password);
     if (!match)
       return res.json({ success: false, message: 'Mật khẩu hiện tại không đúng' });
 

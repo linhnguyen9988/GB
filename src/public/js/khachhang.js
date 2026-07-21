@@ -221,6 +221,31 @@ $('#nuocngoaix').change(function () {
 $('#checknote').change(function () {
     OnUpdateUser()
 });
+$('#labelkh').on('change', function () {
+    OnUpdateUser();
+});
+$('#diachi').on('blur', function () {
+    OnUpdateUser();
+});
+$('#note').on('blur', function () {
+    OnUpdateUser();
+});
+function GetLabelColor(label) {
+    if (!label || label.length === 0) return '';
+    if (label.includes('Xả') || label.includes('Bom')) return 'red';
+    if (label.includes('Nước')) return '#F333FF';
+    if (label.includes('Có')) return '#F47803';
+    if (label.includes('Thân')) return 'green';
+    return '';
+}
+function GetLabelBadgeClass(label) {
+    if (!label || label.length === 0) return '';
+    if (label.includes('Xả') || label.includes('Bom')) return 'red';
+    if (label.includes('Thân')) return 'green';
+    if (label.includes('Có')) return 'orange';
+    if (label.includes('Nước')) return 'lightpink';
+    return '';
+}
 function OnUpdateUser() {
     var table = $('#tblkhachhang').DataTable();
     var userid = document.getElementById("userid").value;
@@ -278,6 +303,19 @@ function OnUpdateUser() {
             } else if (nn != 'Nước ngoài') {
                 this.cell(rowIdx, 1).data(this.cell(rowIdx, 1).data().split(`<span class="label label--lightpink">Nước ngoài</span>`)[0]);
             }
+            // Bỏ badge nhãn cũ (nếu có) trước khi gắn badge mới, vì badge nằm luôn trong HTML của cell tên khách
+            if (data[4] && data[4].length > 0) {
+                var oldBadge = `<span class="label label--${GetLabelBadgeClass(data[4])}">${data[4]}</span>`;
+                this.cell(rowIdx, 1).data(this.cell(rowIdx, 1).data().split(oldBadge).join(''));
+            }
+            if (label && label.length > 0) {
+                var newBadge = `<span class="label label--${GetLabelBadgeClass(label)}">${label}</span>`;
+                if (phone.length > 0) {
+                    this.cell(rowIdx, 1).data(this.cell(rowIdx, 1).data() + newBadge);
+                } else {
+                    this.cell(rowIdx, 1).data(this.cell(rowIdx, 1).data() + `<br>` + newBadge);
+                }
+            }
             this.cell(rowIdx, 2).data(phone);
             this.cell(rowIdx, 3).data(diachi);
             this.cell(rowIdx, 4).data(label);
@@ -289,6 +327,14 @@ function OnUpdateUser() {
         }
     });
     table.draw(false);
+
+    var newColor = GetLabelColor(label);
+    table.rows().every(function (rowIdx) {
+        if (this.data()[0] == userid) {
+            $(this.cell(rowIdx, 1).node()).css('color', newColor);
+            $(this.cell(rowIdx, 4).node()).css('color', newColor);
+        }
+    });
 
     ShowToast('primary', `<img src="${data[1].split('src="').pop().split('"')[0]}" class="rounded me-2" width="30px" height="30px">`, `<strong>${data[11]}</strong>`, 'Đã cập nhật thông tin khách hàng.', 3000);
 
@@ -347,7 +393,7 @@ function InItKeys() {
         document.getElementById("realfbid").value = x[12];
         document.getElementById("userid").value = x[0];
         //document.getElementById("COD").value = 0;
-        document.getElementById("KG").value = 2;
+        document.getElementById("KG").value = 1;
         if (x[15] == 1) {
             document.getElementById("checknote").checked = true;
             ShowImportant('Quan trọng', x[6]);

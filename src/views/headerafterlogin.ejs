@@ -4,10 +4,8 @@
 <head>
   <meta charset="utf-8">
   <title>Áo Dài Gia Bảo</title>
-  <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js"></script>
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.1/dist/css/bootstrap.min.css" rel="stylesheet"
-    integrity="sha384-+0n0xVW2eSR5OomGNYDnhzAbDsOXxcvSN1TPprVMTNDbiYZCxYbOOl7+AMvyTG2x" crossorigin="anonymous">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
   <link rel="stylesheet" href="/css/style.css">
   <link rel="stylesheet" href="/css/chat.css">
@@ -45,11 +43,10 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.3/JsBarcode.all.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
-  <script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
+  <link rel="stylesheet" href="/css/theme.css">
 </head>
 
 <script>
-  //var vConsole = new VConsole();
   window.CURRENT_USER_ID = "<%= user.id %>";
   const socket = io();
   var lockToast = 0;
@@ -291,6 +288,40 @@
       }
     })
   }
+  function OnUpdateLabel(userid) {
+    var rawLabel = document.getElementById("labelviettel").value;
+    var label = (rawLabel === 'Xóa') ? '' : rawLabel;
+    $.ajax({
+      url: "/onupdatelabel",
+      method: "POST",
+      data: { userid: userid, label: label },
+      dataType: "JSON",
+      success: function (data) {
+        var bomxa = '';
+        if (label.includes('Bom')) {
+          bomxa = '[Bom]';
+        } else if (label.includes('Xả')) {
+          bomxa = '[Xả]';
+        } else if (label.includes('Có')) {
+          bomxa = '[Vấn đề]';
+        }
+        var badge = document.querySelector('.qr-bomxa-badge');
+        if (bomxa) {
+          if (badge) {
+            badge.textContent = bomxa;
+          } else {
+            var infoEl = document.querySelector('.qr-customer-info');
+            if (infoEl) {
+              infoEl.insertAdjacentHTML('beforeend', `<span class="qr-bomxa-badge">${bomxa}</span>`);
+            }
+          }
+        } else if (badge) {
+          badge.remove();
+        }
+        ShowToast('success', `<i class="bi bi-tag-fill"></i>`, 'Đã cập nhật', 'Đã lưu nhãn khách hàng.', 3000);
+      }
+    })
+  }
 
   function RC() {
     $.ajax({
@@ -492,7 +523,6 @@
     <div class="modal-dialog" role="document">
       <div class="modal-content rounded-4 shadow">
         <div class="modal-header p-5 pb-4 border-bottom-0">
-          <!-- <h5 class="modal-title">Modal title</h5> -->
           <h3 class="fw-bold mb-0">${title}</h3>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
@@ -779,7 +809,6 @@
     <div class="modal-dialog" role="document">
       <div class="modal-content rounded-4 shadow">
         <div class="modal-header p-5 pb-4 border-bottom-0">
-          <!-- <h5 class="modal-title">Modal title</h5> -->
           <h3 class="fw-bold mb-0">${title}</h3>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
@@ -954,17 +983,6 @@
 
   function PrintOrderAgain() {
     TuDocFileVaIn(document.getElementById("userorder").value);
-    /*
-    $.ajax({
-      url: "/printviettelcu",
-      method: "POST",
-      dataType: "JSON",
-      data: { realorderid: document.getElementById("userorder").value },
-      success: function (data) {
-        $('#qrresult').empty();
-        document.getElementById("video-container").style.display = "block";
-      }
-    });*/
   }
 
   function PrintOrderAgain2() {//cho nay code chay bang c# luon
@@ -1500,6 +1518,17 @@
                 <input type="text" id="phoneviettel" class="form-control" value="${data.data[0].phone}" onfocusout="OnUpdatePhone('${userid}')">
               </div>
               <div class="input-group mb-2">
+                <span class="input-group-text qr-ig-icon"><i class="bi bi-tag-fill"></i></span>
+                <select id="labelviettel" class="form-select" onchange="OnUpdateLabel('${userid}')">
+                  <option value="" ${!data.data[0].label ? 'selected' : ''}>-- Nhãn khách hàng --</option>
+                  <option value="Thân thiết" ${data.data[0].label === 'Thân thiết' ? 'selected' : ''}>Thân thiết</option>
+                  <option value="Bom hàng" ${data.data[0].label === 'Bom hàng' ? 'selected' : ''}>Bom hàng</option>
+                  <option value="Xả hàng" ${data.data[0].label === 'Xả hàng' ? 'selected' : ''}>Xả hàng</option>
+                  <option value="Có vấn đề" ${data.data[0].label === 'Có vấn đề' ? 'selected' : ''}>Có vấn đề</option>
+                  <option value="Xóa">Xóa (bỏ nhãn)</option>
+                </select>
+              </div>
+              <div class="input-group mb-2">
                 <span class="input-group-text qr-ig-icon"><i class="bi bi-house"></i></span>
                 <textarea class="form-control" id="diachiviettel" rows="2" onfocusout="UpdateAddress2('${userid}')" placeholder="Địa chỉ">${data.data[0].diachi}</textarea>
                 <button onclick="ThemDiaChi('${userid}')" type="button" class="btn btn-success" title="Thêm địa chỉ"><i class="bi bi-plus-lg"></i></button>
@@ -1615,24 +1644,6 @@
               }
             });
           }
-          //chatbox o day
-          /* ty le giao hang
-          $.ajax({
-            url: "/checktyle",
-            method: "POST",
-            dataType: "JSON",
-            data: { phone: data.data[0].phone },
-            success: function (data) {
-              if(data.data0.length > 0){
-                $('#qrresult').append(`<strong><div class="text1">${data.data0}</div></strong>`);
-              }else if(data.data1.length > 0){
-                $('#qrresult').append(`<strong><div class="text1">${data.data1}</div></strong>`);
-              }else if(data.data3.length > 0){
-                $('#qrresult').append(`<strong><div class="text1">${data.data3}</div></strong>`);
-              }
-              
-            }
-          });*/
         }
       });
     } else {
@@ -1691,10 +1702,6 @@
   }));
   // for debugging
   window.scanner = scanner;
-  //document.getElementById('scanstyle').addEventListener('change', (e) => {
-  //  videoContainer.className = e.target.value;
-  //  scanner._updateOverlay(); // reposition the highlight because style 2 sets position: relative
-  //});
 
   camList.addEventListener('change', event => {
     scanner.setCamera(event.target.value);
@@ -1704,10 +1711,6 @@
     document.getElementById("video-container").style.display = "block";
     scanner.start().then(function () { _startRot(); });
   });
-
-  //document.getElementById('stop-button').addEventListener('click', () => {
-  //  scanner.stop();
-  //});
 </script>
 <div class="modal" tabindex="-1" id="overlay">
   <div class="modal-dialog modal-dialog-centered" role="document">
@@ -1727,20 +1730,18 @@
 
 <body>
   <header class="header-container d-flex flex-wrap align-items-center justify-content-center justify-content-lg-start">
-    <ul class="nav col-12 col-lg-auto me-lg-auto mb-2 justify-content-center mb-md-0">
-      <li><a href="/" class="d-flex align-items-center mb-2 mb-lg-0 text-dark text-decoration-none me-lg-auto me-xl-5">
-          <img src="/images/logo.png" alt="Logo" width="40" height="40" class="rounded-circle me-2">
+    <ul class="nav col-12 col-lg-auto me-lg-auto mb-2 justify-content-center mb-md-0 align-items-center">
+      <li><a href="/" class="d-flex align-items-center mb-2 mb-lg-0 text-dark text-decoration-none me-lg-auto me-xl-4">
+          <img src="/images/logo.png" alt="Logo" width="38" height="38" class="rounded-circle me-2 border">
+          <span class="fw-bold d-none d-md-inline text-primary">Gia Bảo</span>
         </a></li>
-      <li class="nav-item"><a href="/" class="nav-link">
-          <i class="bi bi-clipboard-check me-1"></i> C. Đơn
+      <li class="nav-item"><a href="/" class="nav-link js-nav-link" data-path="/">
+          <i class="bi bi-clipboard-check"></i> <span>C. Đơn</span>
         </a></li>
-      <li class="nav-item"><a href="/khachhang" class="nav-link">
-          <i class="bi bi-person-circle me-1"></i> K.Hàng
+      <li class="nav-item"><a href="/khachhang" class="nav-link js-nav-link" data-path="/khachhang">
+          <i class="bi bi-person-circle"></i> <span>K.Hàng</span>
         </a></li>
-      <!--<li class="nav-item"><a href="#" onclick="RC()" id="RC" class="nav-link">
-          <i class="bi bi-browser-chrome"></i>
-        </a></li>-->
-      <li class="nav-item"><a href="/donhang" class="nav-link">
+      <li class="nav-item"><a href="/donhang" class="nav-link js-nav-link" data-path="/donhang">
           <i class="bi bi-box-seam"></i>
         </a></li>
       <li class="nav-item"><a href="#" id="open-messenger-btn" class="nav-link">
@@ -1750,6 +1751,38 @@
           <i class="bi bi-qr-code-scan"></i>
         </a></li>
     </ul>
+    <script>
+      // Chỉ tô sáng menu đang active theo URL hiện tại, không ảnh hưởng backend/route.
+      document.querySelectorAll('.js-nav-link').forEach(function (a) {
+        if (a.getAttribute('data-path') === window.location.pathname) {
+          a.classList.add('active');
+        }
+      });
+    </script>
+  </header>
+
+  <script>
+    // Sửa lỗi Bootstrap 5: khi mở modal chồng lên modal đang mở (nested modal),
+    // Bootstrap không tự tăng z-index theo thứ tự mở — nếu 2 modal trùng z-index,
+    // modal nào nằm SAU trong HTML sẽ luôn nổi lên trên, bất kể mở trước hay sau.
+    // Đoạn này tự tăng z-index theo thời điểm mở, để modal mở SAU luôn nổi lên trên.
+    (function () {
+      var MODAL_BASE = 1055;
+      var BACKDROP_BASE = 1050;
+      document.addEventListener('show.bs.modal', function (e) {
+        var openCount = document.querySelectorAll('.modal.show').length;
+        e.target.style.zIndex = MODAL_BASE + openCount * 20;
+        // Backdrop được Bootstrap tạo ra ngay sau sự kiện này, nên đợi 1 tick rồi chỉnh z-index của nó
+        setTimeout(function () {
+          var backdrops = document.querySelectorAll('.modal-backdrop');
+          var lastBackdrop = backdrops[backdrops.length - 1];
+          if (lastBackdrop) {
+            lastBackdrop.style.zIndex = BACKDROP_BASE + openCount * 20;
+          }
+        }, 0);
+      });
+    })();
+  </script>
 
     <div class="modal fade" id="message-modal" tabindex="-1" aria-labelledby="message-modal-label" aria-hidden="true">
       <div class="modal-dialog modal-fullscreen-sm-down modal-dialog-centered">
@@ -1952,11 +1985,6 @@
                 </svg>Đã Copy</div>
             </div>
             <div>
-              <!--<select id="scanstyle">
-                  <option value="default-style">Kiểu 1</option>
-                  <option value="example-style-1">Kiểu 2</option>
-                  <option value="example-style-2">Kiểu 3</option>
-                </select>-->
               <select id="cam-list">
                 <option value="environment" selected>Mặc định</option>
               </select>
@@ -1972,10 +2000,8 @@
                   </path>
                 </g>
               </svg></button>
-            <!--<button class="btn btn-outline-danger" id="stop-button">🎬 Dừng</button>-->
           </div>
         </div>
       </div>
     </div>
     </div>
-  </header>

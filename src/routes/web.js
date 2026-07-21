@@ -17,24 +17,7 @@ import profileController from "../controllers/profileController";
 import registerController from "../controllers/registerController";
 import loginController from "../controllers/loginController";
 const jwtAuth = require('../middleware/jwtAuth');
-const jwt = require('jsonwebtoken');
-const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key_change_this';
-
-// Middleware cho web browser: không có token thì redirect /login thay vì 401
-const webAuth = (req, res, next) => {
-    let token = null;
-    const authHeader = req.headers['authorization'];
-    if (authHeader && authHeader.startsWith('Bearer ')) token = authHeader.slice(7);
-    if (!token && req.cookies && req.cookies.token) token = req.cookies.token;
-    if (!token) return res.redirect('/login');
-    try {
-        req.user = jwt.verify(token, JWT_SECRET);
-        next();
-    } catch (_) {
-        res.clearCookie('token');
-        return res.redirect('/login');
-    }
-};
+const { webAuth } = jwtAuth; // dùng chung logic xác thực với API/app Flutter (middleware/jwtAuth.js)
 import auth from "../validation/authValidation";
 import DBConnection from "../configs/DBConnection";
 import loadcommentController from "../controllers/loadcommentController";
@@ -55,6 +38,21 @@ const upload = multer({ dest: 'uploads/' });
 const axios = require('axios');
 const GlobalPageID = '223266991771270';
 const GlobalPageID2 = '102116919355833';
+
+// Lấy access token của page từ bảng pageinfo (thay vì từ biến môi trường)
+async function getPageToken(pageid) {
+    try {
+        const db = DBConnection.promise();
+        const [rows] = await db.query(
+            'SELECT accesstoken FROM pageinfo WHERE pageid = ? LIMIT 1',
+            [pageid]
+        );
+        return rows.length > 0 ? rows[0].accesstoken : null;
+    } catch (err) {
+        console.error('Lỗi lấy accesstoken từ pageinfo:', err.message);
+        return null;
+    }
+}
 const mime = require('mime-types');
 const path = require('path');
 const PDFDocument = require('pdfkit');
@@ -118,10 +116,12 @@ async function ShareToPage2(message, videoid) {
 
     const url = 'https://graph.facebook.com/v20.0/102116919355833/feed';
 
+    const token = await getPageToken(GlobalPageID2);
+
     const params = new URLSearchParams();
     params.append('message', message);
     params.append('link', `https://www.facebook.com/100040645522129/videos/${videoid}`);
-    params.append('access_token', PAGE_ACCESS_TOKEN2);
+    params.append('access_token', token);
 
     try {
         const response = await axios.post(url, params);
@@ -433,8 +433,6 @@ const getRecentCommentIdsFromDB = (userId) => {
 
 let router = express.Router();
 const FormData = require('form-data');
-const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
-const PAGE_ACCESS_TOKEN2 = process.env.PAGE_ACCESS_TOKEN2;
 
 async function tryInsertMessageAsComment(khachhang, sender, text, timemess, pageid, io) {
     try {
@@ -503,13 +501,7 @@ let initWebRoutes = (app) => {
             const { customerId, message, currentPageID } = req.body;
             const file = req.file;
             let attachmentId = null;
-            let token = '';
-            if (currentPageID == GlobalPageID) {
-                token = PAGE_ACCESS_TOKEN;
-            }
-            if (currentPageID == GlobalPageID2) {
-                token = PAGE_ACCESS_TOKEN2;
-            }
+            let token = await getPageToken(currentPageID);
             const sendMessageWithPayload = async (payload) => {
                 try {
                     const response = await axios.post(
@@ -1162,7 +1154,7 @@ ORDER BY t1.id DESC;
             );
             if (users.length === 0) return;
 
-            const token = (users[0].pageid === GlobalPageID) ? PAGE_ACCESS_TOKEN : PAGE_ACCESS_TOKEN2;
+            const token = await getPageToken(users[0].pageid);
             const recipientId = orders[0].userid;
             const text = `Shipper thông báo đơn hàng [${cod.toLocaleString()}đ] của chị có trạng thái [${issue}]\r\nNếu cần liên hệ xin gọi [${shipper_name}]. Số bưu tá ${shipper_phone}. Hoặc nếu thông tin trên sai xin nhắn lại với shop em ạ, em cám ơn!`;
 
@@ -1579,7 +1571,7 @@ ORDER BY t1.id DESC;
 
                 var isPage1 = (sender === GlobalPageID || recipient === GlobalPageID);
                 pageid = isPage1 ? GlobalPageID : GlobalPageID2;
-                token = isPage1 ? PAGE_ACCESS_TOKEN : PAGE_ACCESS_TOKEN2;
+                token = await getPageToken(pageid);
                 khachhang = (sender === GlobalPageID || sender === GlobalPageID2) ? recipient : sender;
 
                 var messData = value.message || {};
@@ -1837,12 +1829,7 @@ ORDER BY t1.id DESC;
                     if (value.parent_id) {
                         parent_id = value.parent_id;
                     }
-                    if (pageid == GlobalPageID) {
-                        token = PAGE_ACCESS_TOKEN;
-                    }
-                    if (pageid == GlobalPageID2) {
-                        token = PAGE_ACCESS_TOKEN2;
-                    }
+                    token = await getPageToken(pageid);
 
                     if (!value.from.hasOwnProperty('name')) {//nghi ngo no bo qua doan nay
                         try {
@@ -2884,9 +2871,10 @@ ORDER BY t1.id DESC;
         var zzz = '';
 
         (async () => {
+            const scanToken = await getPageToken(GlobalPageID);
             for (var j = 0; j < liveidarray.length; j++) {
                 zzz = zzz + `liveid='${liveidarray[j]}' OR `;
-                var query = `https://graph.facebook.com/${liveidarray[j]}/?fields=title,live_status,from,created_time,description,comments.limit(1000).order(reverse_chronological){from{name,id,picture.height(50).width(50)},created_time,message,live_broadcast_timestamp,application{name}}&version=v13.0&access_token=${PAGE_ACCESS_TOKEN}`;
+                var query = `https://graph.facebook.com/${liveidarray[j]}/?fields=title,live_status,from,created_time,description,comments.limit(1000).order(reverse_chronological){from{name,id,picture.height(50).width(50)},created_time,message,live_broadcast_timestamp,application{name}}&version=v13.0&access_token=${scanToken}`;
 
                 let result;
                 try {
@@ -2972,53 +2960,11 @@ ORDER BY t1.id DESC;
         })();
     });
 
-    router.post("/deleteallpost2", jwtAuth, function (req, response, next) {
-        var z, y = 0;
-        var token = '';
-        (async () => {
-            var query = `https://graph.facebook.com/v23.0/102116919355833/feed?limit=100&access_token=${token}`;
-            const res = await fetch(query);
-            if (res.ok) {
-                const result = await res.json();
-                z = result.data.length;
-                for (var j = 0; j < result.data.length; j++) {
-                    var t = 0;
-                    y = j;
-                    var queryx = `https://graph.facebook.com/v23.0/${result.data[j].id}?access_token=${token}`;
-                    request({
-                        url: encodeURI(queryx),
-                        method: 'DELETE',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'access_token': token
-                        }
-                    }, async function (error, response, bodyx) {
-                        var body = JSON.parse(bodyx.replaceAll(" ", "").replaceAll(/\n/g, " "));
-                        if (body.hasOwnProperty('success')) {
-                            console.log('P2:' + y)
-                        } else {
-                            console.log(body)
-                        }
-                        t = 1;
-                    });
-                    await WaitUntil(_ => t == 1);
-                    console.log(result.data[j].id)
-                    t = 0;
-                }
-            }
-        })();
-        if (z - 1 == y) {
-            console.log('Done')
-        }
-        response.json({
-            data: 'x'
-        });
-    });
     router.post("/deleteallpost", jwtAuth, function (req, response, next) {
-        var token = '';
         var z, y = 0;
         (async () => {
-            var query = `https://graph.facebook.com/v23.0/223266991771270/feed?limit=100&access_token=${token}`;
+            const delToken = await getPageToken(GlobalPageID);
+            var query = `https://graph.facebook.com/v23.0/223266991771270/feed?limit=100&access_token=${delToken}`;
             const res = await fetch(query);
             if (res.ok) {
                 const result = await res.json();
@@ -3026,13 +2972,13 @@ ORDER BY t1.id DESC;
                 for (var j = 0; j < result.data.length; j++) {
                     var t = 0;
                     y = j;
-                    var queryx = `https://graph.facebook.com/v23.0/${result.data[j].id}?access_token=${token}`;
+                    var queryx = `https://graph.facebook.com/v23.0/${result.data[j].id}?access_token=${delToken}`;
                     request({
                         url: encodeURI(queryx),
                         method: 'DELETE',
                         headers: {
                             'Content-Type': 'application/json',
-                            'access_token': token
+                            'access_token': delToken
                         }
                     });
                 }
@@ -3210,15 +3156,10 @@ ORDER BY t1.id DESC;
 
     router.post('/updateuserpsid', jwtAuth, async function (req, response) {
         const { psid, pageid } = req.body;
-        let token = '';
-
-        if (pageid === GlobalPageID) {
-            token = PAGE_ACCESS_TOKEN;
-        } else if (pageid === GlobalPageID2) {
-            token = PAGE_ACCESS_TOKEN2;
-        } else {
+        if (pageid !== GlobalPageID && pageid !== GlobalPageID2) {
             return response.status(400).json({ error: 'Page ID không hợp lệ' });
         }
+        const token = await getPageToken(pageid);
 
         const graphApiUrl = `https://graph.facebook.com/v15.0/${psid}/?fields=picture{url},name&access_token=${token}`;
 
@@ -3462,6 +3403,21 @@ ORDER BY t1.id DESC;
         var note = req.body.note;
         var userid = req.body.userid;
         DBConnection.query(SqlString.format(` UPDATE khachhang SET note=? WHERE userid=?`, [note, userid]),
+            function (error, data) {
+                if (error) {
+                    throw error;
+                }
+                else {
+                    res.json({
+                        data: userid
+                    });
+                }
+            });
+    });
+    router.post('/onupdatelabel', jwtAuth, function (req, res) {
+        var label = req.body.label;
+        var userid = req.body.userid;
+        DBConnection.query(SqlString.format(` UPDATE khachhang SET label=? WHERE userid=?`, [label, userid]),
             function (error, data) {
                 if (error) {
                     throw error;
@@ -3882,26 +3838,7 @@ ORDER BY t1.id DESC;
     router.get("/diennuoc", webAuth, dienNuocController.handleDienNuoc);
     router.get("/donhang", webAuth, orderController.handleOrder);
     router.get("/login", loginController.checkLoggedOut, loginController.getPageLogin);
-    router.post("/login", (req, res, next) => {
-        const origRedirect = res.redirect.bind(res);
-        res.redirect = (url) => {
-            // Nếu login thành công (redirect về trang chính, không phải /login)
-            if (req.user && url !== '/login') {
-                const token = jwt.sign(
-                    { id: req.user.id, username: req.user.username },
-                    JWT_SECRET,
-                    { expiresIn: '30d' }
-                );
-                res.cookie('token', token, {
-                    httpOnly: true,
-                    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 ngày
-                    sameSite: 'lax',
-                });
-            }
-            origRedirect(url);
-        };
-        loginController.handleLogin(req, res, next);
-    });
+    router.post("/login", loginController.handleLogin);
 
     router.get("/halwhtihle", registerController.getPageRegister);//register
     router.post("/halwhtihle", auth.validateRegister, registerController.createNewUser);

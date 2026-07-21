@@ -1,10 +1,7 @@
 import { validationResult } from "express-validator";
 import loginService from "../services/loginService";
 import jwt from "jsonwebtoken";
-
-const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret_key_change_this";
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "30d";
-const COOKIE_NAME = "token";
+const { JWT_SECRET, JWT_EXPIRES_IN, COOKIE_NAME } = require("../configs/jwtConfig");
 
 let getPageLogin = (req, res) => {
     return res.render("login.ejs", {

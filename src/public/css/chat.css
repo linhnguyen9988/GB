@@ -14,13 +14,9 @@
     background-color: var(--bs-body-bg) !important;
     color: var(--bs-body-color) !important;
     border-color: var(--bs-border-color) !important;
-    z-index: 1055 !important;
 }
 
 #image-viewer-modal {
-    background-color: var(--bs-body-bg) !important;
-    color: var(--bs-body-color) !important;
-    border-color: var(--bs-border-color) !important;
     z-index: 2000 !important;
     display: none;
     position: fixed;
@@ -33,13 +29,11 @@
     align-items: center;
 }
 
-.modal-backdrop.fade.show {
-    z-index: 1048 !important;
-}
-
-#modalQR2 {
-    z-index: 1049;
-}
+/* Đã bỏ 2 rule ghim cứng z-index (.modal-backdrop.fade.show và #modalQR2) —
+   chúng phá vỡ cơ chế tự tính z-index khi mở modal lồng modal (vd: bấm "Hành trình"
+   ngay trong modal chi tiết đơn, hoặc mở QR khi đang có modal khác), khiến backdrop
+   nằm đè lên modal không bấm được. Để Bootstrap 5 tự quản lý z-index như modal chi tiết
+   đơn hàng (vốn không bị ghim z-index và hoạt động đúng). */
 
 .modal-content-messenger {
     background-color: #fff;

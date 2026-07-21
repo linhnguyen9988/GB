@@ -1,0 +1,272 @@
+/* =========================================================================
+   THEME.CSS — Hệ thống thiết kế đồng bộ cho Áo Dài Gia Bảo
+   Load file này SAU CÙNG (sau Bootstrap + các css cũ) để override toàn site.
+   Không đổi id/class do JS dùng — chỉ chỉnh màu sắc, bo góc, khoảng cách, shadow.
+   ========================================================================= */
+
+:root{
+  /* Brand */
+  --brand-primary:      #4338CA;   /* indigo đậm - màu chủ đạo */
+  --brand-primary-dark: #342AA0;
+  --brand-primary-light:#EEF0FF;
+  --brand-accent:       #D4A954;   /* vàng đồng - điểm nhấn áo dài */
+  --brand-rose:         #C0435D;
+
+  /* Neutrals */
+  --ink-900: #16181D;
+  --ink-700: #3A3F4B;
+  --ink-500: #6B7280;
+  --ink-300: #C9CDD6;
+  --ink-100: #F4F5F8;
+  --surface: #FFFFFF;
+  --bg-app:  #F6F7FB;
+
+  /* Status */
+  --ok:    #16A34A;
+  --warn:  #E8A400;
+  --danger:#DC2626;
+  --info:  #2563EB;
+
+  /* Shape */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --shadow-sm: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
+  --shadow-md: 0 4px 12px rgba(16,24,40,.08), 0 2px 4px rgba(16,24,40,.06);
+  --shadow-lg: 0 12px 32px rgba(16,24,40,.14);
+}
+
+/* ---------- Base ---------- */
+html, body{ background: var(--bg-app); }
+body{
+  font-family: 'pfb', 'Bai Jamjuree', sans-serif !important;
+  color: var(--ink-900);
+}
+h1,h2,h3,h4,h5,h6{ font-weight: 700; color: var(--ink-900); letter-spacing: .1px; }
+a{ color: var(--brand-primary); }
+a:hover{ color: var(--brand-primary-dark); }
+::selection{ background: var(--brand-primary-light); color: var(--brand-primary-dark); }
+
+/* thin, elegant scrollbar everywhere */
+*{ scrollbar-width: thin; scrollbar-color: var(--ink-300) transparent; }
+*::-webkit-scrollbar{ height: 8px; width: 8px; }
+*::-webkit-scrollbar-thumb{ background: var(--ink-300); border-radius: 10px; }
+*::-webkit-scrollbar-thumb:hover{ background: var(--ink-500); }
+.no-scrollbar::-webkit-scrollbar{ display:none; }
+
+/* ---------- Buttons ---------- */
+.btn{
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  letter-spacing: .1px;
+  padding: .5rem 1.05rem;
+  transition: all .15s ease;
+  box-shadow: none;
+}
+.btn:active{ transform: translateY(1px); }
+.btn-sm{ border-radius: 7px; padding: .3rem .7rem; }
+
+.btn-primary{
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+}
+.btn-primary:hover, .btn-primary:focus{
+  background: var(--brand-primary-dark);
+  border-color: var(--brand-primary-dark);
+}
+.btn-outline-primary{ color: var(--brand-primary); border-color: var(--brand-primary); }
+.btn-outline-primary:hover{ background: var(--brand-primary); border-color: var(--brand-primary); }
+
+.btn-success{ background: var(--ok); border-color: var(--ok); }
+.btn-danger{ background: var(--danger); border-color: var(--danger); }
+.btn-warning{ background: var(--warn); border-color: var(--warn); color:#fff; }
+.btn-info{ background: var(--info); border-color: var(--info); color:#fff; }
+.btn-secondary{ background: var(--ink-500); border-color: var(--ink-500); }
+
+.btn-outline-secondary{ color: var(--ink-700); border-color: var(--ink-300); }
+.btn-outline-secondary:hover{ background: var(--ink-100); color: var(--ink-900); border-color: var(--ink-300); }
+
+/* ---------- Cards ---------- */
+.card{
+  border: 1px solid rgba(16,24,40,.06);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+.card:not(.border-start):not(.border-4){ border-left: 1px solid rgba(16,24,40,.06); }
+.card-header{
+  background: var(--surface);
+  border-bottom: 1px solid rgba(16,24,40,.06);
+  font-weight: 700;
+}
+.card.shadow-sm{ box-shadow: var(--shadow-sm) !important; }
+.card.shadow{ box-shadow: var(--shadow-md) !important; }
+.card.shadow-lg{ box-shadow: var(--shadow-lg) !important; }
+
+/* ---------- Forms ---------- */
+.form-control, .form-select{
+  border-radius: var(--radius-sm);
+  border-color: var(--ink-300);
+  padding: .5rem .8rem;
+}
+.form-control:focus, .form-select:focus{
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 .2rem rgba(67,56,202,.12);
+}
+.input-group-text{
+  background: var(--ink-100);
+  border-color: var(--ink-300);
+  color: var(--ink-700);
+}
+label.small.fw-bold, label.fw-bold{ color: var(--ink-700); }
+
+/* ---------- Badges / pills ---------- */
+.badge{ font-weight: 600; border-radius: 999px; padding: .4em .75em; }
+.nav-pills .nav-link{
+  border-radius: 999px;
+  font-weight: 600;
+  color: var(--ink-700);
+  margin: 0 .15rem;
+}
+.nav-pills .nav-link.active{
+  background: var(--brand-primary) !important;
+  color:#fff !important;
+  box-shadow: var(--shadow-sm);
+}
+.nav-link-secondary.active{ background: var(--ink-700) !important; }
+.nav-link-info.active{ background: var(--info) !important; }
+.nav-link-primary.active{ background: var(--brand-primary) !important; }
+.nav-link-success.active{ background: var(--ok) !important; }
+.nav-link-warning.active{ background: var(--warn) !important; }
+.nav-link-danger.active{ background: var(--danger) !important; }
+
+/* ---------- Top navbar (headerafterlogin) ---------- */
+.header-container{
+  background: var(--surface);
+  padding: .55rem 1rem;
+  border-bottom: 1px solid rgba(16,24,40,.06);
+  box-shadow: var(--shadow-sm);
+  position: sticky;
+  top: 0;
+}
+.header-container .nav-link{
+  color: var(--ink-700);
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  padding: .5rem .85rem;
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+}
+.header-container .nav-link:hover{ background: var(--brand-primary-light); color: var(--brand-primary-dark); }
+.header-container .nav-link i{ font-size: 1.05rem; }
+.header-container .nav-link.active{
+  background: var(--brand-primary-light);
+  color: var(--brand-primary-dark);
+}
+
+/* ---------- Tables (plain + DataTables + KeyTable) ---------- */
+table.table{
+  --bs-table-hover-bg: var(--brand-primary-light);
+}
+.table thead th, table.dataTable thead th{
+  background: var(--ink-100) !important;
+  color: var(--ink-700);
+  font-weight: 700;
+  font-size: .8rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  border-bottom: 1px solid var(--ink-300) !important;
+  white-space: nowrap;
+}
+.table td{ vertical-align: middle; }
+.table-hover tbody tr:hover{ background: var(--brand-primary-light); }
+
+/* DataTables base skin */
+table.dataTable{ border-collapse: separate !important; border-spacing: 0; }
+table.dataTable tbody td{ border-color: var(--ink-100); }
+div.dataTables_wrapper div.dataTables_filter input,
+div.dataTables_wrapper div.dataTables_length select{
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--ink-300);
+  padding: .3rem .6rem;
+}
+div.dataTables_wrapper div.dataTables_paginate .paginate_button.current{
+  background: var(--brand-primary) !important;
+  border-color: var(--brand-primary) !important;
+  color:#fff !important;
+  border-radius: 7px;
+}
+div.dataTables_wrapper div.dataTables_paginate .paginate_button{
+  border-radius: 7px;
+  margin: 0 2px;
+}
+
+/* KeyTable focus cell — làm nổi bật ô đang chọn khi bấm phím mũi tên/Tab/Enter */
+table.dataTable td.focus,
+table.dataTable th.focus{
+  outline: none !important;
+  box-shadow: inset 0 0 0 2px var(--brand-primary) !important;
+  background: var(--brand-primary-light) !important;
+  position: relative;
+  z-index: 2;
+}
+table.dataTable td.selected{
+  background: rgba(67,56,202,.10) !important;
+}
+
+/* ---------- Modals ---------- */
+.modal-content{
+  border: none;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.modal-header{
+  border-bottom: 1px solid var(--ink-100);
+}
+.modal-header.bg-primary{ background: var(--brand-primary) !important; }
+.modal-footer{ border-top: 1px solid var(--ink-100); }
+
+/* ---------- Alerts ---------- */
+.alert{ border: none; border-radius: var(--radius-sm); }
+.alert-danger{ background: #FDE8E8; color: #9B1C1C; }
+.alert-success{ background: #E7F8EE; color: #12603F; }
+
+/* ---------- Utility ---------- */
+.text-primary{ color: var(--brand-primary) !important; }
+.bg-primary{ background: var(--brand-primary) !important; }
+.border-primary{ border-color: var(--brand-primary) !important; }
+
+/* Order status accent colors reused from donhang.ejs groups */
+.border-secondary{ border-color: var(--ink-500) !important; }
+.border-info{ border-color: var(--info) !important; }
+.border-success{ border-color: var(--ok) !important; }
+.border-warning{ border-color: var(--warn) !important; }
+.border-danger{ border-color: var(--danger) !important; }
+
+/* Auth pages (login/register) */
+.auth-shell{
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(67,56,202,.10), transparent),
+    radial-gradient(1000px 500px at 110% 110%, rgba(212,169,84,.14), transparent),
+    var(--bg-app);
+}
+.auth-card{
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.auth-brand-title{
+  font-weight: 800;
+  background: linear-gradient(97deg, var(--brand-primary) 10%, var(--brand-rose) 60%, var(--brand-accent) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+@media (max-width: 768px){
+  .header-container{ padding: .4rem .6rem; }
+}
