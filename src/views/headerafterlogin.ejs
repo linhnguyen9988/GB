@@ -1553,10 +1553,10 @@
                   <div class="input-group mb-2">
                     <span class="input-group-text qr-ig-icon"><i class="bi bi-cart3"></i></span>
                     <select id="userorder" class="form-select"></select>
-                    <button type="button" class="btn btn-outline-secondary" id="btnprintagain" onclick="PrintOrderAgain2()" title="In lại (in thường)"><i class="bi bi-printer-fill"></i></button>
+                    <!--<button type="button" class="btn btn-outline-secondary" id="btnprintagain" onclick="PrintOrderAgain2()" title="In lại (in thường)"><i class="bi bi-printer-fill"></i></button>-->
                     <button type="button" class="btn btn-outline-secondary" onclick="PrintOrderAgain()" title="In lại (in nhanh)"><i class="bi bi-printer"></i></button>
-                    <button type="button" class="btn btn-primary" id="btncheckdon" onclick="handleCheckDonHang2()" title="Tra hành trình"><i class="bi bi-truck"></i></button>
-                    <button type="button" class="btn btn-outline-primary" id="btnchitietdon" title="Xem chi tiết đơn" onclick="DetailDonHang(document.getElementById('userorder').value)"><i class="bi bi-receipt"></i></button>
+                    <button type="button" class="btn btn-outline-secondary" id="btncheckdon" onclick="handleCheckDonHang2()" title="Tra hành trình"><i class="bi bi-truck"></i></button>
+                    <button type="button" class="btn btn-outline-secondary" id="btnchitietdon" title="Xem chi tiết đơn" onclick="DetailDonHang(document.getElementById('userorder').value)"><i class="bi bi-receipt"></i></button>
                   </div>`);
                 for (var i = 0; i < order.data.length; i++) {
                   let date = order.data[i].date.substring(9);
@@ -1572,7 +1572,7 @@
                   } else {
                     statustext = order.data[i].statustext;
                   }
-                  AddOptions(document.getElementById("userorder"), order.data[i].realorderid, `${date} • ${order.data[i].name} • ${order.data[i].cod.toLocaleString()} • ${order.data[i].kg}KG • ${statustext}`);
+                  AddOptions(document.getElementById("userorder"), order.data[i].realorderid, `${date} • ${order.data[i].cod.toLocaleString()} • ${order.data[i].kg}KG • ${statustext}`);
                 }
               }
             }
@@ -1810,8 +1810,6 @@
             </div>
 
           </div>
-
-          <div id="send-error-message" class="error-message"></div>
 
           <div class="modal-footer message-input-container">
             <div class="messenger-file-buttons">

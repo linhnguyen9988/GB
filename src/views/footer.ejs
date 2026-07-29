@@ -116,6 +116,89 @@
   const PULL_THRESHOLD = 80;
   let numMess = 0;
 
+  // ── Tin nhắn gửi thất bại: lưu tạm ở localStorage để hiển thị lại và cho
+  // phép bấm gửi lại trong vòng 24h. Sau 24h tự động bị lọc bỏ (dọn khi đọc
+  // hoặc khi purgeExpired() chạy lúc tải trang). Không tự động retry.
+  const PendingMessages = (function () {
+    const STORAGE_KEY = 'pending_messages_v1';
+    const TTL_MS = 24 * 60 * 60 * 1000; // 24h
+
+    function readAll() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : {};
+      } catch (e) {
+        return {};
+      }
+    }
+
+    function writeAll(all) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+      } catch (e) {
+        console.error('Không thể lưu tin nhắn chờ gửi lại:', e);
+      }
+    }
+
+    function isExpired(entry, now) {
+      return (now - entry.createdAt) > TTL_MS;
+    }
+
+    function save(customerId, entry) {
+      const all = readAll();
+      const list = (all[customerId] || []).filter(e => e.localId !== entry.localId);
+      list.push(entry);
+      all[customerId] = list;
+      writeAll(all);
+    }
+
+    function remove(customerId, localId) {
+      const all = readAll();
+      const list = all[customerId];
+      if (!list) return;
+      const filtered = list.filter(e => e.localId !== localId);
+      if (filtered.length) all[customerId] = filtered; else delete all[customerId];
+      writeAll(all);
+    }
+
+    function getPending(customerId) {
+      const all = readAll();
+      const list = all[customerId] || [];
+      const now = Date.now();
+      const valid = list.filter(e => !isExpired(e, now));
+      if (valid.length !== list.length) {
+        if (valid.length) all[customerId] = valid; else delete all[customerId];
+        writeAll(all);
+      }
+      return valid;
+    }
+
+    function purgeExpired() {
+      const all = readAll();
+      const now = Date.now();
+      let changed = false;
+      Object.keys(all).forEach(cid => {
+        const before = all[cid].length;
+        all[cid] = all[cid].filter(e => !isExpired(e, now));
+        if (all[cid].length !== before) changed = true;
+        if (all[cid].length === 0) delete all[cid];
+      });
+      if (changed) writeAll(all);
+    }
+
+    return { save, remove, getPending, purgeExpired };
+  })();
+  // Dọn các tin đã lưu quá 24h ngay khi tải trang.
+  PendingMessages.purgeExpired();
+
+  // File ảnh gốc chỉ tồn tại trong bộ nhớ của phiên làm việc hiện tại (không
+  // thể lưu File vào localStorage) — dùng để gửi lại trong cùng phiên. Nếu
+  // tải lại trang, ảnh cần được người dùng chọn lại để gửi lại.
+  const pendingImageFiles = new Map(); // localId -> File
+
+  // Các localId đang trong quá trình gửi lại — chặn bấm nhiều lần gửi trùng.
+  const retryingIds = new Set();
+
   window.openMessageModalAndPaste = function (customerId, customerName, pageId) {
     if (!messageModal || !customerId) {
       console.error('Lỗi: Modal hoặc ID khách hàng chưa được khởi tạo.');
@@ -335,6 +418,9 @@
       messageRow.dataset.sender = msg.sender;
       messageRow.classList.add('message-row-messenger');
       messageRow.dataset.messageId = msg.id;
+      if (msg.localId) {
+        messageRow.dataset.localId = msg.localId;
+      }
 
       if (isPageSender) {
         messageRow.classList.add('message-sent-messenger');
@@ -403,6 +489,146 @@
       }
 
       return messageRow;
+    }
+
+    function findMessageRowByLocalId(localId) {
+      return modalMessagesContainer.querySelector(`[data-local-id="${localId}"]`);
+    }
+
+    function setStatusIcon(row, status) {
+      const wrapper = row && row.querySelector('.message-status-icon-wrapper');
+      if (!wrapper) return;
+      const icon = wrapper.querySelector('.message-status-icon');
+      wrapper.style.display = '';
+      wrapper.dataset.status = status;
+      if (status === 'sending') {
+        icon.className = 'message-status-icon message-status-sending';
+        icon.innerHTML = '';
+      } else if (status === 'sent') {
+        icon.className = 'message-status-icon message-status-sentx';
+        icon.innerHTML = `<i class="bi bi-check-circle-fill"></i>`;
+      } else if (status === 'error') {
+        icon.className = 'message-status-icon message-status-error';
+        icon.innerHTML = `<i class="bi bi-x-circle-fill"></i>`;
+      }
+    }
+
+    // Badge nhỏ nêu lý do gửi thất bại — bấm vào để gửi lại.
+    function showFailBadge(row, localId, reason) {
+      if (!row) row = findMessageRowByLocalId(localId);
+      if (!row) return;
+      const wrapper = row.querySelector('.message-content-wrapper');
+      if (!wrapper) return;
+
+      setStatusIcon(row, 'error');
+      const statusIconWrapper = row.querySelector('.message-status-icon-wrapper');
+      if (statusIconWrapper) statusIconWrapper.style.display = 'none';
+
+      let badge = wrapper.querySelector('.message-fail-badge');
+      if (!badge) {
+        badge = document.createElement('div');
+        badge.className = 'message-fail-badge';
+        badge.innerHTML = `<i class="bi bi-exclamation-circle-fill"></i><span class="message-fail-reason"></span><i class="bi bi-arrow-clockwise"></i>`;
+        badge.addEventListener('click', function () {
+          retryPendingMessage(localId);
+        });
+        wrapper.appendChild(badge);
+      }
+      badge.querySelector('.message-fail-reason').textContent = reason || 'Gửi thất bại. Nhấn để gửi lại';
+      badge.title = reason || 'Gửi thất bại. Nhấn để gửi lại';
+      badge.style.display = 'flex';
+    }
+
+    function hideFailBadge(row) {
+      if (!row) return;
+      const badge = row.querySelector('.message-fail-badge');
+      if (badge) badge.style.display = 'none';
+    }
+
+    // Nạp lại các tin gửi thất bại còn lưu ở localStorage (chưa quá 24h) để
+    // hiển thị cho người dùng thấy và tự bấm vào để gửi lại — không tự động
+    // retry.
+    function loadPendingMessagesFromStorage() {
+      if (!currentCustomerId) return;
+      const pending = PendingMessages.getPending(currentCustomerId);
+      pending.forEach(async (entry) => {
+        if (findMessageRowByLocalId(entry.localId)) return; // đã hiển thị rồi
+        const imageFile = pendingImageFiles.get(entry.localId) || null;
+        const tempMessage = {
+          sender: currentPageID,
+          message: entry.message || null,
+          image: imageFile ? createAndTrackBlobUrl(imageFile) : null,
+          fileType: imageFile ? imageFile.type : null,
+          time: entry.createdAt,
+          localId: entry.localId
+        };
+        const row = await addMessageToContainer(tempMessage);
+        showFailBadge(row, entry.localId, entry.failReason);
+      });
+    }
+
+    // Thử gửi lại 1 tin nhắn thất bại trước đó, do người dùng bấm vào badge
+    // lỗi. Nếu tin có cả text lẫn ảnh và 1 phần đã gửi thành công rồi thì
+    // chỉ gửi lại đúng phần còn thiếu — không gửi trùng phần đã thành công.
+    async function retryPendingMessage(localId) {
+      if (retryingIds.has(localId)) return;
+      retryingIds.add(localId);
+
+      const row = findMessageRowByLocalId(localId);
+      const entry = PendingMessages.getPending(currentCustomerId).find(e => e.localId === localId);
+      if (!entry) {
+        retryingIds.delete(localId);
+        return;
+      }
+
+      hideFailBadge(row);
+      setStatusIcon(row, 'sending');
+
+      const needsImage = entry.hasImage && !entry.imagePartSent;
+      const imageFile = needsImage ? (pendingImageFiles.get(localId) || null) : null;
+      const textToSend = entry.textPartSent ? '' : (entry.message || '');
+
+      if (needsImage && !imageFile) {
+        // Ảnh không còn trong bộ nhớ (VD sau khi tải lại trang) — không thể
+        // tự gửi lại được nữa, cần người dùng chọn lại ảnh và gửi tin mới.
+        retryingIds.delete(localId);
+        showFailBadge(row, localId, 'Ảnh đã mất do tải lại trang — vui lòng chọn lại ảnh và gửi tin mới.');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('customerId', currentCustomerId);
+      formData.append('currentPageID', currentPageID);
+      if (textToSend) formData.append('message', textToSend);
+      if (imageFile) formData.append('image', imageFile);
+
+      try {
+        const response = await fetch('/api/send-message', { method: 'POST', body: formData });
+        const data = await response.json();
+        const ok = !!data.success;
+        const imagePartSent = entry.imagePartSent || (entry.hasImage ? !!data.imageSent : true);
+        const textPartSent = entry.textPartSent || (entry.message ? !!data.textSent : true);
+
+        if (ok) {
+          PendingMessages.remove(currentCustomerId, localId);
+          pendingImageFiles.delete(localId);
+          setStatusIcon(row, 'sent');
+        } else {
+          PendingMessages.save(currentCustomerId, Object.assign({}, entry, {
+            failReason: data.error || 'Không thể gửi tin nhắn.',
+            imagePartSent,
+            textPartSent
+          }));
+          showFailBadge(row, localId, data.error);
+        }
+      } catch (err) {
+        PendingMessages.save(currentCustomerId, Object.assign({}, entry, {
+          failReason: 'Không thể kết nối máy chủ.'
+        }));
+        showFailBadge(row, localId, 'Không thể kết nối máy chủ.');
+      } finally {
+        retryingIds.delete(localId);
+      }
     }
 
     async function prependMessages(messages) {
@@ -653,22 +879,9 @@
       });
     }
 
-    const sendErrorMessageEl = document.getElementById('send-error-message');
-
-    function displayError(message) {
-      sendErrorMessageEl.textContent = message;
-      sendErrorMessageEl.style.display = 'block';
-    }
-
-    function hideError() {
-      sendErrorMessageEl.style.display = 'none';
-      sendErrorMessageEl.textContent = '';
-    }
-
     function sendMessage() {
       const messageText = messageInput.value.trim();
       if (!messageText && !currentImageFile) return;
-      hideError();
       if (messageText) {
         numMess++;
       }
@@ -677,11 +890,29 @@
       }
       const tempMessageText = messageInput.value;
       const tempImageFile = currentImageFile;
+      const localId = 'local_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
 
       messageInput.value = '';
       currentImageFile = null;
       imagePreviewContainer.style.display = 'none';
       autoResizeInput();
+
+      if (tempImageFile) {
+        pendingImageFiles.set(localId, tempImageFile);
+      }
+
+      // Lưu tạm ở localStorage ngay từ đầu: nếu trang bị đóng/tải lại đột
+      // ngột giữa chừng gửi, tin nhắn vẫn còn đó để hiển thị lại và chờ bấm
+      // gửi lại ở lần mở hội thoại kế tiếp (trong vòng 24h).
+      PendingMessages.save(currentCustomerId, {
+        localId: localId,
+        message: tempMessageText || null,
+        hasImage: !!tempImageFile,
+        createdAt: Date.now(),
+        failReason: null,
+        imagePartSent: false,
+        textPartSent: false
+      });
 
       const formData = new FormData();
       formData.append('customerId', currentCustomerId);
@@ -694,12 +925,11 @@
         message: tempMessageText || null,
         image: tempImageFile ? createAndTrackBlobUrl(tempImageFile) : null,
         fileType: tempImageFile ? tempImageFile.type : null,
-        time: Date.now()
+        time: Date.now(),
+        localId: localId
       };
 
-      let messageRow = null;
       addMessageToContainer(tempMessage).then(row => {
-        messageRow = row;
         if (modalMessagesContainer) {
           modalMessagesContainer.scrollTop = modalMessagesContainer.scrollHeight;
         }
@@ -713,33 +943,45 @@
       })
         .then(response => response.json())
         .then(data => {
-          const statusIconWrapper = messageRow.querySelector('.message-status-icon-wrapper');
-          const statusIcon = statusIconWrapper.querySelector('.message-status-icon');
-          if (data.success) {
-            hideError();
-            statusIconWrapper.dataset.status = 'sent';
-            statusIcon.classList.remove('message-status-sending');
-            statusIcon.classList.add('message-status-sentx');
-            statusIcon.innerHTML = `<i class="bi bi-check-circle-fill"></i>`;
+          const row = findMessageRowByLocalId(localId);
+          const ok = !!data.success;
+          const imagePartSent = tempImageFile ? !!data.imageSent : true;
+          const textPartSent = tempMessageText ? !!data.textSent : true;
+
+          if (ok) {
+            PendingMessages.remove(currentCustomerId, localId);
+            pendingImageFiles.delete(localId);
+            setStatusIcon(row, 'sent');
           } else {
             console.error('Lỗi khi gửi tin nhắn:', data.error);
-            displayError(data.error);
-            statusIconWrapper.dataset.status = 'error';
-            statusIcon.classList.remove('message-status-sending');
-            statusIcon.classList.add('message-status-error');
-            statusIcon.innerHTML = `<i class="bi bi-x-circle-fill"></i>`;
+            PendingMessages.save(currentCustomerId, {
+              localId: localId,
+              message: tempMessageText || null,
+              hasImage: !!tempImageFile,
+              createdAt: Date.now(),
+              failReason: data.error || 'Không thể gửi tin nhắn.',
+              imagePartSent: imagePartSent,
+              textPartSent: textPartSent
+            });
+            showFailBadge(row, localId, data.error);
           }
         })
         .catch(error => {
           console.error('Lỗi fetch:', error);
-          displayError('Lỗi kết nối. Vui lòng kiểm tra lại mạng và thử lại.');
 
-          const statusIconWrapper = messageRow.querySelector('.message-status-icon-wrapper');
-          const statusIcon = statusIconWrapper.querySelector('.message-status-icon');
-          statusIconWrapper.dataset.status = 'error';
-          statusIcon.classList.remove('message-status-sending');
-          statusIcon.classList.add('message-status-error');
-          statusIcon.innerHTML = `<i class="bi bi-x-circle-fill"></i>`;
+          const row = findMessageRowByLocalId(localId);
+          // Tin vẫn còn trong localStorage từ bước lưu ban đầu — chỉ cần cập
+          // nhật lại lý do lỗi để hiển thị badge.
+          PendingMessages.save(currentCustomerId, {
+            localId: localId,
+            message: tempMessageText || null,
+            hasImage: !!tempImageFile,
+            createdAt: Date.now(),
+            failReason: 'Không thể kết nối máy chủ.',
+            imagePartSent: false,
+            textPartSent: false
+          });
+          showFailBadge(row, localId, 'Không thể kết nối máy chủ.');
         });
     }
 
@@ -908,6 +1150,8 @@
         fetchLastOrder(currentCustomerId)
       ]);
 
+      loadPendingMessagesFromStorage();
+
       if (window.copiedText) {
         messageInput.value = window.copiedText;
         messageInput.focus();
@@ -927,7 +1171,6 @@
       chatState.isFetchingMessages = false;
       chatState.hasMoreMessages = true;
       chatState.messageOffset = 0;
-      hideError();
       autoResizeInput();
     });
 

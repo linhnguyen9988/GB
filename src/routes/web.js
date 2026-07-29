@@ -557,13 +557,13 @@ let initWebRoutes = (app) => {
                         }
                     }
                 }
-                const success = (imageContent && imageSent) || (textContent && textSent);
+                const success = (!imageContent || imageSent) && (!textContent || textSent);
                 const message = (imageSent && textSent) ? "Đã gửi cả ảnh và văn bản thành công." :
                     (imageSent) ? "Gửi ảnh thành công, nhưng văn bản thất bại." :
                         (textSent) ? "Gửi văn bản thành công, nhưng ảnh thất bại." :
                             "Không thể gửi cả ảnh và văn bản.";
 
-                return { success, message };
+                return { success, message, imageSent, textSent };
             };
 
             const sendPrivateReply = async (imageContent, textContent) => {
@@ -675,24 +675,55 @@ let initWebRoutes = (app) => {
                 }
                 const directMessageResult = await sendDirectMessage(attachmentId, message);
                 if (directMessageResult.success) {
-                    return res.json({ success: true, message: directMessageResult.message });
-                }
-                const privateReplyResult = await sendPrivateReply(attachmentId, message);
-                if (privateReplyResult.success) {
                     return res.json({
                         success: true,
-                        message: privateReplyResult.message,
-                        imageStatus: privateReplyResult.imageStatus,
-                        textStatus: privateReplyResult.textStatus
-                    });
-                } else {
-                    return res.status(400).json({
-                        success: false,
-                        error: privateReplyResult.message,
-                        imageStatus: privateReplyResult.imageStatus,
-                        textStatus: privateReplyResult.textStatus
+                        message: directMessageResult.message,
+                        imageSent: !attachmentId || directMessageResult.imageSent,
+                        textSent: !message || directMessageResult.textSent
                     });
                 }
+
+                const needImage = !!attachmentId && !directMessageResult.imageSent;
+                const needText = !!message && !directMessageResult.textSent;
+
+                let imageSent = directMessageResult.imageSent;
+                let textSent = directMessageResult.textSent;
+                let privateReplyRan = false;
+                let privateReplyResult = null;
+
+                if (needImage || needText) {
+                    privateReplyRan = true;
+                    privateReplyResult = await sendPrivateReply(
+                        needImage ? attachmentId : null,
+                        needText ? message : null
+                    );
+                    imageSent = needImage ? (privateReplyResult.imageStatus === 'sent') : imageSent;
+                    textSent = needText ? (privateReplyResult.textStatus === 'sent') : textSent;
+                }
+
+                const overallOk = (!attachmentId || imageSent) && (!message || textSent);
+                if (overallOk) {
+                    return res.json({
+                        success: true,
+                        message: privateReplyRan ? privateReplyResult.message : directMessageResult.message,
+                        imageSent,
+                        textSent
+                    });
+                }
+
+                const failedParts = [];
+                if (attachmentId && !imageSent) failedParts.push('ảnh');
+                if (message && !textSent) failedParts.push('tin nhắn văn bản');
+                const reason = privateReplyRan
+                    ? privateReplyResult.message
+                    : (failedParts.length ? `Không thể gửi ${failedParts.join(' và ')}.` : 'Không thể gửi tin nhắn.');
+
+                return res.status(400).json({
+                    success: false,
+                    error: reason,
+                    imageSent,
+                    textSent
+                });
             } catch (error) {
                 console.error('Lỗi server tổng quát:', error.response ? JSON.stringify(error.response.data) : error.message);
                 res.status(500).json({ success: false, error: 'Lỗi server khi xử lý tin nhắn.' });

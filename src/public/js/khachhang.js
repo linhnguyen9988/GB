@@ -82,7 +82,9 @@ function LenDonKhachHang() {
                 ShowToast('danger', '<i class="bi bi-x-circle"></i>', 'Lỗi lên đơn', data.error, 4000);
                 return;
             }
-
+            document.getElementById('COD').value = 0;
+            document.getElementById('KG').value = 1;
+            
             var kgGoi = kg * 1000;
             if (kgGoi <= 1000) kgGoi = 500;
             else if (kgGoi <= 2000) kgGoi = 1000;

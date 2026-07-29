@@ -8,11 +8,8 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 
-// Multer — lưu ảnh tạm vào uploads/
 const upload = multer({ dest: 'uploads/' });
 
-// ─── GET /api/messages ────────────────────────────────────────
-// Join fbname từ khachhang để hiện tên thay vì ID
 router.get('/', auth, async (req, res) => {
   const { pageId, sender, limit = 50, offset = 0 } = req.query;
   try {
@@ -41,7 +38,6 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-// GET /api/messages/conversation/:sender — trả luôn cả watermark và reactions
 router.get('/conversation/:sender', auth, async (req, res) => {
   const { limit = 10, offset = 0 } = req.query;
   const sender = req.params.sender;
@@ -66,7 +62,6 @@ router.get('/conversation/:sender', auth, async (req, res) => {
       [messids]
     );
 
-    // readWatermark lấy từ isread trong chính messages — không cần query thêm
     const readWatermark = messages
       .filter(m => m.isread === 1)
       .reduce((max, m) => Math.max(max, m.timestamp || 0), 0);
@@ -76,12 +71,7 @@ router.get('/conversation/:sender', auth, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-// ─── POST /api/messages/send ──────────────────────────────────
-// Body: multipart/form-data
-//   recipient      — PSID khách hàng
-//   message        — nội dung text (có thể rỗng nếu chỉ gửi ảnh)
-//   currentPageID  — pageid để lấy token từ bảng pageinfo
-//   image          — file ảnh (optional)
+
 router.post('/send', auth, upload.single('image'), async (req, res) => {
   const { recipient, message, currentPageID } = req.body;
   const file = req.file;
@@ -93,7 +83,6 @@ router.post('/send', auth, upload.single('image'), async (req, res) => {
     return res.json({ success: true, message: 'Không có nội dung để gửi.' });
 
   try {
-    // Lấy access token theo pageid
     const [[page]] = await db.query(
       'SELECT pageid, accesstoken FROM pageinfo WHERE pageid = ?', [currentPageID]
     );
@@ -104,7 +93,6 @@ router.post('/send', auth, upload.single('image'), async (req, res) => {
 
     const token = page.accesstoken;
 
-    // ── Helper: gọi FB Graph API ──────────────────────────────
     const sendMessageWithPayload = async (payload) => {
       try {
         const response = await axios.post(
@@ -117,7 +105,6 @@ router.post('/send', auth, upload.single('image'), async (req, res) => {
       }
     };
 
-    // ── Helper: lấy comment IDs gần đây của khách để Private Reply ──
     const getRecentCommentIds = async (userId) => {
       const [rows] = await db.query(
         `SELECT commentid FROM livecomment
@@ -128,7 +115,6 @@ router.post('/send', auth, upload.single('image'), async (req, res) => {
       return rows.map(r => r.commentid);
     };
 
-    // ── Gửi Direct Message ────────────────────────────────────
     const sendDirect = async (attachmentId, textContent) => {
       let imageSent = false, textSent = false;
 
@@ -174,34 +160,49 @@ router.post('/send', auth, upload.single('image'), async (req, res) => {
       return { success, imageSent, textSent };
     };
 
-    // ── Private Reply (fallback) ──────────────────────────────
     const sendPrivateReply = async (attachmentId, textContent) => {
       const commentIds = await getRecentCommentIds(recipient);
-      if (!commentIds.length) return { success: false };
+      if (!commentIds.length) {
+        return { success: false, imageSent: false, textSent: false };
+      }
+
+      let imageSent = false;
+      let textSent = false;
 
       for (const commentId of commentIds) {
         const tasks = [];
 
-        if (attachmentId) {
-          tasks.push(sendMessageWithPayload({
-            messaging_type: 'RESPONSE',
-            recipient: { comment_id: commentId },
-            message: { attachment: { type: 'image', payload: { attachment_id: attachmentId } } }
-          }));
+        if (attachmentId && !imageSent) {
+          tasks.push(
+            sendMessageWithPayload({
+              messaging_type: 'RESPONSE',
+              recipient: { comment_id: commentId },
+              message: { attachment: { type: 'image', payload: { attachment_id: attachmentId } } }
+            }).then(r => { if (r.success) imageSent = true; })
+          );
         }
-        if (textContent) {
-          tasks.push(sendMessageWithPayload({
-            messaging_type: 'RESPONSE',
-            recipient: { comment_id: commentId },
-            message: { text: textContent }
-          }));
+        if (textContent && !textSent) {
+          tasks.push(
+            sendMessageWithPayload({
+              messaging_type: 'RESPONSE',
+              recipient: { comment_id: commentId },
+              message: { text: textContent }
+            }).then(r => { if (r.success) textSent = true; })
+          );
         }
 
-        const results = await Promise.all(tasks);
-        const allOk = results.every(r => r.success);
-        if (allOk) return { success: true };
+        if (tasks.length === 0) break; 
+        await Promise.all(tasks);
+
+        const imageOk = !attachmentId || imageSent;
+        const textOk = !textContent || textSent;
+        if (imageOk && textOk) {
+          return { success: true, imageSent, textSent };
+        }
       }
-      return { success: false };
+
+      const success = (!attachmentId || imageSent) && (!textContent || textSent);
+      return { success, imageSent, textSent };
     };
 
     let attachmentId = null;
@@ -234,19 +235,43 @@ router.post('/send', auth, upload.single('image'), async (req, res) => {
       }
     }
 
-    // ── Thử Direct → fallback Private Reply ──────────────────
-    // Không lưu DB ở đây — backend chính nhận webhook từ FB sẽ tự lưu
     const directResult = await sendDirect(attachmentId, message);
     if (directResult.success) {
       return res.json({ success: true, message: 'Gửi thành công.' });
     }
 
-    const privateResult = await sendPrivateReply(attachmentId, message);
-    if (privateResult.success) {
-      return res.json({ success: true, message: 'Gửi qua Private Reply thành công.' });
+    let imageSent = directResult.imageSent;
+    let textSent = directResult.textSent;
+    const needImage = !!attachmentId && !imageSent;
+    const needText = !!message && !textSent;
+
+    if (needImage || needText) {
+      const privateResult = await sendPrivateReply(
+        needImage ? attachmentId : null,
+        needText ? message : null
+      );
+      imageSent = imageSent || privateResult.imageSent;
+      textSent = textSent || privateResult.textSent;
     }
 
-    return res.status(400).json({ success: false, error: 'Không thể gửi tin nhắn.' });
+    const overallOk = (!attachmentId || imageSent) && (!message || textSent);
+    if (overallOk) {
+      return res.json({ success: true, message: 'Gửi thành công.' });
+    }
+
+    const failedParts = [];
+    if (attachmentId && !imageSent) failedParts.push('ảnh');
+    if (message && !textSent) failedParts.push('tin nhắn văn bản');
+    const reason = failedParts.length
+      ? `Không thể gửi ${failedParts.join(' và ')}.`
+      : 'Không thể gửi tin nhắn.';
+
+    return res.status(400).json({
+      success: false,
+      error: reason,
+      imageSent,
+      textSent,
+    });
 
   } catch (err) {
     console.error('Send message error:', err.message);
