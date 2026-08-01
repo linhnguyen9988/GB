@@ -442,6 +442,18 @@
 #image-preview {
     width: 100%;
     height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #eceff1;
+    font-size: 20px;
+    color: #55606b;
+}
+
+#image-preview img,
+#image-preview video {
+    width: 100%;
+    height: 100%;
     object-fit: cover;
 }
 
@@ -753,41 +765,44 @@
     } 
 }
 
-@media (prefers-color-scheme: dark) {
-    .btn-icon-messenger,
-    .upload-icon,
-    #send-message-button,
-    .close-messenger {
-        color: #e4e6eb;
-    }
+[data-bs-theme="dark"] .btn-icon-messenger,
+[data-bs-theme="dark"] .upload-icon,
+[data-bs-theme="dark"] #send-message-button,
+[data-bs-theme="dark"] .close-messenger {
+    color: #e4e6eb;
+}
 
-    .modal-messenger {
-        background-color: #1a1a1a;
-        color: #f0f0f0;
-    }
+[data-bs-theme="dark"] .modal-messenger {
+    background-color: #1a1a1a;
+    color: #f0f0f0;
+}
 
-    .modal-content-messenger {
-        background-color: #2a2a2a;
-        border-color: #4a4a4a;
-    }
+[data-bs-theme="dark"] .modal-content-messenger {
+    background-color: #2a2a2a;
+    border-color: #4a4a4a;
+}
 
-    .modal-header-messenger {
-        background-color: #333333;
-        border-bottom-color: #4a4a4a;
-    }
+[data-bs-theme="dark"] .modal-header-messenger {
+    background-color: #333333;
+    border-bottom-color: #4a4a4a;
+}
 
-    .message-input-container {
-        background-color: #444444;
-        border-top-color: #555555;
-    }
+[data-bs-theme="dark"] .message-input-container {
+    background-color: #444444;
+    border-top-color: #555555;
+}
 
-    #message-input {
-        background-color: #333333;
-        color: #f0f0f0;
-        border-color: #555555;
-    }
+[data-bs-theme="dark"] #message-input {
+    background-color: #333333;
+    color: #f0f0f0;
+    border-color: #555555;
+}
 
-    .message-timestamp {
-        color: #a3a3a3;
-    }
+[data-bs-theme="dark"] .message-timestamp {
+    color: #a3a3a3;
+}
+
+[data-bs-theme="dark"] #image-preview {
+    background: #333333;
+    color: #d0d0d0;
 }

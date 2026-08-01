@@ -34,7 +34,7 @@ const socket = require('../socket');
 const { pushToUser } = require('../socket');
 const multer = require('multer');
 const sharp = require('sharp');
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({ dest: 'uploads/', limits: { fileSize: 25 * 1024 * 1024 } }); // giới hạn 25MB/file (ảnh/video/audio đính kèm tin nhắn)
 const axios = require('axios');
 const GlobalPageID = '223266991771270';
 const GlobalPageID2 = '102116919355833';
@@ -437,8 +437,6 @@ const FormData = require('form-data');
 async function tryInsertMessageAsComment(khachhang, sender, text, timemess, pageid, io) {
     try {
         const db = DBConnection.promise();
-
-        // Lấy live mới nhất (theo id auto increment), kiểm tra có đang LIVE không
         const [liveRows] = await db.query(
             `SELECT liveid, status FROM postlive ORDER BY id DESC LIMIT 1`
         );
@@ -446,14 +444,12 @@ async function tryInsertMessageAsComment(khachhang, sender, text, timemess, page
 
         const liveid = liveRows[0].liveid;
 
-        // Lấy thông tin khách hàng
         const [cusRows] = await db.query(
             `SELECT * FROM khachhang WHERE userid = ? LIMIT 1`, [khachhang]
         );
         const cus = cusRows.length > 0 ? cusRows[0] : null;
         const fbname = cus ? (cus.fbname || 'Khách hàng') : 'Khách hàng';
 
-        // Tạo commentid giả dạng liveid_timestamp_userid
         const fakeCommentId = `${liveid}_${Date.now()}_${khachhang}`;
 
         const dateCreate = new Date().toLocaleString("en-US", { timeZone: "Asia/Saigon" });
@@ -468,7 +464,6 @@ async function tryInsertMessageAsComment(khachhang, sender, text, timemess, page
         const [insertResult] = await db.query(sqlInsert);
         const idx = insertResult.insertId;
 
-        // Emit về FE như một comment bình thường
         const newCommentData = {
             idx: idx,
             picture: cus ? (cus.avalink || '') : '',
@@ -501,6 +496,7 @@ let initWebRoutes = (app) => {
             const { customerId, message, currentPageID } = req.body;
             const file = req.file;
             let attachmentId = null;
+            let attachmentType = 'image';
             let token = await getPageToken(currentPageID);
             const sendMessageWithPayload = async (payload) => {
                 try {
@@ -514,14 +510,14 @@ let initWebRoutes = (app) => {
                 }
             };
 
-            const sendDirectMessage = async (imageContent, textContent) => {
+            const sendDirectMessage = async (imageContent, textContent, mediaType) => {
                 let imageSent = false;
                 let textSent = false;
                 if (imageContent) {
                     let payload = {
                         recipient: { id: customerId },
                         messaging_type: 'UPDATE',
-                        message: { attachment: { type: 'image', payload: { attachment_id: imageContent } } }
+                        message: { attachment: { type: mediaType || 'image', payload: { attachment_id: imageContent } } }
                     };
                     const result = await sendMessageWithPayload(payload);
                     if (result.success) {
@@ -558,15 +554,16 @@ let initWebRoutes = (app) => {
                     }
                 }
                 const success = (!imageContent || imageSent) && (!textContent || textSent);
-                const message = (imageSent && textSent) ? "Đã gửi cả ảnh và văn bản thành công." :
-                    (imageSent) ? "Gửi ảnh thành công, nhưng văn bản thất bại." :
-                        (textSent) ? "Gửi văn bản thành công, nhưng ảnh thất bại." :
-                            "Không thể gửi cả ảnh và văn bản.";
+                const mediaLabel = mediaType === 'video' ? 'video' : mediaType === 'audio' ? 'audio' : 'ảnh';
+                const message = (imageSent && textSent) ? `Đã gửi cả ${mediaLabel} và văn bản thành công.` :
+                    (imageSent) ? `Gửi ${mediaLabel} thành công, nhưng văn bản thất bại.` :
+                        (textSent) ? `Gửi văn bản thành công, nhưng ${mediaLabel} thất bại.` :
+                            `Không thể gửi cả ${mediaLabel} và văn bản.`;
 
                 return { success, message, imageSent, textSent };
             };
 
-            const sendPrivateReply = async (imageContent, textContent) => {
+            const sendPrivateReply = async (imageContent, textContent, mediaType) => {
                 try {
                     const recentCommentIds = await getRecentCommentIdsFromDB(customerId);
                     if (!recentCommentIds || recentCommentIds.length === 0) {
@@ -589,7 +586,7 @@ let initWebRoutes = (app) => {
                             const imagePayload = {
                                 messaging_type: 'RESPONSE',
                                 recipient: { comment_id: commentId },
-                                message: { attachment: { type: 'image', payload: { attachment_id: imageContent } } }
+                                message: { attachment: { type: mediaType || 'image', payload: { attachment_id: imageContent } } }
                             };
                             const imageResult = await sendMessageWithPayload(imagePayload);
                             if (imageResult.success) {
@@ -615,14 +612,15 @@ let initWebRoutes = (app) => {
                         }
                     }
                     const finalSuccess = imageSent && textSent;
+                    const mediaLabel = mediaType === 'video' ? 'video' : mediaType === 'audio' ? 'audio' : 'ảnh';
                     let finalMessage = "";
                     if (imageContent && textContent) {
-                        if (imageSent && textSent) finalMessage = "Tin nhắn (ảnh và văn bản) đã được gửi thành công qua Private Reply.";
-                        else if (imageSent) finalMessage = "Đã gửi ảnh thành công, nhưng không thể gửi văn bản qua Private Reply.";
-                        else if (textSent) finalMessage = "Đã gửi văn bản thành công, nhưng không thể gửi ảnh qua Private Reply.";
-                        else finalMessage = "Không thể gửi cả ảnh và văn bản qua Private Reply.";
+                        if (imageSent && textSent) finalMessage = `Tin nhắn (${mediaLabel} và văn bản) đã được gửi thành công qua Private Reply.`;
+                        else if (imageSent) finalMessage = `Đã gửi ${mediaLabel} thành công, nhưng không thể gửi văn bản qua Private Reply.`;
+                        else if (textSent) finalMessage = `Đã gửi văn bản thành công, nhưng không thể gửi ${mediaLabel} qua Private Reply.`;
+                        else finalMessage = `Không thể gửi cả ${mediaLabel} và văn bản qua Private Reply.`;
                     } else if (imageContent) {
-                        finalMessage = imageSent ? "Tin nhắn ảnh đã được gửi thành công qua Private Reply." : "Không thể gửi tin nhắn ảnh qua Private Reply.";
+                        finalMessage = imageSent ? `Tin nhắn ${mediaLabel} đã được gửi thành công qua Private Reply.` : `Không thể gửi tin nhắn ${mediaLabel} qua Private Reply.`;
                     } else if (textContent) {
                         finalMessage = textSent ? "Tin nhắn văn bản đã được gửi thành công qua Private Reply." : "Không thể gửi tin nhắn văn bản qua Private Reply.";
                     }
@@ -647,33 +645,54 @@ let initWebRoutes = (app) => {
 
             try {
                 if (file && file.path) {
-                    const optimizedImagePath = file.path + '_optimized.jpg';
+                    const mimeType = file.mimetype || mime.lookup(file.originalname) || '';
+                    if (mimeType.startsWith('video/')) {
+                        attachmentType = 'video';
+                    } else if (mimeType.startsWith('audio/')) {
+                        attachmentType = 'audio';
+                    } else {
+                        attachmentType = 'image';
+                    }
+
+                    let uploadFilePath = file.path;
+
+                    if (attachmentType === 'image') {
+                        const optimizedImagePath = file.path + '_optimized.jpg';
+                        try {
+                            await sharp(file.path)
+                                .rotate()
+                                .resize(1024, 1024, { fit: sharp.fit.inside, withoutEnlargement: true })
+                                .jpeg({ quality: 70 })
+                                .toFile(optimizedImagePath);
+                            fs.unlinkSync(file.path);
+                            uploadFilePath = optimizedImagePath;
+                        } catch (optimizationError) {
+                            console.error('Lỗi khi tối ưu hóa hoặc upload ảnh:', optimizationError.message);
+                            return res.status(500).json({ success: false, error: 'Lỗi khi xử lý hình ảnh.' });
+                        }
+                    }
+
                     try {
-                        await sharp(file.path)
-                            .rotate()
-                            .resize(1024, 1024, { fit: sharp.fit.inside, withoutEnlargement: true })
-                            .jpeg({ quality: 70 })
-                            .toFile(optimizedImagePath);
-                        fs.unlinkSync(file.path);
                         const form = new FormData();
-                        form.append('message', JSON.stringify({ attachment: { type: 'image', payload: { is_reusable: true } } }));
-                        form.append('filedata', fs.createReadStream(optimizedImagePath));
+                        form.append('message', JSON.stringify({ attachment: { type: attachmentType, payload: { is_reusable: true } } }));
+                        form.append('filedata', fs.createReadStream(uploadFilePath));
                         const uploadResponse = await axios.post(
                             `https://graph.facebook.com/v19.0/me/message_attachments?access_token=${token}`,
                             form,
                             { headers: form.getHeaders() }
                         );
                         attachmentId = uploadResponse.data.attachment_id;
-                        fs.unlinkSync(optimizedImagePath);
-                    } catch (optimizationError) {
-                        console.error('Lỗi khi tối ưu hóa hoặc upload ảnh:', optimizationError.message);
-                        return res.status(500).json({ success: false, error: 'Lỗi khi xử lý hình ảnh.' });
+                        fs.unlinkSync(uploadFilePath);
+                    } catch (uploadError) {
+                        console.error('Lỗi khi upload file đính kèm lên Facebook:', uploadError.message);
+                        try { fs.unlinkSync(uploadFilePath); } catch (e) { /* ignore */ }
+                        return res.status(500).json({ success: false, error: 'Lỗi khi xử lý file đính kèm.' });
                     }
                 }
                 if (!attachmentId && !message) {
                     return res.json({ success: true, message: "Không có nội dung để gửi." });
                 }
-                const directMessageResult = await sendDirectMessage(attachmentId, message);
+                const directMessageResult = await sendDirectMessage(attachmentId, message, attachmentType);
                 if (directMessageResult.success) {
                     return res.json({
                         success: true,
@@ -695,7 +714,8 @@ let initWebRoutes = (app) => {
                     privateReplyRan = true;
                     privateReplyResult = await sendPrivateReply(
                         needImage ? attachmentId : null,
-                        needText ? message : null
+                        needText ? message : null,
+                        attachmentType
                     );
                     imageSent = needImage ? (privateReplyResult.imageStatus === 'sent') : imageSent;
                     textSent = needText ? (privateReplyResult.textStatus === 'sent') : textSent;
@@ -712,7 +732,9 @@ let initWebRoutes = (app) => {
                 }
 
                 const failedParts = [];
-                if (attachmentId && !imageSent) failedParts.push('ảnh');
+                if (attachmentId && !imageSent) {
+                    failedParts.push(attachmentType === 'video' ? 'video' : attachmentType === 'audio' ? 'audio' : 'ảnh');
+                }
                 if (message && !textSent) failedParts.push('tin nhắn văn bản');
                 const reason = privateReplyRan
                     ? privateReplyResult.message
@@ -762,9 +784,9 @@ ORDER BY t1.id DESC;
     `;
 
         const queryParams = [
-            GlobalPageID, GlobalPageID2, // Cho: WHERE sender IN (?, ?)
-            GlobalPageID, GlobalPageID2, // Cho: OR recipient IN (?, ?)
-            GlobalPageID, GlobalPageID2  // Cho: IF(t1.sender IN (?, ?)
+            GlobalPageID, GlobalPageID2,
+            GlobalPageID, GlobalPageID2,
+            GlobalPageID, GlobalPageID2
         ];
 
         DBConnection.query(sqlQuery, queryParams, (err, results) => {
@@ -947,10 +969,10 @@ ORDER BY t1.id DESC;
             }
 
             const JT_NOTIFY_CODES = {
-                116: '🔄', // Đang chuyển hoàn
-                117: '🔄', // Đã ký nhận hoàn trả
-                118: '⚠️', // Kiện vấn đề (Giao)
-                120: '⚠️', // Kiện vấn đề (Hoàn)
+                116: '🔄',
+                117: '🔄',
+                118: '⚠️',
+                120: '⚠️',
             };
 
             if (JT_NOTIFY_CODES[scanCode]) {
@@ -1314,12 +1336,10 @@ ORDER BY t1.id DESC;
                 const address = (data.address || "").trim();
                 const isForeign = (data.region || "").includes("Nước ngoài");
 
-                // 1. HEADER (Y=5 đến 30)
                 doc.font(fontBold).fontSize(11);
                 doc.roundedRect(10, 5, 206, 25, 4).stroke();
                 doc.text(`Áo Dài Gia Bảo • ${data.date || ""} • ${luotCuoi}`, 10, 13, { align: 'center', width: 206 });
 
-                // 2. AVATAR & TÊN (Cùng Y=32)
                 let commonY = 32;
                 let avatarSize = 35;
                 let nameX = 52;
@@ -1341,37 +1361,31 @@ ORDER BY t1.id DESC;
                     }
                 }
 
-                // Vẽ tên khách
                 doc.font(fontBold).fontSize(16).text(cleanName, nameX, commonY, { width: 158, lineGap: -2 });
 
-                // Tính toán vị trí đặt Icon sau tên
                 const nameWidth = doc.widthOfString(cleanName);
                 const iconStartX = nameX + Math.min(nameWidth, 145) + 4;
                 let currentIconX = iconStartX;
 
-                // --- VẼ ICON QUẢ CẦU (NƯỚC NGOÀI) ---
                 if (isForeign) {
                     doc.save();
                     doc.translate(currentIconX, commonY + 3);
                     doc.lineWidth(0.8);
-                    doc.circle(5, 5, 5).stroke(); // Vòng tròn ngoài
-                    doc.moveTo(0, 5).lineTo(10, 5).stroke(); // Đường xích đạo (ngang)
-                    doc.moveTo(5, 0).quadraticCurveTo(8, 5, 5, 10).stroke(); // Kinh tuyến phải
-                    doc.moveTo(5, 0).quadraticCurveTo(2, 5, 5, 10).stroke(); // Kinh tuyến trái
+                    doc.circle(5, 5, 5).stroke();
+                    doc.moveTo(0, 5).lineTo(10, 5).stroke();
+                    doc.moveTo(5, 0).quadraticCurveTo(8, 5, 5, 10).stroke();
+                    doc.moveTo(5, 0).quadraticCurveTo(2, 5, 5, 10).stroke();
                     doc.restore();
                     currentIconX += 14;
                 }
 
-                // --- VẼ ICON LOCATION (ĐỊA CHỈ) ---
                 if (address) {
                     doc.save();
                     doc.translate(currentIconX, commonY + 3);
-                    // Vẽ giọt nước đặc
                     doc.moveTo(5, 12)
                         .bezierCurveTo(-1, 6, 1, 0, 5, 0)
                         .bezierCurveTo(9, 0, 11, 6, 5, 12)
                         .fill();
-                    // Đục lỗ trắng ở giữa
                     doc.fillColor('white').circle(5, 4, 1.5).fill();
                     doc.restore();
                 }
@@ -1379,10 +1393,8 @@ ORDER BY t1.id DESC;
                 const nameHeight = doc.heightOfString(cleanName, { width: 158, lineGap: -2 });
                 let currentY = Math.max(commonY + avatarSize, commonY + nameHeight) + 5;
 
-                // 3. THÔNG TIN PHỤ (CÁCH NHAU 3PX)
                 doc.fillColor('black').font(fontRegular).fontSize(12);
 
-                // Phone
                 if (data.phone) {
                     doc.save();
                     doc.translate(15, currentY - 1);
@@ -1393,7 +1405,6 @@ ORDER BY t1.id DESC;
                     currentY += 15 + 3;
                 }
 
-                // Comment
                 if (cleanComment) {
                     doc.save();
                     doc.translate(15, currentY + 1);
@@ -1404,7 +1415,6 @@ ORDER BY t1.id DESC;
                     currentY += h + 3;
                 }
 
-                // Price
                 if (cleanPrice && cleanPrice !== "0") {
                     doc.save();
                     doc.translate(15, currentY + 1);
@@ -1415,7 +1425,6 @@ ORDER BY t1.id DESC;
                     currentY += 15 + 3;
                 }
 
-                // 4. BARCODE
                 currentY += 5;
                 if (data.id) {
                     try {
@@ -1458,8 +1467,6 @@ ORDER BY t1.id DESC;
             }
 
             io.to(userRoom).emit("print-now", emitData);
-
-            //console.log(`[Lệnh in] Gửi ${emitData.type} tới ${userRoom}`);
             res.json({ success: true, message: "Đã gửi lệnh in" });
         } else {
             res.status(404).json({ success: false, message: "Máy in Offline" });
@@ -1720,10 +1727,10 @@ ORDER BY t1.id DESC;
                                                 tryInsertMessageAsComment(khachhang, sender, text, timemess, pageid, io);
                                             }
                                         }
-                                        resolve(); // Xong khách mới
+                                        resolve();
                                     });
                                 } else {
-                                    resolve(); // Kết thúc echo
+                                    resolve();
                                 }
                             });
                         });
@@ -1746,14 +1753,14 @@ ORDER BY t1.id DESC;
                     }
                 );
                 io.emit('read', {
-                    senderId: senderId,      // PSID khách
-                    watermark: watermark,    // timestamp khách đã đọc tới
+                    senderId: senderId,
+                    watermark: watermark,
                 });
                 return;
             } else if (value.hasOwnProperty('reaction')) {
                 const senderId = value.sender.id;
                 const mid = value.reaction.mid;
-                let emoji = value.reaction.emoji; // Facebook gửi "\uD83D\uDC4D" hoặc "👍"
+                let emoji = value.reaction.emoji;
                 const reactionTime = value.timestamp;
 
                 try {
@@ -1763,11 +1770,6 @@ ORDER BY t1.id DESC;
                 } catch (e) {
                     console.error('Lỗi decode emoji:', emoji, e);
                 }
-
-                // Cách 2: Dùng String.fromCodePoint nếu nó là dạng khác
-                // emoji = emoji.replace(/\\u([0-9a-fA-F]{4})/g, (m, g1) => 
-                //   String.fromCodePoint(parseInt(g1, 16))
-                // );
 
                 DBConnection.query(
                     'INSERT INTO reactions (messid, sender_id, reaction_emoji, timestamp) VALUES (?, ?, ?, ?)',
@@ -3863,7 +3865,6 @@ ORDER BY t1.id DESC;
     });
 
 
-    //router.get('/loadcomment', jwtAuth, loadcommentController.handleLoadComment);
     router.get("/", webAuth, loadcommentController.handleLoadComment);
     router.get("/profile", webAuth, profileController.handleProfile);
     router.get("/diennuoc", webAuth, dienNuocController.handleDienNuoc);
@@ -3878,7 +3879,6 @@ ORDER BY t1.id DESC;
         loginController.postLogOut(req, res, next);
     });
 
-    // ── Mount API routes (backend 2 đã gộp) ─────────────────
     app.use('/api/auth', apiAuth);
     app.use('/api/dashboard', apiDashboard);
     app.use('/api/messages', apiMessages);
@@ -3887,7 +3887,6 @@ ORDER BY t1.id DESC;
     app.use('/api/orders', apiOrders);
     app.use('/api/pages', apiPages);
     app.use('/api/notifications', apiNotifications);
-    // ─────────────────────────────────────────────────────────
 
     return app.use("/", router);
 };

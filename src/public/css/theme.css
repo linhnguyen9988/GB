@@ -88,6 +88,8 @@ a:hover{ color: var(--brand-primary-dark); }
 
 /* ---------- Cards ---------- */
 .card{
+  background-color: var(--surface);
+  color: var(--ink-900);
   border: 1px solid rgba(16,24,40,.06);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
@@ -186,6 +188,8 @@ table.dataTable{ border-collapse: separate !important; border-spacing: 0; }
 table.dataTable tbody td{ border-color: var(--ink-100); }
 div.dataTables_wrapper div.dataTables_filter input,
 div.dataTables_wrapper div.dataTables_length select{
+  background-color: var(--surface);
+  color: var(--ink-900);
   border-radius: var(--radius-sm);
   border: 1px solid var(--ink-300);
   padding: .3rem .6rem;
@@ -270,3 +274,137 @@ table.dataTable td.selected{
 @media (max-width: 768px){
   .header-container{ padding: .4rem .6rem; }
 }
+
+/* =========================================================================
+   DARK MODE — bật bằng [data-bs-theme="dark"] trên <html>
+   (đồng thời tận dụng dark mode có sẵn của Bootstrap 5.3)
+   Mặc định trang luôn ở LIGHT mode; dark mode chỉ bật khi người dùng
+   tự bấm logo để chuyển, và được lưu riêng theo từng thiết bị (localStorage).
+   ========================================================================= */
+[data-bs-theme="dark"]{
+  color-scheme: dark;
+
+  --brand-primary:      #6C63FF;
+  --brand-primary-dark: #857CFF;
+  --brand-primary-light:#262A4A;
+  --brand-accent:       #E0B96A;
+  --brand-rose:         #E0708A;
+
+  --ink-900: #F1F2F6;
+  --ink-700: #C7CBD6;
+  --ink-500: #9AA0AC;
+  --ink-300: #3A3F4B;
+  --ink-100: #23262E;
+  --surface: #1C1E26;
+  --bg-app:  #121319;
+
+  --ok:    #22C55E;
+  --warn:  #F0B429;
+  --danger:#F87171;
+  --info:  #60A5FA;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.35), 0 1px 3px rgba(0,0,0,.45);
+  --shadow-md: 0 4px 12px rgba(0,0,0,.45), 0 2px 4px rgba(0,0,0,.35);
+  --shadow-lg: 0 12px 32px rgba(0,0,0,.55);
+}
+
+/* Bootstrap utility classes không tự đổi theo data-bs-theme (theo thiết kế
+   của Bootstrap) nên cần override tay các class hay dùng trong project. */
+[data-bs-theme="dark"] .text-dark{ color: var(--ink-900) !important; }
+[data-bs-theme="dark"] .text-muted{ color: var(--ink-500) !important; }
+[data-bs-theme="dark"] .bg-light{ background-color: var(--ink-100) !important; }
+[data-bs-theme="dark"] .bg-white{ background-color: var(--surface) !important; }
+[data-bs-theme="dark"] .border,
+[data-bs-theme="dark"] .border-top,
+[data-bs-theme="dark"] .border-bottom,
+[data-bs-theme="dark"] .border-start,
+[data-bs-theme="dark"] .border-end{ border-color: var(--ink-300) !important; }
+[data-bs-theme="dark"] hr{ border-color: var(--ink-300); opacity: .6; }
+
+[data-bs-theme="dark"] .modal-content{
+  background-color: var(--surface);
+  color: var(--ink-900);
+}
+[data-bs-theme="dark"] .form-control,
+[data-bs-theme="dark"] .form-select{
+  background-color: var(--surface);
+  color: var(--ink-900);
+  border-color: var(--ink-300);
+}
+[data-bs-theme="dark"] .form-control::placeholder{ color: var(--ink-500); }
+[data-bs-theme="dark"] .form-control:disabled,
+[data-bs-theme="dark"] .form-select:disabled{ background-color: var(--ink-100); }
+[data-bs-theme="dark"] .input-group-text{
+  background: var(--ink-100);
+  border-color: var(--ink-300);
+  color: var(--ink-700);
+}
+[data-bs-theme="dark"] .dropdown-menu{
+  background-color: var(--surface);
+  border-color: var(--ink-300);
+}
+[data-bs-theme="dark"] .dropdown-item{ color: var(--ink-900); }
+[data-bs-theme="dark"] .dropdown-item:hover,
+[data-bs-theme="dark"] .dropdown-item:focus{
+  background-color: var(--ink-100);
+  color: var(--ink-900);
+}
+[data-bs-theme="dark"] .list-group-item{
+  background-color: var(--surface);
+  color: var(--ink-900);
+  border-color: var(--ink-300);
+}
+[data-bs-theme="dark"] .alert-danger{ background: #4C1D1D; color: #FCA5A5; }
+[data-bs-theme="dark"] .alert-success{ background: #14351F; color: #86EFAC; }
+[data-bs-theme="dark"] table.dataTable tbody td{ border-color: var(--ink-100); }
+
+/* Khung/hộp cứng màu trắng còn sót lại từ style.css cũ — cho theo biến để tự đổi tối */
+.table-wrapper{ background: var(--surface); color: var(--ink-900); }
+div.dataTables_wrapper{ color: var(--ink-900); }
+div.dataTables_wrapper .dataTables_info,
+div.dataTables_wrapper .dataTables_length label,
+div.dataTables_wrapper .dataTables_filter label{ color: var(--ink-700); }
+[data-bs-theme="dark"] div.dataTables_wrapper div.dataTables_paginate .paginate_button{
+  color: var(--ink-700) !important;
+  border-color: var(--ink-300) !important;
+  background: transparent !important;
+}
+[data-bs-theme="dark"] div.dataTables_wrapper div.dataTables_paginate .paginate_button.disabled{
+  color: var(--ink-500) !important;
+}
+
+.ref-bubble{ background: var(--surface); color: var(--ink-900); }
+
+/* Khung tin nhắn (messenger pane) */
+.messenger-pane{
+  background-color: var(--surface);
+  border-left: 1px solid var(--ink-300);
+}
+.pane-header{
+  background-color: var(--ink-100);
+  border-bottom: 1px solid var(--ink-300);
+}
+.pane-header h3{ color: var(--ink-900); }
+.chat-item:hover{ background-color: var(--ink-100); }
+.chat-name{ color: var(--ink-900); }
+.last-message{ color: var(--ink-500); }
+
+/* Icon nhỏ trên logo báo hiệu bấm để đổi chế độ sáng/tối */
+#theme-toggle-logo{ position: relative; }
+#theme-toggle-logo::after{
+  content: '🌙';
+  position: absolute;
+  bottom: -2px;
+  left: 24px;
+  font-size: 10px;
+  line-height: 1;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+[data-bs-theme="dark"] #theme-toggle-logo::after{ content: '☀️'; }

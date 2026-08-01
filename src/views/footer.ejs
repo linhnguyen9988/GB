@@ -116,9 +116,6 @@
   const PULL_THRESHOLD = 80;
   let numMess = 0;
 
-  // ── Tin nhắn gửi thất bại: lưu tạm ở localStorage để hiển thị lại và cho
-  // phép bấm gửi lại trong vòng 24h. Sau 24h tự động bị lọc bỏ (dọn khi đọc
-  // hoặc khi purgeExpired() chạy lúc tải trang). Không tự động retry.
   const PendingMessages = (function () {
     const STORAGE_KEY = 'pending_messages_v1';
     const TTL_MS = 24 * 60 * 60 * 1000; // 24h
@@ -188,15 +185,10 @@
 
     return { save, remove, getPending, purgeExpired };
   })();
-  // Dọn các tin đã lưu quá 24h ngay khi tải trang.
   PendingMessages.purgeExpired();
 
-  // File ảnh gốc chỉ tồn tại trong bộ nhớ của phiên làm việc hiện tại (không
-  // thể lưu File vào localStorage) — dùng để gửi lại trong cùng phiên. Nếu
-  // tải lại trang, ảnh cần được người dùng chọn lại để gửi lại.
-  const pendingImageFiles = new Map(); // localId -> File
+  const pendingImageFiles = new Map();
 
-  // Các localId đang trong quá trình gửi lại — chặn bấm nhiều lần gửi trùng.
   const retryingIds = new Set();
 
   window.openMessageModalAndPaste = function (customerId, customerName, pageId) {
@@ -513,7 +505,6 @@
       }
     }
 
-    // Badge nhỏ nêu lý do gửi thất bại — bấm vào để gửi lại.
     function showFailBadge(row, localId, reason) {
       if (!row) row = findMessageRowByLocalId(localId);
       if (!row) return;
@@ -545,14 +536,11 @@
       if (badge) badge.style.display = 'none';
     }
 
-    // Nạp lại các tin gửi thất bại còn lưu ở localStorage (chưa quá 24h) để
-    // hiển thị cho người dùng thấy và tự bấm vào để gửi lại — không tự động
-    // retry.
     function loadPendingMessagesFromStorage() {
       if (!currentCustomerId) return;
       const pending = PendingMessages.getPending(currentCustomerId);
       pending.forEach(async (entry) => {
-        if (findMessageRowByLocalId(entry.localId)) return; // đã hiển thị rồi
+        if (findMessageRowByLocalId(entry.localId)) return;
         const imageFile = pendingImageFiles.get(entry.localId) || null;
         const tempMessage = {
           sender: currentPageID,
@@ -567,9 +555,6 @@
       });
     }
 
-    // Thử gửi lại 1 tin nhắn thất bại trước đó, do người dùng bấm vào badge
-    // lỗi. Nếu tin có cả text lẫn ảnh và 1 phần đã gửi thành công rồi thì
-    // chỉ gửi lại đúng phần còn thiếu — không gửi trùng phần đã thành công.
     async function retryPendingMessage(localId) {
       if (retryingIds.has(localId)) return;
       retryingIds.add(localId);
@@ -589,8 +574,6 @@
       const textToSend = entry.textPartSent ? '' : (entry.message || '');
 
       if (needsImage && !imageFile) {
-        // Ảnh không còn trong bộ nhớ (VD sau khi tải lại trang) — không thể
-        // tự gửi lại được nữa, cần người dùng chọn lại ảnh và gửi tin mới.
         retryingIds.delete(localId);
         showFailBadge(row, localId, 'Ảnh đã mất do tải lại trang — vui lòng chọn lại ảnh và gửi tin mới.');
         return;
@@ -901,9 +884,6 @@
         pendingImageFiles.set(localId, tempImageFile);
       }
 
-      // Lưu tạm ở localStorage ngay từ đầu: nếu trang bị đóng/tải lại đột
-      // ngột giữa chừng gửi, tin nhắn vẫn còn đó để hiển thị lại và chờ bấm
-      // gửi lại ở lần mở hội thoại kế tiếp (trong vòng 24h).
       PendingMessages.save(currentCustomerId, {
         localId: localId,
         message: tempMessageText || null,
@@ -970,8 +950,6 @@
           console.error('Lỗi fetch:', error);
 
           const row = findMessageRowByLocalId(localId);
-          // Tin vẫn còn trong localStorage từ bước lưu ban đầu — chỉ cần cập
-          // nhật lại lý do lỗi để hiển thị badge.
           PendingMessages.save(currentCustomerId, {
             localId: localId,
             message: tempMessageText || null,
@@ -1083,13 +1061,25 @@
       const file = event.target.files[0];
       if (file) {
         currentImageFile = file;
-        const reader = new FileReader();
-        reader.onload = e => {
-          imagePreview.src = e.target.result;
-          imagePreviewContainer.style.display = 'flex';
+        imagePreviewContainer.style.display = 'flex';
+
+        if (file.type.startsWith('video/')) {
+          imagePreview.innerHTML = `<video src="${URL.createObjectURL(file)}" muted playsinline></video>`;
           autoResizeInput();
-        };
-        reader.readAsDataURL(file);
+        } else if (file.type.startsWith('audio/')) {
+          imagePreview.innerHTML = `<i class="bi bi-file-earmark-music-fill"></i>`;
+          autoResizeInput();
+        } else if (file.type.startsWith('image/')) {
+          const reader = new FileReader();
+          reader.onload = e => {
+            imagePreview.innerHTML = `<img src="${e.target.result}" alt="Image preview" />`;
+            autoResizeInput();
+          };
+          reader.readAsDataURL(file);
+        } else {
+          imagePreview.innerHTML = `<i class="bi bi-file-earmark-fill"></i>`;
+          autoResizeInput();
+        }
       }
     }
 
@@ -1106,7 +1096,7 @@
         if (inputTakePhoto) inputTakePhoto.value = null;
         if (inputChooseFile) inputChooseFile.value = null;
         imagePreviewContainer.style.display = 'none';
-        imagePreview.src = '#';
+        imagePreview.innerHTML = '';
         autoResizeInput();
       });
     }

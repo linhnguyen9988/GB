@@ -267,7 +267,7 @@ table.table th i {
 
 table.table td a {
 	font-weight: bold;
-	color: #000000;
+	color: var(--ink-900, #000000);
 	display: inline-block;
 	text-decoration: none;
 }
@@ -680,14 +680,12 @@ table.dataTable tbody tr.selected {
     --border: #dee2e6;
 }
 
-@media (prefers-color-scheme: dark) {
-    #trackingModal {
-        --bg-main: #121212;
-        --bg-card: #1e1e1e;
-        --text: #e0e0e0;
-        --text-sub: #aaaaaa;
-        --border: #333333;
-    }
+[data-bs-theme="dark"] #trackingModal {
+    --bg-main: #121212;
+    --bg-card: #1e1e1e;
+    --text: #e0e0e0;
+    --text-sub: #aaaaaa;
+    --border: #333333;
 }
 
 #trackingModal .modal-content {
@@ -797,12 +795,10 @@ table.dataTable tbody tr.selected {
     font-size: 0.8rem;
 }
 
-@media (prefers-color-scheme: dark) {
-    .shipper-tag {
-        background: rgba(0, 123, 255, 0.15) !important;
-        color: #4da3ff !important;
-        border-color: rgba(77, 163, 255, 0.3);
-    }
+[data-bs-theme="dark"] .shipper-tag {
+    background: rgba(0, 123, 255, 0.15) !important;
+    color: #4da3ff !important;
+    border-color: rgba(77, 163, 255, 0.3);
 }
 
 .shipper-tag:active {
@@ -1028,11 +1024,9 @@ table.dataTable tbody tr.selected {
     color: #0d6efd;
 }
 
-@media (prefers-color-scheme: dark) {
-    .qr-chot-summary {
-        background: rgba(13, 110, 253, 0.15);
-        border-color: rgba(13, 110, 253, 0.3);
-    }
+[data-bs-theme="dark"] .qr-chot-summary {
+    background: rgba(13, 110, 253, 0.15);
+    border-color: rgba(13, 110, 253, 0.3);
 }
  
 #modaldetail {
@@ -1043,14 +1037,12 @@ table.dataTable tbody tr.selected {
     --border: #dee2e6;
 }
 
-@media (prefers-color-scheme: dark) {
-    #modaldetail {
-        --bg-main: #121212;
-        --bg-card: #1e1e1e;
-        --text: #e0e0e0;
-        --text-sub: #aaaaaa;
-        --border: #333333;
-    }
+[data-bs-theme="dark"] #modaldetail {
+    --bg-main: #121212;
+    --bg-card: #1e1e1e;
+    --text: #e0e0e0;
+    --text-sub: #aaaaaa;
+    --border: #333333;
 }
 
 .order-detail-card {

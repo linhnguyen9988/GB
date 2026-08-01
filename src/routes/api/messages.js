@@ -8,7 +8,58 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 
-const upload = multer({ dest: 'uploads/' });
+// Accept image, video, and audio uploads. FB Send API attachment uploads
+// (non-resumable) are capped around 25MB, so we enforce the same limit here
+// and reject anything else early instead of wasting time uploading it.
+const ALLOWED_MIME_PREFIXES = ['image/', 'video/', 'audio/'];
+
+// Dart's http package can't always guess a proper Content-Type for a given
+// file (camera-recorded temp files, some file_picker results, etc.) and
+// falls back to 'application/octet-stream'. When that happens we fall back
+// to the file's extension instead of rejecting it outright.
+const EXT_TYPE_MAP = {
+  '.jpg': 'image', '.jpeg': 'image', '.png': 'image', '.gif': 'image',
+  '.webp': 'image', '.heic': 'image', '.heif': 'image', '.bmp': 'image',
+  '.mp4': 'video', '.mov': 'video', '.m4v': 'video', '.3gp': 'video',
+  '.3gpp': 'video', '.avi': 'video', '.mkv': 'video', '.webm': 'video',
+  '.mp3': 'audio', '.m4a': 'audio', '.wav': 'audio', '.aac': 'audio',
+  '.ogg': 'audio', '.oga': 'audio', '.amr': 'audio', '.opus': 'audio', '.flac': 'audio',
+};
+
+// Returns 'image' | 'video' | 'audio' | null
+function detectAttachmentType(file) {
+  const mimePrefix = ALLOWED_MIME_PREFIXES.find((p) => (file.mimetype || '').startsWith(p));
+  if (mimePrefix) return mimePrefix.replace('/', '');
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  return EXT_TYPE_MAP[ext] || null;
+}
+
+const upload = multer({
+  dest: 'uploads/',
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const type = detectAttachmentType(file);
+    cb(type ? null : new Error('Định dạng tệp không được hỗ trợ'), !!type);
+  },
+});
+
+// multer throws synchronously/via callback on file-size or fileFilter
+// rejections. Without catching it explicitly here, Express falls back to its
+// default error handler, which returns a raw HTML 500 instead of JSON —
+// that's the "báo lỗi 500" the client was seeing whenever an attachment was
+// too large or an unsupported type.
+function uploadAttachment(req, res, next) {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      const message =
+        err.code === 'LIMIT_FILE_SIZE'
+          ? 'Tệp quá lớn (tối đa 25MB).'
+          : err.message || 'Lỗi khi tải tệp lên.';
+      return res.status(400).json({ success: false, error: message });
+    }
+    next();
+  });
+}
 
 router.get('/', auth, async (req, res) => {
   const { pageId, sender, limit = 50, offset = 0 } = req.query;
@@ -72,7 +123,7 @@ router.get('/conversation/:sender', auth, async (req, res) => {
   }
 });
 
-router.post('/send', auth, upload.single('image'), async (req, res) => {
+router.post('/send', auth, uploadAttachment, async (req, res) => {
   const { recipient, message, currentPageID } = req.body;
   const file = req.file;
 
@@ -115,14 +166,16 @@ router.post('/send', auth, upload.single('image'), async (req, res) => {
       return rows.map(r => r.commentid);
     };
 
-    const sendDirect = async (attachmentId, textContent) => {
+    // attachmentType is 'image' | 'video' | 'audio' — determines both the
+    // upload payload type and the outgoing message attachment type.
+    const sendDirect = async (attachmentId, attachmentType, textContent) => {
       let imageSent = false, textSent = false;
 
       if (attachmentId) {
         let payload = {
           recipient: { id: recipient },
           messaging_type: 'UPDATE',
-          message: { attachment: { type: 'image', payload: { attachment_id: attachmentId } } }
+          message: { attachment: { type: attachmentType, payload: { attachment_id: attachmentId } } }
         };
         const result = await sendMessageWithPayload(payload);
         if (result.success) {
@@ -160,7 +213,7 @@ router.post('/send', auth, upload.single('image'), async (req, res) => {
       return { success, imageSent, textSent };
     };
 
-    const sendPrivateReply = async (attachmentId, textContent) => {
+    const sendPrivateReply = async (attachmentId, attachmentType, textContent) => {
       const commentIds = await getRecentCommentIds(recipient);
       if (!commentIds.length) {
         return { success: false, imageSent: false, textSent: false };
@@ -177,7 +230,7 @@ router.post('/send', auth, upload.single('image'), async (req, res) => {
             sendMessageWithPayload({
               messaging_type: 'RESPONSE',
               recipient: { comment_id: commentId },
-              message: { attachment: { type: 'image', payload: { attachment_id: attachmentId } } }
+              message: { attachment: { type: attachmentType, payload: { attachment_id: attachmentId } } }
             }).then(r => { if (r.success) imageSent = true; })
           );
         }
@@ -206,36 +259,52 @@ router.post('/send', auth, upload.single('image'), async (req, res) => {
     };
 
     let attachmentId = null;
+    let attachmentType = null;
     if (file && file.path) {
-      const optimizedPath = file.path + '_opt.jpg';
+      attachmentType = detectAttachmentType(file) || 'image';
+
       try {
-        await sharp(file.path)
-          .rotate()
-          .resize(1024, 1024, { fit: sharp.fit.inside, withoutEnlargement: true })
-          .jpeg({ quality: 70 })
-          .toFile(optimizedPath);
-        fs.unlinkSync(file.path);
+        let uploadPath = file.path;
+        let cleanupPaths = [file.path];
+
+        if (attachmentType === 'image') {
+          // Images get re-encoded/resized before upload to keep things fast
+          // and cheap; video/audio are sent through as-is.
+          const optimizedPath = file.path + '_opt.jpg';
+          await sharp(file.path)
+            .rotate()
+            .resize(1024, 1024, { fit: sharp.fit.inside, withoutEnlargement: true })
+            .jpeg({ quality: 70 })
+            .toFile(optimizedPath);
+          fs.unlinkSync(file.path);
+          uploadPath = optimizedPath;
+          cleanupPaths = [optimizedPath];
+        }
 
         const form = new FormData();
         form.append('message', JSON.stringify({
-          attachment: { type: 'image', payload: { is_reusable: true } }
+          attachment: { type: attachmentType, payload: { is_reusable: true } }
         }));
-        form.append('filedata', fs.createReadStream(optimizedPath));
+        form.append('filedata', fs.createReadStream(uploadPath));
 
         const uploadRes = await axios.post(
           `https://graph.facebook.com/v19.0/me/message_attachments?access_token=${token}`,
           form, { headers: form.getHeaders() }
         );
         attachmentId = uploadRes.data.attachment_id;
-        fs.unlinkSync(optimizedPath);
+
+        for (const p of cleanupPaths) {
+          if (fs.existsSync(p)) fs.unlinkSync(p);
+        }
       } catch (err) {
         if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
         if (fs.existsSync(file.path + '_opt.jpg')) fs.unlinkSync(file.path + '_opt.jpg');
-        return res.status(500).json({ success: false, error: 'Lỗi khi xử lý hình ảnh.' });
+        const label = attachmentType === 'video' ? 'video' : attachmentType === 'audio' ? 'âm thanh' : 'hình ảnh';
+        return res.status(500).json({ success: false, error: `Lỗi khi xử lý tệp ${label}.` });
       }
     }
 
-    const directResult = await sendDirect(attachmentId, message);
+    const directResult = await sendDirect(attachmentId, attachmentType, message);
     if (directResult.success) {
       return res.json({ success: true, message: 'Gửi thành công.' });
     }
@@ -248,6 +317,7 @@ router.post('/send', auth, upload.single('image'), async (req, res) => {
     if (needImage || needText) {
       const privateResult = await sendPrivateReply(
         needImage ? attachmentId : null,
+        attachmentType,
         needText ? message : null
       );
       imageSent = imageSent || privateResult.imageSent;
@@ -260,7 +330,7 @@ router.post('/send', auth, upload.single('image'), async (req, res) => {
     }
 
     const failedParts = [];
-    if (attachmentId && !imageSent) failedParts.push('ảnh');
+    if (attachmentId && !imageSent) failedParts.push('tệp đính kèm');
     if (message && !textSent) failedParts.push('tin nhắn văn bản');
     const reason = failedParts.length
       ? `Không thể gửi ${failedParts.join(' và ')}.`
