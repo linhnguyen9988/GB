@@ -822,13 +822,30 @@ function FillDiaChi() {
         }
     });
 
+    LoadDonHangDaLen(x[0], DONHANG_DEFAULT_LIMIT);
+}
+
+// Số đơn mặc định hiển thị khi mới chọn khách hàng
+var DONHANG_DEFAULT_LIMIT = 5;
+
+// Nạp danh sách đơn hàng của khách vào select #donhangdalen.
+// Nếu limit truyền vào là số dương -> chỉ lấy limit đơn gần nhất (khớp BE /getuserorder).
+// Nếu limit là null/0/undefined -> lấy toàn bộ đơn hàng.
+function LoadDonHangDaLen(userid, limit) {
+    var donhang = document.getElementById('donhangdalen');
+    if (!donhang || !userid) return;
+
+    var params = { userid: userid };
+    if (Number.isInteger(limit) && limit > 0) {
+        params.limit = limit;
+    }
+
     $.ajax({
         url: "/getuserorder",
         method: "POST",
-        data: { userid: x[0] },
+        data: params,
         dataType: "JSON",
         success: function (data) {
-            var donhang = document.getElementById('donhangdalen');
             removeOptions(donhang);
             for (var i = 0; i < data.data.length; i++) {
                 let date = data.data[i].date.substring(9);
@@ -840,9 +857,52 @@ function FillDiaChi() {
                 AddOptions(donhang, data.data[i].realorderid,
                     date + " - " + data.data[i].name + " - " + data.data[i].cod.toLocaleString() + "đ [" + data.data[i].kg + " KG] [" + statustext + "]");
             }
+
+            // Chỉ hiện nút "Xem tất cả" khi đang ở chế độ giới hạn và có thể còn đơn khác chưa hiển thị
+            var btnAll = document.getElementById('btnxemtatcadon');
+            if (btnAll) {
+                var conLai = params.limit && data.data.length >= params.limit;
+                btnAll.style.display = conLai ? '' : 'none';
+            }
         }
     });
 }
+
+(function injectXemTatCaDonButton() {
+    var observer;
+    function tryInject() {
+        if (document.getElementById('btnxemtatcadon')) {
+            if (observer) observer.disconnect();
+            return;
+        }
+        var donhangSelect = document.getElementById('donhangdalen');
+        if (!donhangSelect) return;
+
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.id = 'btnxemtatcadon';
+        btn.className = 'btn btn-outline-secondary';
+        btn.title = 'Xem tất cả đơn hàng';
+        btn.innerHTML = '<i class="bi bi-list-ul"></i>';
+        btn.style.display = 'none';
+        btn.onclick = function () {
+            var uid = window.userid || document.getElementById('userid').value;
+            LoadDonHangDaLen(uid, null);
+        };
+
+        donhangSelect.insertAdjacentElement('afterend', btn);
+        if (observer) observer.disconnect();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', tryInject);
+    } else {
+        tryInject();
+    }
+    // Phòng trường hợp select đơn hàng được render động sau khi DOM đã sẵn sàng
+    observer = new MutationObserver(tryInject);
+    observer.observe(document.body, { childList: true, subtree: true });
+})();
 window.saveFile = function saveFile() {
     $.ajax({
         url: "/getdonhangjt",

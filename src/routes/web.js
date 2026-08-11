@@ -437,6 +437,8 @@ const FormData = require('form-data');
 async function tryInsertMessageAsComment(khachhang, sender, text, timemess, pageid, io) {
     try {
         const db = DBConnection.promise();
+
+        // Lấy live mới nhất (theo id auto increment), kiểm tra có đang LIVE không
         const [liveRows] = await db.query(
             `SELECT liveid, status FROM postlive ORDER BY id DESC LIMIT 1`
         );
@@ -1209,7 +1211,7 @@ ORDER BY t1.id DESC;
 
             const token = await getPageToken(users[0].pageid);
             const recipientId = orders[0].userid;
-            const text = `Shipper thông báo đơn hàng [${cod.toLocaleString()}đ] của chị có trạng thái [${issue}]\r\nNếu cần liên hệ xin gọi [${shipper_name}]. Số bưu tá ${shipper_phone}. Hoặc nếu thông tin trên sai xin nhắn lại với shop em ạ, em cám ơn!`;
+            const text = `Viettel Post\r\nTiền hàng: ${cod.toLocaleString()}đ\r\nTrạng thái: ${issue}\r\nBưu tá: ${shipper_name}\r\nSố bưu tá: ${shipper_phone}\r\nXin hãy gọi bưu tá\r\nNếu đã nhận hàng xin bỏ qua tin nhắn này.`;
 
             const tryingSend = async (messaging_type, tag = null) => {
                 const payload = {
@@ -1515,7 +1517,7 @@ ORDER BY t1.id DESC;
             if (picture) download(picture, userid, 'C:/GB/src/public/images/ava/').catch(() => { });
             const timelocal = new Date(payload.created_time)
                 .toLocaleString("en-US", { timeZone: "Asia/Saigon" });
-            
+
             if (!userid || !message) {
                 return res.status(400).json({ success: false, message: "Thiếu userid/message" });
             }
@@ -1579,9 +1581,10 @@ ORDER BY t1.id DESC;
     router.post('/facebook', async function (req, res) {
         res.sendStatus(200);
         const io = socket.getIo();
-        const EmitMessage = async (id, phone, picture, sender, recipient, text, timemess, fbname, messageImg, label, pageid, diachi, nuocngoai, is_echo, note) => {
+        const EmitMessage = async (id, phone, picture, sender, recipient, text, timemess, fbname, messageImg, label, pageid, diachi, nuocngoai, is_echo, note, messid) => {
             const newMessageData = {
                 id: id,
+                messid: messid || null,
                 phone: phone,
                 picture: picture,
                 senderId: sender,
@@ -1692,7 +1695,7 @@ ORDER BY t1.id DESC;
                                         }
                                     }
                                     const avatar = `https://aodaigiabao.com/images/ava/${khachhang}.jpg`
-                                    EmitMessage(curCus.id, curCus.phone, avatar, sender, recipient, text || '', timemess, curCus.fbname, finalImageString, curCus.label, curCus.pageid, curCus.diachi, curCus.nuocngoai, echo, curCus.note);
+                                    EmitMessage(curCus.id, curCus.phone, avatar, sender, recipient, text || '', timemess, curCus.fbname, finalImageString, curCus.label, curCus.pageid, curCus.diachi, curCus.nuocngoai, echo, curCus.note, messid);
                                     if (!is_echo && text && sender !== GlobalPageID && sender !== GlobalPageID2) {
                                         tryInsertMessageAsComment(khachhang, sender, text, timemess, pageid, io);
                                     }
@@ -1722,15 +1725,15 @@ ORDER BY t1.id DESC;
 
                                     DBConnection.query(sqlInsert, function (err, result) {
                                         if (!err) {
-                                            EmitMessage(result.insertId, phone, picture, sender, recipient, text || '', timemess, fbname, finalImageString, '', pageid, '', '', echo);
+                                            EmitMessage(result.insertId, phone, picture, sender, recipient, text || '', timemess, fbname, finalImageString, '', pageid, '', '', echo, '', messid);
                                             if (!is_echo && text && sender !== GlobalPageID && sender !== GlobalPageID2) {
                                                 tryInsertMessageAsComment(khachhang, sender, text, timemess, pageid, io);
                                             }
                                         }
-                                        resolve();
+                                        resolve(); // Xong khách mới
                                     });
                                 } else {
-                                    resolve();
+                                    resolve(); // Kết thúc echo
                                 }
                             });
                         });
@@ -2404,11 +2407,17 @@ ORDER BY t1.id DESC;
     router.post('/getuserorder', async function (req, res) {
         try {
             const userid = req.body.userid;
+            const limit = parseInt(req.body.limit, 10);
             const db = DBConnection.promise();
-            const [finalData] = await db.query(
-                'SELECT * FROM lendon WHERE userid=? ORDER BY ID desc LIMIT 3',
-                [userid]
-            );
+
+            let sql = 'SELECT * FROM lendon WHERE userid=? ORDER BY ID desc';
+            const params = [userid];
+            if (Number.isInteger(limit) && limit > 0) {
+                sql += ' LIMIT ?';
+                params.push(limit);
+            }
+
+            const [finalData] = await db.query(sql, params);
 
             res.json({ success: true, data: finalData });
 

@@ -114,6 +114,39 @@ router.get('/logs/:orderNumber', auth, async (req, res) => {
   }
 });
 
+// GET /api/orders/call-log/:orderNumber — lịch sử cuộc gọi cho đơn (Viettel Post)
+router.get('/call-log/:orderNumber', auth, async (req, res) => {
+  const axios = require('axios');
+  try {
+    const orderNumber = req.params.orderNumber;
+    if (!orderNumber) return res.status(400).json({ error: 'Thiếu mã vận đơn' });
+
+    const [[tokenRow]] = await db.query('SELECT token FROM vietteltoken LIMIT 1');
+    if (!tokenRow?.token) {
+      return res.status(400).json({ error: 'Chưa có token Viettel Post' });
+    }
+
+    const response = await axios.get('https://partner.viettelpost.vn/v2/order/call-log', {
+      params: { orderNumber },
+      headers: {
+        accept: '*/*',
+        Token: tokenRow.token,
+      },
+      timeout: 10000,
+    });
+
+    const body = response.data;
+    if (body?.error) {
+      return res.status(400).json({ error: body.message || 'Lỗi lấy lịch sử cuộc gọi' });
+    }
+
+    res.json(body?.data || []);
+  } catch (err) {
+    const apiMsg = err.response?.data?.message;
+    res.status(500).json({ error: apiMsg || err.message });
+  }
+});
+
 // GET /api/orders/:id
 router.get('/:id', auth, async (req, res) => {
   try {

@@ -90,8 +90,6 @@
     }
   }
 </script>
-<!-- Bootstrap JS đã được load 1 lần duy nhất ở header/headerafterlogin (v5.3.3, kèm Popper).
-     Không load lại ở đây để tránh 2 runtime Bootstrap chồng nhau gây lỗi backdrop che modal. -->
 
 <script>
   let currentPageID = null;
@@ -114,7 +112,32 @@
   let startY = 0;
   let isPulling = false;
   const PULL_THRESHOLD = 80;
-  let numMess = 0;
+  function findRowByMsgId(msgId) {
+    if (!msgId || !modalMessagesContainer) return null;
+    return modalMessagesContainer.querySelector(`[data-msg-id="${CSS.escape(String(msgId))}"]`);
+  }
+  const recentlySentByMe = [];
+  const RECENT_SENT_TTL_MS = 20000;
+  function trackSentByMe(text, hasImage, localId) {
+    recentlySentByMe.push({ text: text || null, hasImage: !!hasImage, localId: localId, time: Date.now() });
+  }
+  function consumeIfSentByMe(text, hasImage) {
+    const now = Date.now();
+    for (let i = 0; i < recentlySentByMe.length; i++) {
+      const entry = recentlySentByMe[i];
+      if (now - entry.time > RECENT_SENT_TTL_MS) continue;
+      const textMatch = hasImage ? true : (entry.text === (text || null));
+      const imageMatch = hasImage ? entry.hasImage : true;
+      if (textMatch && imageMatch) {
+        recentlySentByMe.splice(i, 1);
+        return entry.localId || true;
+      }
+    }
+    for (let i = recentlySentByMe.length - 1; i >= 0; i--) {
+      if (now - recentlySentByMe[i].time > RECENT_SENT_TTL_MS) recentlySentByMe.splice(i, 1);
+    }
+    return false;
+  }
 
   const PendingMessages = (function () {
     const STORAGE_KEY = 'pending_messages_v1';
@@ -865,15 +888,15 @@
     function sendMessage() {
       const messageText = messageInput.value.trim();
       if (!messageText && !currentImageFile) return;
+      const localId = 'local_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
       if (messageText) {
-        numMess++;
+        trackSentByMe(messageText, false, localId);
       }
       if (currentImageFile) {
-        numMess++;
+        trackSentByMe(null, true, localId);
       }
       const tempMessageText = messageInput.value;
       const tempImageFile = currentImageFile;
-      const localId = 'local_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
 
       messageInput.value = '';
       currentImageFile = null;
@@ -1373,9 +1396,22 @@
       if (match && match[1]) {
         customerIdx = match[1];
       }
-      if (numMess > 0 && (data.senderId == GlobalPageID || data.senderId == GlobalPageID2)) {
-        numMess--;
+      if (data.messid && findRowByMsgId(data.messid)) {
         return;
+      }
+
+      let ownLocalId = null;
+      if (data.senderId == GlobalPageID || data.senderId == GlobalPageID2) {
+        const hasImage = !!(data.messageImg && data.messageImg.trim());
+        const matched = consumeIfSentByMe(data.messageText, hasImage);
+        if (matched) {
+          ownLocalId = typeof matched === 'string' ? matched : null;
+          if (ownLocalId && data.messid) {
+            const ownRow = findMessageRowByLocalId(ownLocalId);
+            if (ownRow) ownRow.dataset.msgId = data.messid;
+          }
+          return;
+        }
       }
       if (customerIdx == data.senderId || data.recipientId == customerIdx) {
         let contentMess = data.messageText;
@@ -1415,6 +1451,7 @@
         let messageRow = null;
         addMessageToContainer(newMess).then(row => {
           messageRow = row;
+          if (row && data.messid) row.dataset.msgId = data.messid;
         });
         setTimeout(function () {
           const elementsToHide = document.querySelectorAll('.message-status-icon-wrapper');

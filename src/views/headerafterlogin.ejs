@@ -138,7 +138,23 @@
     checkAndReload();
   }
 
+  function resetQRCustomerInfo() {
+    // Xoá sạch thông tin khách hàng/đơn hàng của lần quét trước, tránh trường hợp
+    // quét lần mới thất bại nhưng màn hình vẫn còn hiển thị thông tin khách cũ.
+    $('#qrresult').empty();
+    khid = '';
+    userid = '';
+    fbnamex = '';
+    realid = '';
+    phonex = '';
+    var videoContainerEl = document.getElementById("video-container");
+    if (videoContainerEl) {
+      videoContainerEl.style.display = "block";
+    }
+  }
+
   function ScanQR2() {
+    resetQRCustomerInfo();
     $('#modalQR2').modal('show');
     scanner.start().then(function () { _startRot(); });
   }
@@ -710,11 +726,15 @@
     OrderJourney(orderNum, name, uId, phone);
   }
 
+  let currentTrackingOrderNumber = '';
+
   function OrderJourney(orderNumber, customerName, userId, customerPhone) {
     if (!orderNumber || orderNumber === 'undefined') {
       alert("Mã vận đơn không hợp lệ!");
       return;
     }
+
+    currentTrackingOrderNumber = orderNumber;
 
     document.getElementById('header-order-number').innerText = orderNumber;
     document.getElementById('header-customer-name').innerText = customerName || 'Khách hàng';
@@ -732,8 +752,29 @@
       phoneLink.style.pointerEvents = "none";
     }
 
+    // Luôn mở lại ở tab Hành trình mỗi khi xem một đơn mới
+    document.getElementById('tab-journey-btn').classList.add('active');
+    document.getElementById('tab-calllog-btn').classList.remove('active');
+
     $('#trackingModal').modal('show');
 
+    loadOrderJourney(orderNumber);
+  }
+
+  function switchTrackingTab(tab) {
+    document.getElementById('tab-journey-btn').classList.toggle('active', tab === 'journey');
+    document.getElementById('tab-calllog-btn').classList.toggle('active', tab === 'calllog');
+
+    if (!currentTrackingOrderNumber) return;
+
+    if (tab === 'journey') {
+      loadOrderJourney(currentTrackingOrderNumber);
+    } else {
+      loadOrderCallLog(currentTrackingOrderNumber);
+    }
+  }
+
+  function loadOrderJourney(orderNumber) {
     const content = document.getElementById('modal-tracking-content');
     content.innerHTML = '<div class="text-center p-4"><i class="fa fa-spinner fa-spin"></i> Đang tải hành trình...</div>';
 
@@ -766,6 +807,46 @@
                     <div class="text-center p-4">
                         <img src="https://cdn-icons-png.flaticon.com/512/4076/4076432.png" style="width: 80px; opacity: 0.5">
                         <p class="mt-3 text-muted">Đơn hàng này chưa có hành trình chi tiết.</p>
+                    </div>`;
+        }
+      })
+      .catch(err => {
+        content.innerHTML = `<div class="alert alert-danger">Lỗi: ${err.message}</div>`;
+      });
+  }
+
+  function loadOrderCallLog(orderNumber) {
+    const content = document.getElementById('modal-tracking-content');
+    content.innerHTML = '<div class="text-center p-4"><i class="fa fa-spinner fa-spin"></i> Đang tải lịch sử cuộc gọi...</div>';
+
+    fetch(`/api/orders/call-log/${orderNumber}`)
+      .then(response => {
+        if (!response.ok) return response.json().then(e => { throw new Error(e.error || 'Không thể kết nối API'); });
+        return response.json();
+      })
+      .then(res => {
+        const logs = Array.isArray(res) ? res : (res.data || []);
+        if (logs.length > 0) {
+          let html = '';
+          logs.forEach((log) => {
+            const isSuccess = (log.CALL_STATUS || '').includes('Thành công');
+            const durationSec = Math.round((log.CALL_DURATION || 0) / 1000);
+            const phone = log.EMPLOYEE_TELEPHONE || '';
+
+            html += `
+                    <div class="tracking-card">
+                        <span class="card-status" style="color:${isSuccess ? '#28a745' : '#dc3545'}"><i class="bi bi-telephone${isSuccess ? '-inbound' : '-x'}"></i> ${log.CALL_STATUS || ''}</span>
+                        - <span class="card-time">${log.CALL_TIME || ''}</span>
+                        <div class="card-location">⏱️ Thời lượng: ${durationSec}s</div>
+                        ${log.EMPLOYEE_FULLNAME ? `<a href="tel:${phone}" class="shipper-tag"><b>${log.EMPLOYEE_FULLNAME}</b>&nbsp;${phone ? '- ' + phone : ''}</a>` : ''}
+                    </div>`;
+          });
+          content.innerHTML = html;
+        } else {
+          content.innerHTML = `
+                    <div class="text-center p-4">
+                        <img src="https://cdn-icons-png.flaticon.com/512/4076/4076432.png" style="width: 80px; opacity: 0.5">
+                        <p class="mt-3 text-muted">Đơn hàng này chưa có cuộc gọi nào.</p>
                     </div>`;
         }
       })
@@ -1439,6 +1520,23 @@
   const video = document.getElementById('qr-video');
   const videoContainer = document.getElementById('video-container');
   const camList = document.getElementById('cam-list');
+  // Hiện khi quét QR mà không tìm thấy khách hàng/đơn hàng (lỗi tra cứu hoặc không có dữ liệu):
+  // hiện nút "Thử lại" và bật lại camera quét QR ngay, không để camera bị tắt.
+  function handleQRNotFound(message) {
+    $('#qrresult').empty().append(`
+      <div class="qr-notfound-box text-center p-3">
+        <div class="text-muted mb-2"><i class="bi bi-exclamation-circle"></i> ${message}</div>
+        <button type="button" class="btn btn-outline-primary" onclick="retryQRScan()"><i class="bi bi-arrow-repeat"></i> Thử lại</button>
+      </div>
+    `);
+    document.getElementById("video-container").style.display = "block";
+    scanner.start().then(function () { _startRot(); });
+  }
+  window.retryQRScan = function () {
+    resetQRCustomerInfo();
+    scanner.start().then(function () { _startRot(); });
+  };
+
   function setResult(result) {
     if (result.data.length < 5) {
       $('#qrresult').empty();
@@ -1457,6 +1555,10 @@
         data: { id: result.data },
         dataType: "JSON",
         success: function (data) {
+          if (!data || !data.data || data.data.length === 0 || !data.data[0]) {
+            handleQRNotFound('Không tìm thấy khách hàng hoặc đơn hàng ứng với mã QR này.');
+            return;
+          }
           var bomxa = '';
           var note;
           if (data.data[0].note === undefined || data.data[0].note === null || data.data[0].note == 'null') {
@@ -1551,11 +1653,59 @@
             `);
 
           FillDiaChiLenDon(data.data[0].phone);
+
+          // Số đơn mặc định hiển thị trong khung QR (khớp mặc định của BE /getuserorder)
+          var QR_DONHANG_DEFAULT_LIMIT = 5;
+
+          // Đổ danh sách đơn hàng vào select #userorder.
+          // limit là số dương -> chỉ lấy limit đơn gần nhất; null/0 -> lấy toàn bộ đơn.
+          // Gán vào window vì hàm này được khai báo trong closure nhưng được gọi
+          // từ thuộc tính onclick trong HTML (chạy ở global scope).
+          window.loadQROrderList = function (userid, limit) {
+            var params = { userid: userid };
+            if (limit) {
+              params.limit = limit;
+            }
+            $.ajax({
+              url: "/getuserorder",
+              method: "POST",
+              dataType: "JSON",
+              data: params,
+              success: function (order) {
+                var select = document.getElementById("userorder");
+                if (!select) return;
+                removeOptions(select);
+                for (var i = 0; i < order.data.length; i++) {
+                  let date = order.data[i].date.substring(9);
+                  if (order.data[i].realorderid.includes('1P1')) {
+                    date = '[1P] ' + date;
+                  }
+                  if (order.data[i].statuscode == 107) {
+                    continue;
+                  }
+                  var statustext = '';
+                  if (order.data[i].statustext == '' || order.data[i].statustext == null) {
+                    statustext = 'TK Cũ';
+                  } else {
+                    statustext = order.data[i].statustext;
+                  }
+                  AddOptions(select, order.data[i].realorderid, `${date} • ${order.data[i].cod.toLocaleString()} • ${order.data[i].kg}KG • ${statustext}`);
+                }
+
+                var btnAll = document.getElementById('btnxemtatcadonqr');
+                if (btnAll) {
+                  var conLai = limit && order.data.length >= limit;
+                  btnAll.style.display = conLai ? '' : 'none';
+                }
+              }
+            });
+          };
+
           $.ajax({
             url: "/getuserorder",
             method: "POST",
             dataType: "JSON",
-            data: { userid: userid },
+            data: { userid: userid, limit: QR_DONHANG_DEFAULT_LIMIT },
             success: function (order) {
               if (order.data.length > 0) {
                 $('#qrresult').append(`
@@ -1567,6 +1717,7 @@
                     <button type="button" class="btn btn-outline-secondary" onclick="PrintOrderAgain()" title="In lại (in nhanh)"><i class="bi bi-printer"></i></button>
                     <button type="button" class="btn btn-outline-secondary" id="btncheckdon" onclick="handleCheckDonHang2()" title="Tra hành trình"><i class="bi bi-truck"></i></button>
                     <button type="button" class="btn btn-outline-secondary" id="btnchitietdon" title="Xem chi tiết đơn" onclick="DetailDonHang(document.getElementById('userorder').value)"><i class="bi bi-receipt"></i></button>
+                    <button type="button" class="btn btn-outline-secondary" id="btnxemtatcadonqr" title="Xem tất cả đơn hàng" style="display:none;" onclick="loadQROrderList('${userid}', null)"><i class="bi bi-list-ul"></i></button>
                   </div>`);
                 for (var i = 0; i < order.data.length; i++) {
                   let date = order.data[i].date.substring(9);
@@ -1583,6 +1734,10 @@
                     statustext = order.data[i].statustext;
                   }
                   AddOptions(document.getElementById("userorder"), order.data[i].realorderid, `${date} • ${order.data[i].cod.toLocaleString()} • ${order.data[i].kg}KG • ${statustext}`);
+                }
+                var btnAllInit = document.getElementById('btnxemtatcadonqr');
+                if (btnAllInit) {
+                  btnAllInit.style.display = (order.data.length >= QR_DONHANG_DEFAULT_LIMIT) ? '' : 'none';
                 }
               }
             }
@@ -1654,6 +1809,9 @@
               }
             });
           }
+        },
+        error: function () {
+          handleQRNotFound('Lỗi tra cứu khách hàng/đơn hàng, vui lòng thử lại.');
         }
       });
     } else {
@@ -1665,7 +1823,7 @@
       $('#modalQR2').modal('hide');
     }
   }
-  $('#modalQR2').on('hidden.bs.modal', function () { scanner.stop(); _stopRot(); });
+  $('#modalQR2').on('hidden.bs.modal', function () { scanner.stop(); _stopRot(); resetQRCustomerInfo(); });
 
   var _rotLast = '';
   var _rotCool = false;
@@ -1713,7 +1871,7 @@
   });
 
   document.getElementById('start-button').addEventListener('click', () => {
-    document.getElementById("video-container").style.display = "block";
+    resetQRCustomerInfo();
     scanner.start().then(function () { _startRot(); });
   });
 </script>
@@ -1884,6 +2042,14 @@
               </div>
             </div>
           </div>
+          <ul class="nav nav-tabs tracking-tabs px-3" id="trackingTabs">
+            <li class="nav-item">
+              <button type="button" class="nav-link active" id="tab-journey-btn" onclick="switchTrackingTab('journey')"><i class="bi bi-truck"></i> Hành trình</button>
+            </li>
+            <li class="nav-item">
+              <button type="button" class="nav-link" id="tab-calllog-btn" onclick="switchTrackingTab('calllog')"><i class="bi bi-telephone"></i> Cuộc gọi</button>
+            </li>
+          </ul>
           <div class="modal-body" id="modal-tracking-content">
           </div>
         </div>

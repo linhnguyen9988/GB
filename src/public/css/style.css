@@ -806,6 +806,29 @@ table.dataTable tbody tr.selected {
     background: #d0e7ff !important;
 }
 
+.tracking-tabs {
+    border-bottom: 1px solid var(--border) !important;
+    background-color: var(--bg-card) !important;
+}
+.tracking-tabs .nav-link {
+    border: none !important;
+    background: transparent !important;
+    color: var(--text-sub) !important;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 10px 14px !important;
+    border-bottom: 2px solid transparent !important;
+    border-radius: 0 !important;
+}
+.tracking-tabs .nav-link.active {
+    color: #004bee !important;
+    border-bottom: 2px solid #004bee !important;
+}
+[data-bs-theme="dark"] .tracking-tabs .nav-link.active {
+    color: #4da3ff !important;
+    border-bottom-color: #4da3ff !important;
+}
+
 #trackingModal .modal-header {
     padding: 1rem 1rem !important;
     border-bottom: 1px solid var(--border) !important;
