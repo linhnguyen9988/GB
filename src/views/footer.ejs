@@ -326,6 +326,69 @@
       return '';
     }
 
+    // ── Tin nhắn dạng template (button/generic) - "Xem đơn hàng", "Gọi bưu tá"... ──
+    function buildTemplateButtonHtml(b) {
+      if (!b) return '';
+      const title = (b.title || '').replace(/</g, '&lt;');
+      if (b.type === 'web_url' && b.url) {
+        return `<a href="${b.url}" target="_blank" rel="noopener" class="message-template-btn"><i class="bi bi-box-arrow-up-right"></i> ${title || 'Xem'}</a>`;
+      }
+      if (b.type === 'phone_number' && b.payload) {
+        return `<a href="tel:${b.payload}" class="message-template-btn"><i class="bi bi-telephone-fill"></i> ${title || 'Gọi'}</a>`;
+      }
+      // postback/account_link... - không thể bấm lại từ khung admin, chỉ hiển thị để biết tin nhắn gốc có nút này
+      return `<span class="message-template-btn message-template-btn-disabled" title="Nút này không thể bấm lại từ khung chat admin"><i class="bi bi-hand-index-thumb"></i> ${title}</span>`;
+    }
+
+    function buildTemplateHtml(tpl) {
+      if (!tpl) return '';
+      let html = `<div class="message-template-card">`;
+      if (tpl.text) {
+        html += `<div class="message-template-text">${tpl.text.replace(/\n/g, '<br>')}</div>`;
+      }
+      if (Array.isArray(tpl.elements) && tpl.elements.length) {
+        html += `<div class="message-template-elements">`;
+        tpl.elements.forEach(el => {
+          html += `<div class="message-template-element">`;
+          if (el.image_url) html += `<img src="${el.image_url}" class="message-template-element-img">`;
+          if (el.title) html += `<div class="message-template-element-title">${el.title}</div>`;
+          if (el.subtitle) html += `<div class="message-template-element-subtitle">${el.subtitle}</div>`;
+          // Receipt template: số lượng / đơn giá từng món
+          if (el.quantity != null || el.price != null) {
+            const qty = el.quantity != null ? `x${el.quantity}` : '';
+            const price = el.price != null ? Number(el.price).toLocaleString('vi-VN') + ' ' + (el.currency || 'đ') : '';
+            html += `<div class="message-template-element-meta">${qty} ${price}</div>`;
+          }
+          (el.buttons || []).forEach(b => { html += buildTemplateButtonHtml(b); });
+          html += `</div>`;
+        });
+        html += `</div>`;
+      }
+      // Receipt template: tổng đơn / địa chỉ / phương thức thanh toán
+      if (tpl.receipt) {
+        const r = tpl.receipt;
+        html += `<div class="message-template-receipt">`;
+        if (r.order_number) html += `<div>Mã đơn: <b>${r.order_number}</b></div>`;
+        if (r.payment_method) html += `<div>Thanh toán: ${r.payment_method}</div>`;
+        if (r.address) {
+          const a = r.address;
+          const addrParts = [a.street_1, a.city, a.state, a.country].filter(Boolean).join(', ');
+          if (addrParts) html += `<div>Địa chỉ: ${addrParts}</div>`;
+        }
+        if (r.summary && r.summary.total_cost != null) {
+          html += `<div class="message-template-receipt-total">Tổng cộng: ${Number(r.summary.total_cost).toLocaleString('vi-VN')} ${r.currency || 'đ'}</div>`;
+        }
+        html += `</div>`;
+      }
+      if (Array.isArray(tpl.buttons) && tpl.buttons.length) {
+        html += `<div class="message-template-buttons">`;
+        tpl.buttons.forEach(b => { html += buildTemplateButtonHtml(b); });
+        html += `</div>`;
+      }
+      html += `</div>`;
+      return html;
+    }
+
     async function renderMessage(msg, shouldShowAvatar) {
       const isPageSender = PAGE_IDS.includes(msg.sender);
 
@@ -347,6 +410,16 @@
       if (msg.message) {
         const formattedMessage = msg.message.replace(/\n/g, '<br>');
         textContentHtml = `<div class="message-text-content">${formattedMessage}</div>`;
+      }
+
+      let templateHtml = '';
+      if (msg.template_json) {
+        try {
+          templateHtml = buildTemplateHtml(JSON.parse(msg.template_json));
+        } catch (e) { /* JSON lỗi thì bỏ qua, không làm gãy cả tin nhắn */ }
+      } else if (msg.template) {
+        // Trường hợp đã được server parse sẵn thành object
+        templateHtml = buildTemplateHtml(msg.template);
       }
 
       let mediaHtml = '';
@@ -443,7 +516,7 @@
         if (textContentHtml) {
           innerHTML += `<div class="message-text-messenger">${textContentHtml}</div>`;
         }
-        innerHTML += `${mediaHtml}${reactionsHtml}`;
+        innerHTML += `${mediaHtml}${templateHtml}${reactionsHtml}`;
         innerHTML += `<div class="message-status-time-wrapper">${timestampHtml}${statusHtml}</div>`;
         innerHTML += `</div>`;
         messageRow.innerHTML = innerHTML;
@@ -453,7 +526,7 @@
         if (textContentHtml) {
           innerHTML += `<div class="message-text-messenger">${textContentHtml}</div>`;
         }
-        innerHTML += `${mediaHtml}${reactionsHtml}`;
+        innerHTML += `${mediaHtml}${templateHtml}${reactionsHtml}`;
         innerHTML += `<div class="message-status-time-wrapper">${timestampHtml}${statusHtml}</div>`;
         innerHTML += `</div>`;
         messageRow.innerHTML = innerHTML;
@@ -1365,8 +1438,15 @@
       let printButton = `<a href="javascript:void(0);" class="no-underline-link" onclick="PrintFromMess(${data.id},'${data.fbname}','${data.phone}','${url}','${data.messageText}')"><i class="bi bi-printer-fill"></i></a>`;
       let nameButton = `<a href="javascript:void(0);" data-customer-id="${data.senderId}" data-customer-name="${data.fbname}" data-sender-page-id="${data.pageid}" class="open-message-modal no-underline-link">${data.fbname} ${phone} ${bomxa}</a>`;
       let messageContent = '';
-      if (data.messageText != null && data.senderId != GlobalPageID && data.senderId != GlobalPageID2) {
+      if (data.messageText != null && data.messageText !== '' && data.senderId != GlobalPageID && data.senderId != GlobalPageID2) {
         messageContent = data.messageText;
+      } else if (data.template && data.senderId != GlobalPageID && data.senderId != GlobalPageID2) {
+        try {
+          const tplPreview = JSON.parse(data.template);
+          messageContent = '🔘 ' + (tplPreview.text || 'Tin nhắn có nút bấm');
+        } catch (e) {
+          messageContent = '🔘 Tin nhắn có nút bấm';
+        }
       } else if (data.senderId != GlobalPageID && data.senderId != GlobalPageID2) {
         const mediaUrls = data.messageImg.split(';');
         mediaUrls.forEach(mediaUrl => {
@@ -1445,6 +1525,7 @@
           message: contentMess || null,
           image: urlx,
           fileType: type,
+          template_json: data.template || null, // tin nhắn dạng nút bấm (Xem đơn hàng, Gọi bưu tá...)
           time: Date.now()
         };
 

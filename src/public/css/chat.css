@@ -806,3 +806,144 @@
     background: #333333;
     color: #d0d0d0;
 }
+/* ── Tin nhắn dạng template (button/generic) - vd: "Xem đơn hàng", "Gọi bưu tá" ── */
+.message-template-card {
+    background-color: #fff;
+    border: 1px solid #e2e2e2;
+    border-radius: 14px;
+    overflow: hidden;
+    width: 240px;
+    max-width: 100%;
+    margin-bottom: 5px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+
+.message-received-messenger .message-template-card,
+.message-sent-messenger .message-template-card {
+    color: #050505;
+}
+
+.message-template-text {
+    padding: 10px 12px;
+    font-size: 13.5px;
+    line-height: 1.4;
+    white-space: pre-line;
+    border-bottom: 1px solid #eee;
+}
+
+.message-template-elements {
+    display: flex;
+    flex-direction: column;
+}
+
+.message-template-element {
+    border-bottom: 1px solid #eee;
+    padding: 8px 10px;
+}
+
+.message-template-element-img {
+    width: 100%;
+    max-height: 120px;
+    object-fit: cover;
+    border-radius: 8px;
+    margin-bottom: 6px;
+}
+
+.message-template-element-title {
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.message-template-element-subtitle {
+    font-size: 12px;
+    color: #777;
+    margin-top: 2px;
+}
+
+.message-template-buttons {
+    display: flex;
+    flex-direction: column;
+}
+
+.message-template-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 9px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #0084ff;
+    text-decoration: none;
+    border-top: 1px solid #eee;
+    cursor: pointer;
+    background: #fff;
+    transition: background-color .15s;
+}
+
+.message-template-btn:hover {
+    background-color: #f5f7fa;
+    color: #0084ff;
+}
+
+.message-template-btn-disabled {
+    color: #999;
+    cursor: default;
+    background: #fafafa;
+}
+
+.message-template-btn-disabled:hover {
+    background-color: #fafafa;
+}
+
+[data-bs-theme="dark"] .message-template-card {
+    background-color: #3a3a3a;
+    border-color: #4a4a4a;
+}
+
+[data-bs-theme="dark"] .message-template-text,
+[data-bs-theme="dark"] .message-template-element {
+    color: #f0f0f0;
+    border-color: #4a4a4a;
+}
+
+[data-bs-theme="dark"] .message-template-btn {
+    background-color: #3a3a3a;
+    border-color: #4a4a4a;
+    color: #4dabf7;
+}
+
+[data-bs-theme="dark"] .message-template-btn:hover {
+    background-color: #454545;
+}
+
+.message-template-element-meta {
+    font-size: 12px;
+    color: #1a7a3c;
+    font-weight: 600;
+    margin-top: 3px;
+}
+
+.message-template-receipt {
+    padding: 8px 12px;
+    font-size: 12.5px;
+    color: #444;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.message-template-receipt-total {
+    font-weight: 700;
+    color: #050505;
+}
+
+[data-bs-theme="dark"] .message-template-receipt {
+    color: #d0d0d0;
+    border-color: #4a4a4a;
+}
+
+[data-bs-theme="dark"] .message-template-receipt-total {
+    color: #f0f0f0;
+}

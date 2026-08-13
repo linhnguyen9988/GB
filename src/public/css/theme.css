@@ -39,7 +39,7 @@
 /* ---------- Base ---------- */
 html, body{ background: var(--bg-app); }
 body{
-  font-family: 'pfb', 'Bai Jamjuree', sans-serif !important;
+  font-family: 'Bai Jamjuree', sans-serif !important;
   color: var(--ink-900);
 }
 h1,h2,h3,h4,h5,h6{ font-weight: 700; color: var(--ink-900); letter-spacing: .1px; }

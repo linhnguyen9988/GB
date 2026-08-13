@@ -13,6 +13,7 @@ const apiNotifications = require('./api/notifications');
 
 import dienNuocController from "../controllers/dienNuocController";
 import orderController from "../controllers/orderController";
+import publicJourneyController from "../controllers/publicJourneyController";
 import profileController from "../controllers/profileController";
 import registerController from "../controllers/registerController";
 import loginController from "../controllers/loginController";
@@ -758,7 +759,7 @@ let initWebRoutes = (app) => {
     router.get('/api/last-messages', async (req, res) => {
         const sqlQuery = `
     SELECT 
-    t1.messid, t1.sender, t1.recipient, t1.message, t1.time, t1.timestamp, t1.image, t1.is_echo, 
+    t1.messid, t1.sender, t1.recipient, t1.message, t1.time, t1.timestamp, t1.image, t1.template_json, t1.is_echo, 
     k.fbname AS ten_khach, k.label AS label, k.note AS note, k.id AS khid
 FROM messaging t1
 INNER JOIN (
@@ -1193,6 +1194,17 @@ ORDER BY t1.id DESC;
         }
     });
 
+    // Chuẩn hoá SĐT VN sang định dạng E.164 (+84...) theo yêu cầu của nút phone_number (Facebook Send API)
+    function toE164VN(phone) {
+        if (!phone) return null;
+        let p = String(phone).replace(/[^\d+]/g, '');
+        if (p.startsWith('+84')) p = p;
+        else if (p.startsWith('84')) p = '+' + p;
+        else if (p.startsWith('0')) p = '+84' + p.slice(1);
+        else return null;
+        return /^\+84\d{9,10}$/.test(p) ? p : null;
+    }
+
     async function SendCanhBao(orderNumber, shipper_name, shipper_phone, cod, issue) {
         try {
             const db = DBConnection.promise();
@@ -1212,12 +1224,40 @@ ORDER BY t1.id DESC;
             const token = await getPageToken(users[0].pageid);
             const recipientId = orders[0].userid;
             const text = `Viettel Post\r\nTiền hàng: ${cod.toLocaleString()}đ\r\nTrạng thái: ${issue}\r\nBưu tá: ${shipper_name}\r\nSố bưu tá: ${shipper_phone}\r\nXin hãy gọi bưu tá\r\nNếu đã nhận hàng xin bỏ qua tin nhắn này.`;
+            const journeyUrl = `https://aodaigiabao.com/journey/${orderNumber}`;
+
+            const buttons = [
+                {
+                    type: 'web_url',
+                    url: journeyUrl,
+                    title: 'Xem đơn hàng' // tối đa 20 ký tự
+                }
+            ];
+            const shipperPhoneE164 = toE164VN(shipper_phone);
+            if (shipperPhoneE164) {
+                buttons.push({
+                    type: 'phone_number',
+                    title: 'Gọi bưu tá', // tối đa 20 ký tự
+                    payload: shipperPhoneE164
+                });
+            }
+            // Log để đối chiếu khi cần debug: số gốc từ webhook có đúng không, có chuẩn hoá thành công không.
+            console.log(`[SendCanhBao] ${orderNumber} - shipper_phone gốc: "${shipper_phone}" -> chuẩn hoá: ${shipperPhoneE164 || '(không hợp lệ, bỏ qua nút gọi)'}`);
 
             const tryingSend = async (messaging_type, tag = null) => {
                 const payload = {
                     recipient: { id: recipientId },
                     messaging_type,
-                    message: { text },
+                    message: {
+                        attachment: {
+                            type: 'template',
+                            payload: {
+                                template_type: 'button',
+                                text, // tối đa 640 ký tự
+                                buttons // tối đa 3 nút
+                            }
+                        }
+                    },
                     ...(tag ? { tag } : {})
                 };
                 const res = await axios.post(
@@ -1581,7 +1621,7 @@ ORDER BY t1.id DESC;
     router.post('/facebook', async function (req, res) {
         res.sendStatus(200);
         const io = socket.getIo();
-        const EmitMessage = async (id, phone, picture, sender, recipient, text, timemess, fbname, messageImg, label, pageid, diachi, nuocngoai, is_echo, note, messid) => {
+        const EmitMessage = async (id, phone, picture, sender, recipient, text, timemess, fbname, messageImg, label, pageid, diachi, nuocngoai, is_echo, note, messid, templateJson) => {
             const newMessageData = {
                 id: id,
                 messid: messid || null,
@@ -1598,7 +1638,8 @@ ORDER BY t1.id DESC;
                 diachi: diachi,
                 nuocngoai: nuocngoai,
                 is_echo: is_echo,
-                note: note || ''
+                note: note || '',
+                template: templateJson || null // JSON string: { template_type, text, buttons[] } - null nếu tin nhắn thường
             };
             io.emit('new-message', newMessageData);
         }
@@ -1628,12 +1669,83 @@ ORDER BY t1.id DESC;
                 }
                 var timemess = new Date(value.timestamp).toLocaleString("en-US", { timeZone: "Asia/Saigon" });
                 var finalImageString = '';
+                var templateJson = null; // Tin nhắn dạng template (nút bấm, generic card...) sẽ được lưu dạng JSON ở đây
 
                 try {
                     if (attachments) {
+                        console.log('[FB webhook raw attachments]', JSON.stringify(attachments));
                         var imageList = [];
+
+                        // Chuẩn hoá 1 button về cùng 1 dạng để lưu & hiển thị lại
+                        var mapBtn = (b) => ({
+                            type: b.type,
+                            title: b.title,
+                            url: b.url || null,
+                            payload: b.payload || null
+                        });
+
                         for (var i = 0; i < attachments.length; i++) {
                             var att = attachments[i];
+
+                            // ── Template thật sự: button / generic (carousel) / list / media / receipt ──
+                            // Tất cả đều KHÔNG có payload.url dạng file, mà có payload.template_type + text/buttons/elements.
+                            if (att.type === 'template' && att.payload) {
+                                var tType = att.payload.template_type || 'button';
+                                templateJson = JSON.stringify({
+                                    template_type: tType,
+                                    text: att.payload.text || '',
+                                    buttons: [
+                                        // List template có thêm 1 nút chung ở cuối danh sách (payload.button)
+                                        ...(att.payload.button ? [mapBtn(att.payload.button)] : []),
+                                        ...((att.payload.buttons || []).map(mapBtn))
+                                    ],
+                                    elements: att.payload.elements ? att.payload.elements.map(el => ({
+                                        title: el.title,
+                                        subtitle: el.subtitle,
+                                        // Generic/List dùng image_url; Media template dùng media_type + url
+                                        image_url: el.image_url || (el.media_type === 'image' ? el.url : null),
+                                        quantity: el.quantity,   // Receipt template
+                                        price: el.price,         // Receipt template
+                                        currency: el.currency,   // Receipt template
+                                        buttons: (el.buttons || []).map(mapBtn)
+                                    })) : undefined,
+                                    // Riêng Receipt template có thêm tổng đơn/địa chỉ/PTTT
+                                    receipt: tType === 'receipt' ? {
+                                        order_number: att.payload.order_number,
+                                        currency: att.payload.currency,
+                                        payment_method: att.payload.payment_method,
+                                        summary: att.payload.summary,
+                                        address: att.payload.address
+                                    } : undefined
+                                });
+                                continue;
+                            }
+
+                            // ── "fallback": khách chia sẻ link web, bài viết, sản phẩm Marketplace... ──
+                            // FB không render được nội dung gốc nên gói lại thành dạng preview link đơn giản.
+                            if (att.type === 'fallback' && att.payload) {
+                                templateJson = JSON.stringify({
+                                    template_type: 'fallback',
+                                    text: att.payload.title || 'Đã chia sẻ 1 liên kết',
+                                    buttons: att.payload.url
+                                        ? [{ type: 'web_url', url: att.payload.url, title: 'Xem nội dung' }]
+                                        : []
+                                });
+                                continue;
+                            }
+
+                            // ── "location": khách bấm nút chia sẻ vị trí hiện tại ──
+                            if (att.type === 'location' && att.payload) {
+                                var coords = att.payload.coordinates;
+                                var mapUrl = att.payload.url || (coords ? `https://www.google.com/maps?q=${coords.lat},${coords.long}` : null);
+                                templateJson = JSON.stringify({
+                                    template_type: 'location',
+                                    text: att.payload.title || 'Đã chia sẻ vị trí',
+                                    buttons: mapUrl ? [{ type: 'web_url', url: mapUrl, title: 'Xem vị trí trên bản đồ' }] : []
+                                });
+                                continue;
+                            }
+
                             var url = (att.payload && att.payload.url) ? att.payload.url : null;
                             if (!url) continue;
 
@@ -1675,9 +1787,12 @@ ORDER BY t1.id DESC;
                     }
 
                     await new Promise((resolve) => {
-                        var sqlMsg = attachments
-                            ? SqlString.format('INSERT IGNORE INTO messaging (messid,sender,recipient,image,time,timestamp,is_echo) VALUES (?,?,?,?,?,?,?);', [messid, sender, recipient, finalImageString, timemess, value.timestamp, echo])
-                            : SqlString.format('INSERT IGNORE INTO messaging (messid,sender,recipient,message,time,timestamp,is_echo) VALUES(?,?,?,?,?,?,?);', [messid, sender, recipient, text, timemess, value.timestamp, echo]);
+                        // Gộp thành 1 câu INSERT duy nhất: 1 tin nhắn có thể có text, ảnh, và/hoặc template
+                        // (trước đây tách 2 nhánh riêng nên tin nhắn template bị rớt mất, không lưu được).
+                        var sqlMsg = SqlString.format(
+                            'INSERT IGNORE INTO messaging (messid,sender,recipient,message,image,template_json,time,timestamp,is_echo) VALUES (?,?,?,?,?,?,?,?,?);',
+                            [messid, sender, recipient, text || null, finalImageString || null, templateJson, timemess, value.timestamp, echo]
+                        );
 
                         DBConnection.query(sqlMsg, async function (err) {
                             if (err) { console.error("Lỗi lưu tin:", err); return resolve(); }
@@ -1695,7 +1810,7 @@ ORDER BY t1.id DESC;
                                         }
                                     }
                                     const avatar = `https://aodaigiabao.com/images/ava/${khachhang}.jpg`
-                                    EmitMessage(curCus.id, curCus.phone, avatar, sender, recipient, text || '', timemess, curCus.fbname, finalImageString, curCus.label, curCus.pageid, curCus.diachi, curCus.nuocngoai, echo, curCus.note, messid);
+                                    EmitMessage(curCus.id, curCus.phone, avatar, sender, recipient, text || '', timemess, curCus.fbname, finalImageString, curCus.label, curCus.pageid, curCus.diachi, curCus.nuocngoai, echo, curCus.note, messid, templateJson);
                                     if (!is_echo && text && sender !== GlobalPageID && sender !== GlobalPageID2) {
                                         tryInsertMessageAsComment(khachhang, sender, text, timemess, pageid, io);
                                     }
@@ -1725,7 +1840,7 @@ ORDER BY t1.id DESC;
 
                                     DBConnection.query(sqlInsert, function (err, result) {
                                         if (!err) {
-                                            EmitMessage(result.insertId, phone, picture, sender, recipient, text || '', timemess, fbname, finalImageString, '', pageid, '', '', echo, '', messid);
+                                            EmitMessage(result.insertId, phone, picture, sender, recipient, text || '', timemess, fbname, finalImageString, '', pageid, '', '', echo, '', messid, templateJson);
                                             if (!is_echo && text && sender !== GlobalPageID && sender !== GlobalPageID2) {
                                                 tryInsertMessageAsComment(khachhang, sender, text, timemess, pageid, io);
                                             }
@@ -3878,6 +3993,10 @@ ORDER BY t1.id DESC;
     router.get("/profile", webAuth, profileController.handleProfile);
     router.get("/diennuoc", webAuth, dienNuocController.handleDienNuoc);
     router.get("/donhang", webAuth, orderController.handleOrder);
+
+    // ── Trang public: khách tra cứu đơn hàng bằng mã đơn, không cần đăng nhập ──
+    router.get("/journey", publicJourneyController.handleJourneySearch);
+    router.get("/journey/:madonhang", publicJourneyController.handleJourneyDetail);
     router.get("/login", loginController.checkLoggedOut, loginController.getPageLogin);
     router.post("/login", loginController.handleLogin);
 

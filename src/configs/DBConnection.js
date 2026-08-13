@@ -11,17 +11,59 @@ const pool = mysql.createPool({
     connectionLimit: 10,
     queueLimit: 0,
     multipleStatements: true,
+
+    // ── Chống "đứng im" khi không kết nối được MySQL ──────────────────
+    // Không set cái này thì Node sẽ chờ theo timeout của hệ điều hành
+    // (trên Windows có thể vài phút) thay vì báo lỗi sau vài giây.
+    connectTimeout: 10000, // 10s: bỏ cuộc và báo lỗi nếu không connect được
+
+    // ── Chống "connection ma" sau khi pool idle lâu (qua đêm, v.v.) ────
+    // Một số firewall/NAT/VPS âm thầm cắt kết nối rảnh; keep-alive giúp
+    // phát hiện sớm connection đã chết thay vì dùng nhầm nó rồi treo.
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 10000,
 });
 
-pool.getConnection()
-    .then(conn => {
-        conn.query("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
-        console.log("✅ Database connected (mysql2/promise pool)");
+// ── Bắt lỗi ở CẤP POOL ─────────────────────────────────────────────────
+// Nếu thiếu handler này, khi 1 connection trong pool bị rớt giữa chừng,
+// pool sẽ không giải phóng đúng slot đó -> sau vài lần là cạn hết
+// connectionLimit -> mọi query sau đó xếp hàng chờ vô thời hạn, im lặng.
+pool.on('error', (err) => {
+    console.error('❌ [MySQL Pool Error]', err.code || err.message, '- pool sẽ tự tạo lại connection khi cần.');
+});
+
+// ── Kết nối thử lúc khởi động, có retry + log rõ ràng ──────────────────
+// Không để lỗi kết nối làm "treo" tiến trình trong im lặng: log từng
+// lần thử, và tự thử lại thay vì bắt người dùng bấm restart thủ công.
+const CONNECT_RETRY_DELAY_MS = 5000;
+let connectAttempt = 0;
+
+async function tryConnectOnce() {
+    connectAttempt += 1;
+    const conn = await pool.getConnection();
+    try {
+        await conn.query("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci");
+        console.log(`✅ Database connected (mysql2/promise pool) - lần thử ${connectAttempt}`);
+    } finally {
         conn.release();
-    })
-    .catch(err => {
-        console.error("❌ Database connection failed:", err.message);
-    });
+    }
+}
+
+function scheduleReconnect() {
+    setTimeout(() => {
+        tryConnectOnce().catch((err) => {
+            console.error(`❌ Database connection failed (lần thử ${connectAttempt}):`, err.code || err.message,
+                `- thử lại sau ${CONNECT_RETRY_DELAY_MS / 1000}s...`);
+            scheduleReconnect();
+        });
+    }, CONNECT_RETRY_DELAY_MS);
+}
+
+tryConnectOnce().catch((err) => {
+    console.error(`❌ Database connection failed (lần thử ${connectAttempt}):`, err.code || err.message,
+        `- thử lại sau ${CONNECT_RETRY_DELAY_MS / 1000}s...`);
+    scheduleReconnect();
+});
 
 const db = {
     query(sql, paramsOrCallback, maybeCallback) {

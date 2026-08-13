@@ -97,9 +97,7 @@ html {
 
 body {
 	margin: 0;
-	/*font-family: "sf-ui-normal";*/
-	/*font-family: 'Bai Jamjuree', sans-serif;*/
-	font-family: pfb;
+	font-family: 'Bai Jamjuree', sans-serif;
 	font-weight: 400;
 	color: #212529;
 	background-color: #fff;
@@ -373,7 +371,7 @@ table.dataTable tbody tr.selected {
 .page_404 {
 	padding: 40px 0;
 	background: #fff;
-	font-family: 'Arvo', serif;
+	font-family: 'Bai Jamjuree', sans-serif;
 }
 
 
