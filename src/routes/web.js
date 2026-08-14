@@ -1,6 +1,5 @@
 ﻿import express from "express";
 
-// ── API routes (backend 2 đã gộp) ──────────────────────────
 const apiAuth = require('./api/auth');
 const apiDashboard = require('./api/dashboard');
 const apiMessages = require('./api/messages');
@@ -9,7 +8,6 @@ const apiCustomers = require('./api/customers');
 const apiOrders = require('./api/orders');
 const apiPages = require('./api/pages');
 const apiNotifications = require('./api/notifications');
-// ────────────────────────────────────────────────────────────
 
 import dienNuocController from "../controllers/dienNuocController";
 import orderController from "../controllers/orderController";
@@ -18,7 +16,7 @@ import profileController from "../controllers/profileController";
 import registerController from "../controllers/registerController";
 import loginController from "../controllers/loginController";
 const jwtAuth = require('../middleware/jwtAuth');
-const { webAuth } = jwtAuth; // dùng chung logic xác thực với API/app Flutter (middleware/jwtAuth.js)
+const { webAuth } = jwtAuth;
 import auth from "../validation/authValidation";
 import DBConnection from "../configs/DBConnection";
 import loadcommentController from "../controllers/loadcommentController";
@@ -35,12 +33,11 @@ const socket = require('../socket');
 const { pushToUser } = require('../socket');
 const multer = require('multer');
 const sharp = require('sharp');
-const upload = multer({ dest: 'uploads/', limits: { fileSize: 25 * 1024 * 1024 } }); // giới hạn 25MB/file (ảnh/video/audio đính kèm tin nhắn)
+const upload = multer({ dest: 'uploads/', limits: { fileSize: 25 * 1024 * 1024 } });
 const axios = require('axios');
 const GlobalPageID = '223266991771270';
 const GlobalPageID2 = '102116919355833';
 
-// Lấy access token của page từ bảng pageinfo (thay vì từ biến môi trường)
 async function getPageToken(pageid) {
     try {
         const db = DBConnection.promise();
@@ -439,7 +436,6 @@ async function tryInsertMessageAsComment(khachhang, sender, text, timemess, page
     try {
         const db = DBConnection.promise();
 
-        // Lấy live mới nhất (theo id auto increment), kiểm tra có đang LIVE không
         const [liveRows] = await db.query(
             `SELECT liveid, status FROM postlive ORDER BY id DESC LIMIT 1`
         );
@@ -688,7 +684,7 @@ let initWebRoutes = (app) => {
                         fs.unlinkSync(uploadFilePath);
                     } catch (uploadError) {
                         console.error('Lỗi khi upload file đính kèm lên Facebook:', uploadError.message);
-                        try { fs.unlinkSync(uploadFilePath); } catch (e) { /* ignore */ }
+                        try { fs.unlinkSync(uploadFilePath); } catch (e) {}
                         return res.status(500).json({ success: false, error: 'Lỗi khi xử lý file đính kèm.' });
                     }
                 }
@@ -1194,7 +1190,6 @@ ORDER BY t1.id DESC;
         }
     });
 
-    // Chuẩn hoá SĐT VN sang định dạng E.164 (+84...) theo yêu cầu của nút phone_number (Facebook Send API)
     function toE164VN(phone) {
         if (!phone) return null;
         let p = String(phone).replace(/[^\d+]/g, '');
@@ -1223,25 +1218,30 @@ ORDER BY t1.id DESC;
 
             const token = await getPageToken(users[0].pageid);
             const recipientId = orders[0].userid;
-            const text = `Viettel Post\r\nTiền hàng: ${cod.toLocaleString()}đ\r\nTrạng thái: ${issue}\r\nBưu tá: ${shipper_name}\r\nSố bưu tá: ${shipper_phone}\r\nXin hãy gọi bưu tá\r\nNếu đã nhận hàng xin bỏ qua tin nhắn này.`;
+            const text = [
+                `Viettel Post`,
+                `Tiền hàng: ${cod.toLocaleString()}đ`,
+                `Trạng thái: ${issue}`,
+                `Xin hãy gọi bưu tá`,
+                `Nếu đã nhận hàng xin bỏ qua tin nhắn này.`
+            ].join('\n');
             const journeyUrl = `https://aodaigiabao.com/journey/${orderNumber}`;
 
             const buttons = [
                 {
                     type: 'web_url',
                     url: journeyUrl,
-                    title: 'Xem đơn hàng' // tối đa 20 ký tự
+                    title: 'Xem đơn hàng'
                 }
             ];
             const shipperPhoneE164 = toE164VN(shipper_phone);
             if (shipperPhoneE164) {
                 buttons.push({
                     type: 'phone_number',
-                    title: 'Gọi bưu tá', // tối đa 20 ký tự
+                    title: 'Gọi bưu tá',
                     payload: shipperPhoneE164
                 });
             }
-            // Log để đối chiếu khi cần debug: số gốc từ webhook có đúng không, có chuẩn hoá thành công không.
             console.log(`[SendCanhBao] ${orderNumber} - shipper_phone gốc: "${shipper_phone}" -> chuẩn hoá: ${shipperPhoneE164 || '(không hợp lệ, bỏ qua nút gọi)'}`);
 
             const tryingSend = async (messaging_type, tag = null) => {
@@ -1253,8 +1253,8 @@ ORDER BY t1.id DESC;
                             type: 'template',
                             payload: {
                                 template_type: 'button',
-                                text, // tối đa 640 ký tự
-                                buttons // tối đa 3 nút
+                                text,
+                                buttons
                             }
                         }
                     },
@@ -1621,7 +1621,7 @@ ORDER BY t1.id DESC;
     router.post('/facebook', async function (req, res) {
         res.sendStatus(200);
         const io = socket.getIo();
-        const EmitMessage = async (id, phone, picture, sender, recipient, text, timemess, fbname, messageImg, label, pageid, diachi, nuocngoai, is_echo, note, messid, templateJson) => {
+        const EmitMessage = async (id, phone, picture, sender, recipient, text, timemess, fbname, messageImg, label, pageid, diachi, nuocngoai, is_echo, note, messid, templateJson, replyTo) => {
             const newMessageData = {
                 id: id,
                 messid: messid || null,
@@ -1639,7 +1639,8 @@ ORDER BY t1.id DESC;
                 nuocngoai: nuocngoai,
                 is_echo: is_echo,
                 note: note || '',
-                template: templateJson || null // JSON string: { template_type, text, buttons[] } - null nếu tin nhắn thường
+                template: templateJson || null,
+                replyTo: replyTo || null
             };
             io.emit('new-message', newMessageData);
         }
@@ -1661,6 +1662,7 @@ ORDER BY t1.id DESC;
                 var messid = messData.mid;
                 var attachments = messData.attachments;
                 var is_echo = messData.is_echo;
+                var replyToMid = (messData.reply_to && messData.reply_to.mid) ? messData.reply_to.mid : null;
                 var echo;
                 if (is_echo) {
                     echo = 1;
@@ -1669,14 +1671,45 @@ ORDER BY t1.id DESC;
                 }
                 var timemess = new Date(value.timestamp).toLocaleString("en-US", { timeZone: "Asia/Saigon" });
                 var finalImageString = '';
-                var templateJson = null; // Tin nhắn dạng template (nút bấm, generic card...) sẽ được lưu dạng JSON ở đây
+                var templateJson = null; 
+                var replyToText = null, replyToImage = null, replyToSender = null;
+                if (replyToMid) {
+                    try {
+                        var origRow = await new Promise((resolve) => {
+                            DBConnection.query(
+                                'SELECT message, image, sender, template_json FROM messaging WHERE messid = ? LIMIT 1',
+                                [replyToMid],
+                                (err, rows) => resolve(err ? null : (rows && rows[0]) || null)
+                            );
+                        });
+                        if (origRow) {
+                            replyToSender = origRow.sender;
+                            if (origRow.message) {
+                                replyToText = origRow.message.length > 200 ? origRow.message.slice(0, 200) + '…' : origRow.message;
+                            } else if (origRow.template_json) {
+                                try {
+                                    var origTpl = JSON.parse(origRow.template_json);
+                                    replyToText = '🔘 ' + (origTpl.text || 'Tin nhắn có nút bấm');
+                                } catch (e) { replyToText = '🔘 Tin nhắn có nút bấm'; }
+                            } else if (origRow.image) {
+                                replyToText = null;
+                            }
+                            if (origRow.image) {
+                                replyToImage = origRow.image.split(';')[0] || null;
+                            }
+                        } else {
+                            replyToText = null;
+                        }
+                    } catch (e) {
+                        console.error('Lỗi tra cứu tin nhắn gốc (reply_to):', e);
+                    }
+                }
 
                 try {
                     if (attachments) {
                         console.log('[FB webhook raw attachments]', JSON.stringify(attachments));
                         var imageList = [];
 
-                        // Chuẩn hoá 1 button về cùng 1 dạng để lưu & hiển thị lại
                         var mapBtn = (b) => ({
                             type: b.type,
                             title: b.title,
@@ -1687,29 +1720,24 @@ ORDER BY t1.id DESC;
                         for (var i = 0; i < attachments.length; i++) {
                             var att = attachments[i];
 
-                            // ── Template thật sự: button / generic (carousel) / list / media / receipt ──
-                            // Tất cả đều KHÔNG có payload.url dạng file, mà có payload.template_type + text/buttons/elements.
                             if (att.type === 'template' && att.payload) {
                                 var tType = att.payload.template_type || 'button';
                                 templateJson = JSON.stringify({
                                     template_type: tType,
-                                    text: att.payload.text || '',
+                                    text: att.title || att.payload.text || '',
                                     buttons: [
-                                        // List template có thêm 1 nút chung ở cuối danh sách (payload.button)
                                         ...(att.payload.button ? [mapBtn(att.payload.button)] : []),
                                         ...((att.payload.buttons || []).map(mapBtn))
                                     ],
                                     elements: att.payload.elements ? att.payload.elements.map(el => ({
                                         title: el.title,
                                         subtitle: el.subtitle,
-                                        // Generic/List dùng image_url; Media template dùng media_type + url
                                         image_url: el.image_url || (el.media_type === 'image' ? el.url : null),
-                                        quantity: el.quantity,   // Receipt template
-                                        price: el.price,         // Receipt template
-                                        currency: el.currency,   // Receipt template
+                                        quantity: el.quantity,
+                                        price: el.price,
+                                        currency: el.currency,
                                         buttons: (el.buttons || []).map(mapBtn)
                                     })) : undefined,
-                                    // Riêng Receipt template có thêm tổng đơn/địa chỉ/PTTT
                                     receipt: tType === 'receipt' ? {
                                         order_number: att.payload.order_number,
                                         currency: att.payload.currency,
@@ -1721,8 +1749,6 @@ ORDER BY t1.id DESC;
                                 continue;
                             }
 
-                            // ── "fallback": khách chia sẻ link web, bài viết, sản phẩm Marketplace... ──
-                            // FB không render được nội dung gốc nên gói lại thành dạng preview link đơn giản.
                             if (att.type === 'fallback' && att.payload) {
                                 templateJson = JSON.stringify({
                                     template_type: 'fallback',
@@ -1734,7 +1760,6 @@ ORDER BY t1.id DESC;
                                 continue;
                             }
 
-                            // ── "location": khách bấm nút chia sẻ vị trí hiện tại ──
                             if (att.type === 'location' && att.payload) {
                                 var coords = att.payload.coordinates;
                                 var mapUrl = att.payload.url || (coords ? `https://www.google.com/maps?q=${coords.lat},${coords.long}` : null);
@@ -1742,6 +1767,28 @@ ORDER BY t1.id DESC;
                                     template_type: 'location',
                                     text: att.payload.title || 'Đã chia sẻ vị trí',
                                     buttons: mapUrl ? [{ type: 'web_url', url: mapUrl, title: 'Xem vị trí trên bản đồ' }] : []
+                                });
+                                continue;
+                            }
+
+                            if ((att.type === 'reel' || att.type === 'ig_reel') && att.payload) {
+                                var reelThumb = null;
+                                if (att.payload.reel_video_id) {
+                                    try {
+                                        const reelRes = await fetch(
+                                            `https://graph.facebook.com/v19.0/${att.payload.reel_video_id}?fields=picture&access_token=${token}`
+                                        );
+                                        const reelData = await reelRes.json();
+                                        if (reelData && reelData.picture) reelThumb = reelData.picture;
+                                    } catch (e) {
+                                        console.error('Lỗi lấy thumbnail reel:', e.message);
+                                    }
+                                }
+                                templateJson = JSON.stringify({
+                                    template_type: att.type,
+                                    text: att.payload.title || 'Đã chia sẻ 1 Reel',
+                                    thumbnail: reelThumb,
+                                    url: att.payload.url || null
                                 });
                                 continue;
                             }
@@ -1787,11 +1834,9 @@ ORDER BY t1.id DESC;
                     }
 
                     await new Promise((resolve) => {
-                        // Gộp thành 1 câu INSERT duy nhất: 1 tin nhắn có thể có text, ảnh, và/hoặc template
-                        // (trước đây tách 2 nhánh riêng nên tin nhắn template bị rớt mất, không lưu được).
                         var sqlMsg = SqlString.format(
-                            'INSERT IGNORE INTO messaging (messid,sender,recipient,message,image,template_json,time,timestamp,is_echo) VALUES (?,?,?,?,?,?,?,?,?);',
-                            [messid, sender, recipient, text || null, finalImageString || null, templateJson, timemess, value.timestamp, echo]
+                            'INSERT IGNORE INTO messaging (messid,sender,recipient,message,image,template_json,time,timestamp,is_echo,reply_to_mid,reply_to_text,reply_to_image,reply_to_sender) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?);',
+                            [messid, sender, recipient, text || null, finalImageString || null, templateJson, timemess, value.timestamp, echo, replyToMid, replyToText, replyToImage, replyToSender]
                         );
 
                         DBConnection.query(sqlMsg, async function (err) {
@@ -1810,7 +1855,7 @@ ORDER BY t1.id DESC;
                                         }
                                     }
                                     const avatar = `https://aodaigiabao.com/images/ava/${khachhang}.jpg`
-                                    EmitMessage(curCus.id, curCus.phone, avatar, sender, recipient, text || '', timemess, curCus.fbname, finalImageString, curCus.label, curCus.pageid, curCus.diachi, curCus.nuocngoai, echo, curCus.note, messid, templateJson);
+                                    EmitMessage(curCus.id, curCus.phone, avatar, sender, recipient, text || '', timemess, curCus.fbname, finalImageString, curCus.label, curCus.pageid, curCus.diachi, curCus.nuocngoai, echo, curCus.note, messid, templateJson, replyToMid ? { mid: replyToMid, text: replyToText, image: replyToImage, sender: replyToSender } : null);
                                     if (!is_echo && text && sender !== GlobalPageID && sender !== GlobalPageID2) {
                                         tryInsertMessageAsComment(khachhang, sender, text, timemess, pageid, io);
                                     }
@@ -1840,15 +1885,15 @@ ORDER BY t1.id DESC;
 
                                     DBConnection.query(sqlInsert, function (err, result) {
                                         if (!err) {
-                                            EmitMessage(result.insertId, phone, picture, sender, recipient, text || '', timemess, fbname, finalImageString, '', pageid, '', '', echo, '', messid, templateJson);
+                                            EmitMessage(result.insertId, phone, picture, sender, recipient, text || '', timemess, fbname, finalImageString, '', pageid, '', '', echo, '', messid, templateJson, replyToMid ? { mid: replyToMid, text: replyToText, image: replyToImage, sender: replyToSender } : null);
                                             if (!is_echo && text && sender !== GlobalPageID && sender !== GlobalPageID2) {
                                                 tryInsertMessageAsComment(khachhang, sender, text, timemess, pageid, io);
                                             }
                                         }
-                                        resolve(); // Xong khách mới
+                                        resolve();
                                     });
                                 } else {
-                                    resolve(); // Kết thúc echo
+                                    resolve();
                                 }
                             });
                         });
@@ -3994,7 +4039,6 @@ ORDER BY t1.id DESC;
     router.get("/diennuoc", webAuth, dienNuocController.handleDienNuoc);
     router.get("/donhang", webAuth, orderController.handleOrder);
 
-    // ── Trang public: khách tra cứu đơn hàng bằng mã đơn, không cần đăng nhập ──
     router.get("/journey", publicJourneyController.handleJourneySearch);
     router.get("/journey/:madonhang", publicJourneyController.handleJourneyDetail);
     router.get("/login", loginController.checkLoggedOut, loginController.getPageLogin);

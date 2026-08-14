@@ -326,7 +326,6 @@
       return '';
     }
 
-    // ── Tin nhắn dạng template (button/generic) - "Xem đơn hàng", "Gọi bưu tá"... ──
     function buildTemplateButtonHtml(b) {
       if (!b) return '';
       const title = (b.title || '').replace(/</g, '&lt;');
@@ -336,12 +335,33 @@
       if (b.type === 'phone_number' && b.payload) {
         return `<a href="tel:${b.payload}" class="message-template-btn"><i class="bi bi-telephone-fill"></i> ${title || 'Gọi'}</a>`;
       }
-      // postback/account_link... - không thể bấm lại từ khung admin, chỉ hiển thị để biết tin nhắn gốc có nút này
       return `<span class="message-template-btn message-template-btn-disabled" title="Nút này không thể bấm lại từ khung chat admin"><i class="bi bi-hand-index-thumb"></i> ${title}</span>`;
     }
 
     function buildTemplateHtml(tpl) {
       if (!tpl) return '';
+
+      if (tpl.template_type === 'reel' || tpl.template_type === 'ig_reel') {
+        const reelUrl = tpl.url || '';
+        const pageName = tpl.text || (tpl.template_type === 'ig_reel' ? 'Instagram' : 'Facebook');
+        const providerLabel = tpl.template_type === 'ig_reel' ? 'Instagram' : 'Facebook';
+        const thumbHtml = tpl.thumbnail
+          ? `<img src="${tpl.thumbnail}" class="message-reel-thumb" alt="Reel">`
+          : `<div class="message-reel-thumb message-reel-thumb-empty"></div>`;
+        return `<div class="message-template-card message-reel-card" data-reel-url="${reelUrl.replace(/"/g, '&quot;')}">
+          <div class="message-reel-media">
+            ${thumbHtml}
+            <div class="message-reel-play"><i class="bi bi-play-fill"></i></div>
+          </div>
+          <div class="message-reel-footer">
+            <div class="message-reel-footer-text">
+              <div class="message-reel-page-name">${pageName}</div>
+              <div class="message-reel-provider">${providerLabel}</div>
+            </div>
+          </div>
+        </div>`;
+      }
+
       let html = `<div class="message-template-card">`;
       if (tpl.text) {
         html += `<div class="message-template-text">${tpl.text.replace(/\n/g, '<br>')}</div>`;
@@ -353,7 +373,6 @@
           if (el.image_url) html += `<img src="${el.image_url}" class="message-template-element-img">`;
           if (el.title) html += `<div class="message-template-element-title">${el.title}</div>`;
           if (el.subtitle) html += `<div class="message-template-element-subtitle">${el.subtitle}</div>`;
-          // Receipt template: số lượng / đơn giá từng món
           if (el.quantity != null || el.price != null) {
             const qty = el.quantity != null ? `x${el.quantity}` : '';
             const price = el.price != null ? Number(el.price).toLocaleString('vi-VN') + ' ' + (el.currency || 'đ') : '';
@@ -364,7 +383,6 @@
         });
         html += `</div>`;
       }
-      // Receipt template: tổng đơn / địa chỉ / phương thức thanh toán
       if (tpl.receipt) {
         const r = tpl.receipt;
         html += `<div class="message-template-receipt">`;
@@ -412,13 +430,35 @@
         textContentHtml = `<div class="message-text-content">${formattedMessage}</div>`;
       }
 
+      let replyQuoteHtml = '';
+      const replyTextVal = msg.reply_to_text != null ? msg.reply_to_text : (msg.replyTo ? msg.replyTo.text : null);
+      const replyImageVal = msg.reply_to_image != null ? msg.reply_to_image : (msg.replyTo ? msg.replyTo.image : null);
+      const replySenderVal = msg.reply_to_sender != null ? msg.reply_to_sender : (msg.replyTo ? msg.replyTo.sender : null);
+      const replyMidVal = msg.reply_to_mid != null ? msg.reply_to_mid : (msg.replyTo ? msg.replyTo.mid : null);
+      if (replyMidVal) {
+        const isReplyToPage = PAGE_IDS.includes(replySenderVal);
+        const replyLabel = isReplyToPage ? 'Trả lời chính bạn' : 'Đã trả lời';
+        let replyBodyHtml = '';
+        if (replyTextVal) {
+          const shortText = String(replyTextVal).replace(/</g, '&lt;');
+          replyBodyHtml = `<span class="message-reply-quote-text">${shortText}</span>`;
+        } else if (replyImageVal) {
+          replyBodyHtml = `<img src="${replyImageVal}" class="message-reply-quote-thumb"> <span class="message-reply-quote-text">[Hình ảnh]</span>`;
+        } else {
+          replyBodyHtml = `<span class="message-reply-quote-text message-reply-quote-missing">[Tin nhắn gốc không còn]</span>`;
+        }
+        replyQuoteHtml = `<div class="message-reply-quote" data-quote-mid="${replyMidVal}">
+          <div class="message-reply-quote-label">${replyLabel}</div>
+          ${replyBodyHtml}
+        </div>`;
+      }
+
       let templateHtml = '';
       if (msg.template_json) {
         try {
           templateHtml = buildTemplateHtml(JSON.parse(msg.template_json));
-        } catch (e) { /* JSON lỗi thì bỏ qua, không làm gãy cả tin nhắn */ }
+        } catch (e) { }
       } else if (msg.template) {
-        // Trường hợp đã được server parse sẵn thành object
         templateHtml = buildTemplateHtml(msg.template);
       }
 
@@ -506,6 +546,9 @@
       messageRow.dataset.sender = msg.sender;
       messageRow.classList.add('message-row-messenger');
       messageRow.dataset.messageId = msg.id;
+      if (msg.messid) {
+        messageRow.dataset.msgId = msg.messid;
+      }
       if (msg.localId) {
         messageRow.dataset.localId = msg.localId;
       }
@@ -513,6 +556,7 @@
       if (isPageSender) {
         messageRow.classList.add('message-sent-messenger');
         let innerHTML = `<div class="message-content-wrapper">`;
+        innerHTML += replyQuoteHtml;
         if (textContentHtml) {
           innerHTML += `<div class="message-text-messenger">${textContentHtml}</div>`;
         }
@@ -523,6 +567,7 @@
       } else {
         messageRow.classList.add('message-received-messenger');
         let innerHTML = `${avatarHtml}<div class="message-content-wrapper">`;
+        innerHTML += replyQuoteHtml;
         if (textContentHtml) {
           innerHTML += `<div class="message-text-messenger">${textContentHtml}</div>`;
         }
@@ -533,6 +578,23 @@
       }
 
       messageRow.addEventListener('click', function (event) {
+        const reelEl = event.target.closest('.message-reel-card');
+        if (reelEl && reelEl.dataset.reelUrl) {
+          event.stopPropagation();
+          window.open(reelEl.dataset.reelUrl, '_blank');
+          return;
+        }
+        const quoteEl = event.target.closest('.message-reply-quote');
+        if (quoteEl) {
+          event.stopPropagation();
+          const targetRow = findRowByMsgId(quoteEl.dataset.quoteMid);
+          if (targetRow) {
+            targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            targetRow.classList.add('message-row-highlight');
+            setTimeout(() => targetRow.classList.remove('message-row-highlight'), 1500);
+          }
+          return;
+        }
         if (event.target.closest('.message-row-messenger') === this) {
           this.classList.toggle('show-timestamp');
         }
@@ -1310,6 +1372,15 @@
       let imagesHtml = '';
       let messageText = msg.messageText;
 
+      if ((messageText == null || messageText === '') && msg.template) {
+        try {
+          const tplPreview = typeof msg.template === 'string' ? JSON.parse(msg.template) : msg.template;
+          messageText = '🔘 ' + (tplPreview.text || 'Tin nhắn có nút bấm');
+        } catch (e) {
+          messageText = '🔘 Tin nhắn có nút bấm';
+        }
+      }
+
       if (msg.messageImg && (msg.messageImg.includes('like') || msg.messageImg.includes('39178562_1505197616293642') || msg.messageImg.includes('851587_369239346556147') || msg.messageImg.includes('851582_369239386556143'))) {
         messageText = '';
         imagesHtml = '👍';
@@ -1333,6 +1404,10 @@
             messageText = '';
           }
         }
+      }
+
+      if (messageText == null) {
+        messageText = '';
       }
 
       const chatItem = document.createElement('a');
@@ -1376,6 +1451,7 @@
               messageText: msg.message,
               fbname: msg.ten_khach,
               messageImg: msg.image,
+              template: msg.template_json,
               label: msg.label
             };
             addMessageToTop(formattedMsg);
@@ -1525,7 +1601,9 @@
           message: contentMess || null,
           image: urlx,
           fileType: type,
-          template_json: data.template || null, // tin nhắn dạng nút bấm (Xem đơn hàng, Gọi bưu tá...)
+          template_json: data.template || null,
+          replyTo: data.replyTo || null,
+          messid: data.messid || null,
           time: Date.now()
         };
 
