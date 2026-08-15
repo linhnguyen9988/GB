@@ -3,7 +3,7 @@
 /.idea
 .idea/
 .env
-.zip
+*.zip
 src/public/images/
 src/public/donhang/
 /.vscode

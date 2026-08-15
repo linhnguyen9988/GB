@@ -1427,18 +1427,21 @@ function end() {
 }
 document.addEventListener('DOMContentLoaded', (event) => {
     const holdToastCheckbox = document.getElementById('holdToast');
-    if (lockToast === 1) {
+    if (holdToastCheckbox && lockToast === 1) {
         holdToastCheckbox.checked = true;
     }
 });
 
-holdToast.addEventListener('change', function () {
-    if (this.checked) {
-        lockToast = 1;
-    } else {
-        lockToast = 0;
-    }
-});
+var holdToastEl = document.getElementById('holdToast');
+if (holdToastEl) {
+    holdToastEl.addEventListener('change', function () {
+        if (this.checked) {
+            lockToast = 1;
+        } else {
+            lockToast = 0;
+        }
+    });
+}
 
 async function handlePrintLabel(rowElement) {
     var data = $('#comment_table').DataTable().row(rowElement).data();
@@ -1485,18 +1488,22 @@ async function handlePrintLabel(rowElement) {
     }
 }
 
-$('#comment_table tbody').on('dblclick', 'tr', function () {
-    handlePrintLabel(this);
-});
+(function () {
+    document.addEventListener('dblclick', function (e) {
+        var tr = e.target.closest('#comment_table tbody tr');
+        if (tr) handlePrintLabel(tr);
+    }, true);
 
-let lastTapComment = 0;
-$('#comment_table tbody').on('touchend', 'tr', function (e) {
-    let currentTime = new Date().getTime();
-    let tapLength = currentTime - lastTapComment;
-
-    if (tapLength < 300 && tapLength > 0) {
-        e.preventDefault();
-        handlePrintLabel(this);
-    }
-    lastTapComment = currentTime;
-});
+    var lastTapComment = 0;
+    document.addEventListener('touchend', function (e) {
+        var tr = e.target.closest('#comment_table tbody tr');
+        if (!tr) return;
+        var currentTime = new Date().getTime();
+        var tapLength = currentTime - lastTapComment;
+        if (tapLength < 300 && tapLength > 0) {
+            e.preventDefault();
+            handlePrintLabel(tr);
+        }
+        lastTapComment = currentTime;
+    }, true);
+})();

@@ -684,7 +684,7 @@ let initWebRoutes = (app) => {
                         fs.unlinkSync(uploadFilePath);
                     } catch (uploadError) {
                         console.error('Lỗi khi upload file đính kèm lên Facebook:', uploadError.message);
-                        try { fs.unlinkSync(uploadFilePath); } catch (e) {}
+                        try { fs.unlinkSync(uploadFilePath); } catch (e) { }
                         return res.status(500).json({ success: false, error: 'Lỗi khi xử lý file đính kèm.' });
                     }
                 }
@@ -1639,7 +1639,8 @@ ORDER BY t1.id DESC;
                 nuocngoai: nuocngoai,
                 is_echo: is_echo,
                 note: note || '',
-                template: templateJson || null,
+                template: templateJson || null, // JSON string: { template_type, text, buttons[] } - null nếu tin nhắn thường
+                // Snapshot tin nhắn được reply (nếu có): { mid, text, image, sender } - null nếu tin nhắn thường
                 replyTo: replyTo || null
             };
             io.emit('new-message', newMessageData);
@@ -1671,7 +1672,7 @@ ORDER BY t1.id DESC;
                 }
                 var timemess = new Date(value.timestamp).toLocaleString("en-US", { timeZone: "Asia/Saigon" });
                 var finalImageString = '';
-                var templateJson = null; 
+                var templateJson = null;
                 var replyToText = null, replyToImage = null, replyToSender = null;
                 if (replyToMid) {
                     try {
@@ -1709,6 +1710,7 @@ ORDER BY t1.id DESC;
                     if (attachments) {
                         console.log('[FB webhook raw attachments]', JSON.stringify(attachments));
                         var imageList = [];
+                        var seenAttUrls = {};
 
                         var mapBtn = (b) => ({
                             type: b.type,
@@ -1795,6 +1797,9 @@ ORDER BY t1.id DESC;
 
                             var url = (att.payload && att.payload.url) ? att.payload.url : null;
                             if (!url) continue;
+
+                            if (seenAttUrls[url]) continue;
+                            seenAttUrls[url] = true;
 
                             if (url.indexOf('cloudinary') !== -1) {
                                 imageList.push(url);
@@ -1890,10 +1895,10 @@ ORDER BY t1.id DESC;
                                                 tryInsertMessageAsComment(khachhang, sender, text, timemess, pageid, io);
                                             }
                                         }
-                                        resolve();
+                                        resolve(); // Xong khách mới
                                     });
                                 } else {
-                                    resolve();
+                                    resolve(); // Kết thúc echo
                                 }
                             });
                         });
@@ -4039,6 +4044,7 @@ ORDER BY t1.id DESC;
     router.get("/diennuoc", webAuth, dienNuocController.handleDienNuoc);
     router.get("/donhang", webAuth, orderController.handleOrder);
 
+    // ── Trang public: khách tra cứu đơn hàng bằng mã đơn, không cần đăng nhập ──
     router.get("/journey", publicJourneyController.handleJourneySearch);
     router.get("/journey/:madonhang", publicJourneyController.handleJourneyDetail);
     router.get("/login", loginController.checkLoggedOut, loginController.getPageLogin);

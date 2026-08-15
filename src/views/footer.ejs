@@ -101,6 +101,14 @@
   let imagePreviewContainer = null;
   let messageModal = null;
   let messageModalEl = null;
+  let modalMessagesContainer = null;
+  let chatState = {
+    isFetchingMessages: false,
+    hasMoreMessages: true,
+    messageOffset: 0,
+    pageSize: 10
+  };
+  let loadMoreMessages = null;
   const GlobalPageID = "223266991771270";
   const GlobalPageID2 = '102116919355833';
   const PAGE_IDS = [GlobalPageID, GlobalPageID2];
@@ -115,6 +123,36 @@
   function findRowByMsgId(msgId) {
     if (!msgId || !modalMessagesContainer) return null;
     return modalMessagesContainer.querySelector(`[data-msg-id="${CSS.escape(String(msgId))}"]`);
+  }
+
+  function scrollToRowAndHighlight(row) {
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    row.classList.add('message-row-highlight');
+    setTimeout(() => row.classList.remove('message-row-highlight'), 1500);
+  }
+
+  async function jumpToQuotedMessage(mid, quoteEl) {
+    if (!mid) return;
+    let targetRow = findRowByMsgId(mid);
+    if (targetRow) {
+      scrollToRowAndHighlight(targetRow);
+      return;
+    }
+    if (quoteEl) quoteEl.classList.add('message-reply-quote-loading');
+    let attempts = 0;
+    try {
+      while (!targetRow && chatState.hasMoreMessages && attempts < 30) {
+        await loadMoreMessages();
+        targetRow = findRowByMsgId(mid);
+        attempts++;
+        if (!chatState.hasMoreMessages) break;
+      }
+    } finally {
+      if (quoteEl) quoteEl.classList.remove('message-reply-quote-loading');
+    }
+    if (targetRow) {
+      scrollToRowAndHighlight(targetRow);
+    }
   }
   const recentlySentByMe = [];
   const RECENT_SENT_TTL_MS = 20000;
@@ -246,7 +284,7 @@
   }
 
   document.addEventListener('DOMContentLoaded', function () {
-    const modalMessagesContainer = document.querySelector('.messages-container-messenger');
+    modalMessagesContainer = document.querySelector('.messages-container-messenger');
     customerNameEl = document.getElementById('customer-name');
     customerAvatarEl = document.getElementById('customer-avatar');
     messageInput = document.getElementById('message-input');
@@ -269,12 +307,6 @@
     messageModalEl.addEventListener('hidden.bs.modal', function (event) {
       revokeAllBlobs();
     });
-    const chatState = {
-      isFetchingMessages: false,
-      hasMoreMessages: true,
-      messageOffset: 0,
-      pageSize: 10
-    };
 
     const imageViewerModal = document.getElementById('image-viewer-modal');
     const fullSizeImage = document.getElementById('full-size-image');
@@ -437,18 +469,19 @@
       const replyMidVal = msg.reply_to_mid != null ? msg.reply_to_mid : (msg.replyTo ? msg.replyTo.mid : null);
       if (replyMidVal) {
         const isReplyToPage = PAGE_IDS.includes(replySenderVal);
-        const replyLabel = isReplyToPage ? 'Trả lời chính bạn' : 'Đã trả lời';
+        const custName = (msg.fbname || '').trim();
+        const replyLabel = isReplyToPage ? 'Trả lời bạn' : (custName ? `Đã trả lời ${custName}` : 'Đã trả lời');
         let replyBodyHtml = '';
-        if (replyTextVal) {
+        if (replyImageVal) {
+          replyBodyHtml = `<div class="message-reply-quote-thumb-card"><img src="${replyImageVal}" alt="Ảnh gốc"></div>`;
+        } else if (replyTextVal) {
           const shortText = String(replyTextVal).replace(/</g, '&lt;');
-          replyBodyHtml = `<span class="message-reply-quote-text">${shortText}</span>`;
-        } else if (replyImageVal) {
-          replyBodyHtml = `<img src="${replyImageVal}" class="message-reply-quote-thumb"> <span class="message-reply-quote-text">[Hình ảnh]</span>`;
+          replyBodyHtml = `<div class="message-reply-quote-text-pill">${shortText}</div>`;
         } else {
-          replyBodyHtml = `<span class="message-reply-quote-text message-reply-quote-missing">[Tin nhắn gốc không còn]</span>`;
+          replyBodyHtml = `<div class="message-reply-quote-text-pill message-reply-quote-missing">Tin nhắn gốc không còn</div>`;
         }
-        replyQuoteHtml = `<div class="message-reply-quote" data-quote-mid="${replyMidVal}">
-          <div class="message-reply-quote-label">${replyLabel}</div>
+        replyQuoteHtml = `<div class="message-reply-quote-wrap" data-quote-mid="${replyMidVal}">
+          <div class="message-reply-quote-label"><i class="bi bi-reply-fill"></i> ${replyLabel}</div>
           ${replyBodyHtml}
         </div>`;
       }
@@ -584,15 +617,10 @@
           window.open(reelEl.dataset.reelUrl, '_blank');
           return;
         }
-        const quoteEl = event.target.closest('.message-reply-quote');
+        const quoteEl = event.target.closest('.message-reply-quote-wrap');
         if (quoteEl) {
           event.stopPropagation();
-          const targetRow = findRowByMsgId(quoteEl.dataset.quoteMid);
-          if (targetRow) {
-            targetRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            targetRow.classList.add('message-row-highlight');
-            setTimeout(() => targetRow.classList.remove('message-row-highlight'), 1500);
-          }
+          jumpToQuotedMessage(quoteEl.dataset.quoteMid, quoteEl);
           return;
         }
         if (event.target.closest('.message-row-messenger') === this) {
@@ -823,7 +851,7 @@
       modalMessagesContainer.scrollTop = newScrollHeight - oldScrollHeight;
     }
 
-    async function loadMoreMessages() {
+    loadMoreMessages = async function () {
       if (chatState.isFetchingMessages || !chatState.hasMoreMessages) {
         return;
       }
@@ -860,7 +888,7 @@
       } finally {
         chatState.isFetchingMessages = false;
       }
-    }
+    };
 
     async function fetchInitialMessages() {
       if (chatState.isFetchingMessages) {
