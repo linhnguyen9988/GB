@@ -73,3 +73,38 @@ function ShowToast(type,icon,title,content,delay) {
         toast.remove();
     });
 }
+
+  function ShowCenterToast(type, message, delay) {
+    delay = delay || 2800;
+    const icons = {
+      success: 'bi-check-circle-fill',
+      danger: 'bi-x-circle-fill',
+      warning: 'bi-exclamation-triangle-fill',
+      info: 'bi-info-circle-fill'
+    };
+    const icon = icons[type] || icons.info;
+
+    let overlay = document.querySelector('.center-toast-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.className = 'center-toast-overlay';
+      document.body.appendChild(overlay);
+    }
+    overlay.innerHTML = '';
+
+    const el = document.createElement('div');
+    el.className = 'center-toast center-toast-' + (icons[type] ? type : 'info');
+    el.setAttribute('role', 'alert');
+    el.setAttribute('aria-live', 'assertive');
+    el.setAttribute('aria-atomic', 'true');
+    el.innerHTML = `<i class="bi ${icon} center-toast-icon"></i><div class="center-toast-body">${message}</div>`;
+    overlay.appendChild(el);
+
+    requestAnimationFrame(() => el.classList.add('show'));
+
+    clearTimeout(overlay._hideTimer);
+    overlay._hideTimer = setTimeout(() => {
+      el.classList.remove('show');
+      setTimeout(() => el.remove(), 200);
+    }, delay);
+  }

@@ -1706,11 +1706,26 @@ ORDER BY t1.id DESC;
                     }
                 }
 
+                if (messid) {
+                    const alreadyExists = await new Promise((resolveCheck) => {
+                        DBConnection.query(
+                            'SELECT 1 FROM messaging WHERE messid = ? LIMIT 1',
+                            [messid],
+                            (err, rows) => resolveCheck(!err && rows && rows.length > 0)
+                        );
+                    });
+                    if (alreadyExists) {
+                        console.log(`[FB webhook] messid=${messid} đã tồn tại, bỏ qua (webhook trùng)`);
+                        return;
+                    }
+                }
+
                 try {
                     if (attachments) {
                         console.log('[FB webhook raw attachments]', JSON.stringify(attachments));
                         var imageList = [];
                         var seenAttUrls = {};
+                        var pushUnique = (val) => { if (val && imageList.indexOf(val) === -1) imageList.push(val); };
 
                         var mapBtn = (b) => ({
                             type: b.type,
@@ -1802,7 +1817,7 @@ ORDER BY t1.id DESC;
                             seenAttUrls[url] = true;
 
                             if (url.indexOf('cloudinary') !== -1) {
-                                imageList.push(url);
+                                pushUnique(url);
                                 continue;
                             }
 
@@ -1815,7 +1830,7 @@ ORDER BY t1.id DESC;
                                 try {
                                     var isLike = ['39178562_1505197616293642', '851587_369239346556147', '851582_369239386556143'].some(id => url.includes(id));
                                     if (isLike) {
-                                        imageList.push('/images/messpic/like.jpg');
+                                        pushUnique('/images/messpic/like.jpg');
                                     } else {
                                         const currentCloud = getNextCloudinary();
 
@@ -1824,15 +1839,15 @@ ORDER BY t1.id DESC;
                                             folder: 'messenger_images',
                                             transformation: [{ width: 768, crop: "limit" }, { quality: "auto:eco" }]
                                         });
-                                        imageList.push(uploadResult.secure_url);
+                                        pushUnique(uploadResult.secure_url);
                                     }
                                 } catch (e) {
                                     var ext = await download(url, picname, 'C:/GB/src/public/images/messpic/').catch(() => 'jpg');
-                                    imageList.push('/images/messpic/' + picname + '.' + ext);
+                                    pushUnique('/images/messpic/' + picname + '.' + ext);
                                 }
                             } else if (contentType.startsWith('video/') || contentType.startsWith('audio/')) {
                                 var ext = await download(url, picname, 'C:/GB/src/public/images/messpic/').catch(() => 'mp4');
-                                imageList.push('/images/messpic/' + picname + '.' + ext);
+                                pushUnique('/images/messpic/' + picname + '.' + ext);
                             }
                         }
                         finalImageString = imageList.join(';') + (imageList.length ? ';' : '');
@@ -1844,8 +1859,14 @@ ORDER BY t1.id DESC;
                             [messid, sender, recipient, text || null, finalImageString || null, templateJson, timemess, value.timestamp, echo, replyToMid, replyToText, replyToImage, replyToSender]
                         );
 
-                        DBConnection.query(sqlMsg, async function (err) {
+                        DBConnection.query(sqlMsg, async function (err, result) {
                             if (err) { console.error("Lỗi lưu tin:", err); return resolve(); }
+
+                            // messid đã tồn tại (Facebook gửi lại webhook trùng) -> bỏ qua, không emit lại
+                            if (!result || result.affectedRows === 0) {
+                                console.log(`[FB webhook] Bỏ qua tin nhắn trùng, messid=${messid}`);
+                                return resolve();
+                            }
 
                             DBConnection.query("SELECT * FROM khachhang WHERE userid='" + khachhang + "' LIMIT 1", async function (error, data) {
                                 var curCus = (data && data.length > 0) ? data[0] : null;

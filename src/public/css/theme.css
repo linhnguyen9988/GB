@@ -1,18 +1,10 @@
-/* =========================================================================
-   THEME.CSS — Hệ thống thiết kế đồng bộ cho Áo Dài Gia Bảo
-   Load file này SAU CÙNG (sau Bootstrap + các css cũ) để override toàn site.
-   Không đổi id/class do JS dùng — chỉ chỉnh màu sắc, bo góc, khoảng cách, shadow.
-   ========================================================================= */
-
 :root{
-  /* Brand */
-  --brand-primary:      #4338CA;   /* indigo đậm - màu chủ đạo */
+  --brand-primary:      #4338CA;
   --brand-primary-dark: #342AA0;
   --brand-primary-light:#EEF0FF;
-  --brand-accent:       #D4A954;   /* vàng đồng - điểm nhấn áo dài */
+  --brand-accent:       #D4A954;
   --brand-rose:         #C0435D;
 
-  /* Neutrals */
   --ink-900: #16181D;
   --ink-700: #3A3F4B;
   --ink-500: #6B7280;
@@ -21,13 +13,11 @@
   --surface: #FFFFFF;
   --bg-app:  #F6F7FB;
 
-  /* Status */
   --ok:    #16A34A;
   --warn:  #E8A400;
   --danger:#DC2626;
   --info:  #2563EB;
 
-  /* Shape */
   --radius-sm: 8px;
   --radius-md: 14px;
   --radius-lg: 20px;
@@ -36,7 +26,6 @@
   --shadow-lg: 0 12px 32px rgba(16,24,40,.14);
 }
 
-/* ---------- Base ---------- */
 html, body{ background: var(--bg-app); }
 body{
   font-family: 'Bai Jamjuree', sans-serif !important;
@@ -47,14 +36,12 @@ a{ color: var(--brand-primary); }
 a:hover{ color: var(--brand-primary-dark); }
 ::selection{ background: var(--brand-primary-light); color: var(--brand-primary-dark); }
 
-/* thin, elegant scrollbar everywhere */
 *{ scrollbar-width: thin; scrollbar-color: var(--ink-300) transparent; }
 *::-webkit-scrollbar{ height: 8px; width: 8px; }
 *::-webkit-scrollbar-thumb{ background: var(--ink-300); border-radius: 10px; }
 *::-webkit-scrollbar-thumb:hover{ background: var(--ink-500); }
 .no-scrollbar::-webkit-scrollbar{ display:none; }
 
-/* ---------- Buttons ---------- */
 .btn{
   border-radius: var(--radius-sm);
   font-weight: 600;
@@ -86,7 +73,6 @@ a:hover{ color: var(--brand-primary-dark); }
 .btn-outline-secondary{ color: var(--ink-700); border-color: var(--ink-300); }
 .btn-outline-secondary:hover{ background: var(--ink-100); color: var(--ink-900); border-color: var(--ink-300); }
 
-/* ---------- Cards ---------- */
 .card{
   background-color: var(--surface);
   color: var(--ink-900);
@@ -104,7 +90,6 @@ a:hover{ color: var(--brand-primary-dark); }
 .card.shadow{ box-shadow: var(--shadow-md) !important; }
 .card.shadow-lg{ box-shadow: var(--shadow-lg) !important; }
 
-/* ---------- Forms ---------- */
 .form-control, .form-select{
   border-radius: var(--radius-sm);
   border-color: var(--ink-300);
@@ -121,7 +106,6 @@ a:hover{ color: var(--brand-primary-dark); }
 }
 label.small.fw-bold, label.fw-bold{ color: var(--ink-700); }
 
-/* ---------- Badges / pills ---------- */
 .badge{ font-weight: 600; border-radius: 999px; padding: .4em .75em; }
 .nav-pills .nav-link{
   border-radius: 999px;
@@ -141,7 +125,6 @@ label.small.fw-bold, label.fw-bold{ color: var(--ink-700); }
 .nav-link-warning.active{ background: var(--warn) !important; }
 .nav-link-danger.active{ background: var(--danger) !important; }
 
-/* ---------- Top navbar (headerafterlogin) ---------- */
 .header-container{
   background: var(--surface);
   padding: .55rem 1rem;
@@ -166,7 +149,6 @@ label.small.fw-bold, label.fw-bold{ color: var(--ink-700); }
   color: var(--brand-primary-dark);
 }
 
-/* ---------- Tables (plain + DataTables + KeyTable) ---------- */
 table.table{
   --bs-table-hover-bg: var(--brand-primary-light);
 }
@@ -183,7 +165,6 @@ table.table{
 .table td{ vertical-align: middle; }
 .table-hover tbody tr:hover{ background: var(--brand-primary-light); }
 
-/* DataTables base skin */
 table.dataTable{ border-collapse: separate !important; border-spacing: 0; }
 table.dataTable tbody td{ border-color: var(--ink-100); }
 div.dataTables_wrapper div.dataTables_filter input,
@@ -205,7 +186,6 @@ div.dataTables_wrapper div.dataTables_paginate .paginate_button{
   margin: 0 2px;
 }
 
-/* KeyTable focus cell — làm nổi bật ô đang chọn khi bấm phím mũi tên/Tab/Enter */
 table.dataTable td.focus,
 table.dataTable th.focus{
   outline: none !important;
@@ -218,7 +198,6 @@ table.dataTable td.selected{
   background: rgba(67,56,202,.10) !important;
 }
 
-/* ---------- Modals ---------- */
 .modal-content{
   border: none;
   border-radius: var(--radius-lg);
@@ -231,24 +210,20 @@ table.dataTable td.selected{
 .modal-header.bg-primary{ background: var(--brand-primary) !important; }
 .modal-footer{ border-top: 1px solid var(--ink-100); }
 
-/* ---------- Alerts ---------- */
 .alert{ border: none; border-radius: var(--radius-sm); }
 .alert-danger{ background: #FDE8E8; color: #9B1C1C; }
 .alert-success{ background: #E7F8EE; color: #12603F; }
 
-/* ---------- Utility ---------- */
 .text-primary{ color: var(--brand-primary) !important; }
 .bg-primary{ background: var(--brand-primary) !important; }
 .border-primary{ border-color: var(--brand-primary) !important; }
 
-/* Order status accent colors reused from donhang.ejs groups */
 .border-secondary{ border-color: var(--ink-500) !important; }
 .border-info{ border-color: var(--info) !important; }
 .border-success{ border-color: var(--ok) !important; }
 .border-warning{ border-color: var(--warn) !important; }
 .border-danger{ border-color: var(--danger) !important; }
 
-/* Auth pages (login/register) */
 .auth-shell{
   min-height: 100vh;
   display: flex;
@@ -275,12 +250,6 @@ table.dataTable td.selected{
   .header-container{ padding: .4rem .6rem; }
 }
 
-/* =========================================================================
-   DARK MODE — bật bằng [data-bs-theme="dark"] trên <html>
-   (đồng thời tận dụng dark mode có sẵn của Bootstrap 5.3)
-   Mặc định trang luôn ở LIGHT mode; dark mode chỉ bật khi người dùng
-   tự bấm logo để chuyển, và được lưu riêng theo từng thiết bị (localStorage).
-   ========================================================================= */
 [data-bs-theme="dark"]{
   color-scheme: dark;
 
@@ -308,8 +277,6 @@ table.dataTable td.selected{
   --shadow-lg: 0 12px 32px rgba(0,0,0,.55);
 }
 
-/* Bootstrap utility classes không tự đổi theo data-bs-theme (theo thiết kế
-   của Bootstrap) nên cần override tay các class hay dùng trong project. */
 [data-bs-theme="dark"] .text-dark{ color: var(--ink-900) !important; }
 [data-bs-theme="dark"] .text-muted{ color: var(--ink-500) !important; }
 [data-bs-theme="dark"] .bg-light{ background-color: var(--ink-100) !important; }
@@ -408,3 +375,47 @@ div.dataTables_wrapper .dataTables_filter label{ color: var(--ink-700); }
   justify-content: center;
 }
 [data-bs-theme="dark"] #theme-toggle-logo::after{ content: '☀️'; }
+
+.center-toast-overlay{
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  pointer-events: none;
+}
+.center-toast{
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  min-width: 260px;
+  max-width: min(90vw, 420px);
+  padding: .9rem 1.25rem;
+  background: var(--surface);
+  color: var(--ink-900);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--ink-300);
+  border-left: 5px solid var(--info);
+  font-weight: 600;
+  opacity: 0;
+  transform: translateY(-10px) scale(.96);
+  transition: opacity .2s ease, transform .2s ease;
+}
+.center-toast.show{
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+.center-toast .center-toast-icon{ font-size: 1.3rem; line-height: 1; flex-shrink: 0; }
+.center-toast .center-toast-body{ flex: 1; word-break: break-word; }
+.center-toast-success{ border-left-color: var(--ok); }
+.center-toast-success .center-toast-icon{ color: var(--ok); }
+.center-toast-danger{ border-left-color: var(--danger); }
+.center-toast-danger .center-toast-icon{ color: var(--danger); }
+.center-toast-warning{ border-left-color: var(--warn); }
+.center-toast-warning .center-toast-icon{ color: var(--warn); }
+.center-toast-info{ border-left-color: var(--info); }
+.center-toast-info .center-toast-icon{ color: var(--info); }

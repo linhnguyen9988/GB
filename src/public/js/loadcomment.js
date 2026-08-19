@@ -1493,7 +1493,7 @@ async function handlePrintLabel(rowElement) {
         var tr = e.target.closest('#comment_table tbody tr');
         if (tr) handlePrintLabel(tr);
     }, true);
-
+    /*
     var lastTapComment = 0;
     document.addEventListener('touchend', function (e) {
         var tr = e.target.closest('#comment_table tbody tr');
@@ -1505,5 +1505,5 @@ async function handlePrintLabel(rowElement) {
             handlePrintLabel(tr);
         }
         lastTapComment = currentTime;
-    }, true);
+    }, true);*/
 })();

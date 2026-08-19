@@ -579,7 +579,11 @@
       data: { realorderid: mavandon, xoa: 0 },
       dataType: "JSON",
       success: function (data) {
-        alert(data.message + ': ' + mavandon);
+        ShowCenterToast('success', (data.message || 'Đã xử lý') + ': ' + mavandon, 3000);
+      },
+      error: function (xhr) {
+        var msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Không thể hủy đơn, thử lại sau.';
+        ShowCenterToast('danger', msg + ': ' + mavandon, 3500);
       }
     });
   }
@@ -1654,13 +1658,8 @@
 
           FillDiaChiLenDon(data.data[0].phone);
 
-          // Số đơn mặc định hiển thị trong khung QR (khớp mặc định của BE /getuserorder)
           var QR_DONHANG_DEFAULT_LIMIT = 5;
 
-          // Đổ danh sách đơn hàng vào select #userorder.
-          // limit là số dương -> chỉ lấy limit đơn gần nhất; null/0 -> lấy toàn bộ đơn.
-          // Gán vào window vì hàm này được khai báo trong closure nhưng được gọi
-          // từ thuộc tính onclick trong HTML (chạy ở global scope).
           window.loadQROrderList = function (userid, limit) {
             var params = { userid: userid };
             if (limit) {
