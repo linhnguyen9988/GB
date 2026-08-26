@@ -217,17 +217,6 @@ function UpdateComment(openmess) {
         }
     });
 }
-function GetConversation() {
-    $.ajax({
-        url: "/getconversations",
-        method: "POST",
-        dataType: "JSON",
-        success: function () {
-            ShowToast('success', `<i class="bi bi-list-check"></i>&nbsp;`, 'Scan Conversations', 'Scan completed, you can open Chat Box Now.', 3000);
-        }
-    });
-}
-
 
 function InItKeys() {
     var t = $('#comment_table').DataTable();
@@ -372,6 +361,25 @@ async function LoadLive() {
         document.getElementById("liveidinput").value = liveid;
     }
     document.getElementById("livenote").value = xxx.getAttribute("data-note");
+
+    UpdateLiveStatusBadge(xxx.getAttribute("data-status"));
+    $.ajax({
+        url: "/getlivestatus",
+        method: "POST",
+        data: { liveid: liveid },
+        dataType: "JSON",
+        success: function (statusRes) {
+            xxx.setAttribute("data-status", statusRes.status || '');
+            UpdateLiveStatusBadge(statusRes.status);
+            if (statusRes.status === 'LIVE') {
+                JoinLiveRoom(liveid);
+                ShowToast('primary', '<div class="spinner-border text-light" role="status"></div>&nbsp;', 'Quét bình luận', `Live đang phát trực tiếp, đang nhận bình luận realtime cho ID: ${liveid}`, 3000);
+            } else if (currentPostId === liveid) {
+                LeaveLiveRoom();
+            }
+        }
+    });
+
     $.ajax({
         url: "/action",
         method: "POST",
@@ -922,8 +930,57 @@ async function ScanComment(soluong) {
         }
     });
 };
-let startget = 0;
 let currentPostId = null;
+
+function UpdateLiveStatusBadge(status) {
+    var badge = document.getElementById("liveStatusBadge");
+    if (!badge) return;
+    if (status === 'LIVE') {
+        badge.className = 'badge bg-danger live-badge-pulse';
+        badge.innerHTML = 'Live';
+    } else if (status) {
+        badge.className = 'badge bg-secondary';
+        badge.innerHTML = 'Kết thúc';
+    } else {
+        badge.className = 'badge bg-light text-dark border';
+        badge.innerHTML = 'Chưa rõ trạng thái';
+    }
+}
+
+function JoinLiveRoom(liveid) {
+    if (!liveid || currentPostId === liveid) return;
+    if (currentPostId) {
+        socket.emit('leave-live-stream', currentPostId);
+    }
+    socket.emit('join-live-stream', liveid);
+    currentPostId = liveid;
+    console.log(`Đã kết nối realtime cho live ID: ${liveid}`);
+}
+
+function LeaveLiveRoom() {
+    if (currentPostId) {
+        socket.emit('leave-live-stream', currentPostId);
+        console.log(`Đã ngắt kết nối realtime cho live ID: ${currentPostId}`);
+        currentPostId = null;
+    }
+}
+
+socket.on('live-status', (data) => {
+    var opt = document.getElementById(data.liveid);
+    if (opt) {
+        opt.setAttribute('data-status', data.status || '');
+    }
+    var selectedOpt = document.getElementById(e.value);
+    var selectedLiveId = selectedOpt ? selectedOpt.id : null;
+    if (data.liveid === selectedLiveId || data.liveid === currentPostId) {
+        UpdateLiveStatusBadge(data.status);
+        if (data.status === 'LIVE') {
+            JoinLiveRoom(data.liveid);
+        } else if (currentPostId === data.liveid) {
+            LeaveLiveRoom();
+        }
+    }
+});
 
 socket.on('new-comment', (data) => {
     var t = $('#comment_table').DataTable();
@@ -1062,41 +1119,6 @@ socket.on('new-comment', (data) => {
     }
     ScrollBot();
 });
-function Begin() {
-    if (startget == 1) {
-        if (currentPostId) {
-            document.getElementById("liveidinput").disabled = false;
-            document.getElementById("begin").innerHTML = 'Begin';
-            $('#begin').removeClass('btn-success').addClass('btn-primary');
-            $(this).addClass('btn-primary').removeClass('btn-success');
-
-            socket.emit('leave-live-stream', currentPostId);
-            console.log(`Đã dừng theo dõi bình luận cho post ID: ${currentPostId}`);
-            currentPostId = null;
-        }
-        startget = 0;
-        return;
-    }
-    startget = 1;
-    const postId = document.getElementById("liveidinput").value.trim();
-    if (postId) {
-        if (currentPostId) {
-            socket.emit('leave-live-stream', currentPostId);
-        }
-        socket.emit('join-live-stream', postId);
-        currentPostId = postId;
-        console.log(`Đã bắt đầu theo dõi bình luận cho post ID: ${postId}`);
-        ShowToast('primary', '<div class="spinner-border text-light" role="status"></div>&nbsp;', 'Quét bình luận', `Đang nhận bình luận facebok phòng live ID: ${postId}`, 3000);
-    } else {
-        ShowToast('danger', '<i class="bi bi-sign-stop"></i>', 'Quét bình luận', 'Đã ra khỏi phòng live.', 3000);
-    }
-    if (document.getElementById("begin").innerHTML.includes('Begin')) {
-        document.getElementById("liveidinput").disabled = true;
-        document.getElementById("begin").innerHTML = '<span class="spinner-grow text-danger" style="width: 0.8rem; height: 0.8rem;" role="status"></span>&nbsp;Stop';
-        $('#begin').removeClass('btn-primary').addClass('btn-success');
-        $(this).addClass('btn-success').removeClass('btn-primary');
-    }
-}
 async function BeginScan() {
     var xxxx = document.getElementById("liveidinput").value;
     if (xxxx.length == 0) {//bat buoc quet id 1 truoc

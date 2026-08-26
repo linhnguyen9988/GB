@@ -429,6 +429,51 @@ const getRecentCommentIdsFromDB = (userId) => {
     });
 };
 
+function runGetConversations() {
+    DBConnection.query(" SELECT pageid,accesstoken from pageinfo",
+        function (error, data) {
+            if (error) {
+                console.error('Lỗi getconversations:', error);
+                return;
+            }
+            for (var i = 0; i < data.length; i++) {
+                const sb = new StringBuilder();
+                let token = data[i].accesstoken;
+                let pageid = data[i].pageid;
+                (async () => {
+                    var query = `https://graph.facebook.com/${pageid}/conversations?fields=id,senders,updated_time&limit=499&access_token=${token}`;
+                    request({
+                        url: encodeURI(query),
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    }, function (error, response, bodyx) {
+                        if (error) {
+                            console.log(error);
+                            return;
+                        }
+                        try {
+                            var body = JSON.parse(bodyx.replaceAll(" ", "").replaceAll(/\n/g, " "));
+                            for (var j = 0; j < body.data.length; j++) {
+                                var threadid = body.data[j].id;
+                                var psid = body.data[j].senders.data[0].id;
+                                var fbname = body.data[j].senders.data[0].name;
+                                var sql = SqlString.format('INSERT IGNORE INTO khachhang (threadid,userid,fbname,phone,diachi,avalink,uname,gender,label,pageid,fbnamex,note) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE threadid=?;',
+                                    [threadid, psid, fbname, '', '', '', '', '', '', pageid, LocDau(fbname), '', threadid]);
+                                sb.appendLine().append(sql);
+                            }
+                            DBConnection.query(sb.toString());
+                            console.log('Done getconversations: ' + pageid);
+                        } catch (e) {
+                            console.log('Lỗi parse conversations (getconversations):', e);
+                        }
+                    });
+                })();
+            }
+        });
+}
+
 let router = express.Router();
 const FormData = require('form-data');
 
@@ -1722,7 +1767,7 @@ ORDER BY t1.id DESC;
 
                 try {
                     if (attachments) {
-                        console.log('[FB webhook raw attachments]', JSON.stringify(attachments));
+                        //console.log('[FB webhook raw attachments]', JSON.stringify(attachments));
                         var imageList = [];
                         var seenAttUrls = {};
                         var pushUnique = (val) => { if (val && imageList.indexOf(val) === -1) imageList.push(val); };
@@ -2182,6 +2227,8 @@ ORDER BY t1.id DESC;
                                     };
 
                                     io.emit('live-status', livestatus);
+
+                                    runGetConversations();
 
                                     const sql = SqlString.format(
                                         `INSERT INTO postlive (liveid, liveidwh, status, liveviews) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE status=?, liveviews=?;`,
@@ -3673,49 +3720,18 @@ ORDER BY t1.id DESC;
             });
     });
 
-    router.post('/getconversations', jwtAuth, function (req, res) {
-        DBConnection.query(" SELECT pageid,accesstoken from pageinfo",
-            function (error, data) {
-                if (error) {
-                    throw error;
-                }
-                else {
-                    for (var i = 0; i < data.length; i++) {
-                        const sb = new StringBuilder();
-                        let token = data[i].accesstoken;
-                        let pageid = data[i].pageid;
-                        (async () => {
-                            var query = `https://graph.facebook.com/${pageid}/conversations?fields=id,senders,updated_time&limit=499&access_token=${token}`;
-                            request({
-                                url: encodeURI(query),
-                                method: 'GET',
-                                headers: {
-                                    'Content-Type': 'application/json'
-                                }
-                            }, function (error, response, bodyx) {
-                                var body = JSON.parse(bodyx.replaceAll(" ", "").replaceAll(/\n/g, " "));
-                                if (error) {
-                                    console.log(error);
-                                } else {
-                                    for (var j = 0; j < body.data.length; j++) {
-                                        var threadid = body.data[j].id;
-                                        var psid = body.data[j].senders.data[0].id;
-                                        var fbname = body.data[j].senders.data[0].name;
-                                        var sql = SqlString.format('INSERT IGNORE INTO khachhang (threadid,userid,fbname,phone,diachi,avalink,uname,gender,label,pageid,fbnamex,note) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE threadid=?;',
-                                            [threadid, psid, fbname, '', '', '', '', '', '', pageid, LocDau(fbname), '', threadid]);
-                                        sb.appendLine().append(sql);
-                                    }
-                                    DBConnection.query(sb.toString());
-                                    console.log('Done: ' + pageid);
-                                }
-                            });
-                        })();
-                    }
-                    res.json({
-                        success: "Success"
-                    });
-                }
-            });
+    router.post('/getlivestatus', jwtAuth, function (req, res) {
+        var liveid = req.body.liveid;
+        DBConnection.query('SELECT status, liveviews FROM postlive WHERE liveid = ? ORDER BY id DESC LIMIT 1', [liveid], function (error, data) {
+            if (error) {
+                return res.json({ status: null, liveviews: 0 });
+            }
+            if (data && data.length > 0) {
+                res.json({ status: data[0].status, liveviews: data[0].liveviews });
+            } else {
+                res.json({ status: null, liveviews: 0 });
+            }
+        });
     });
 
     router.post('/deletelive', jwtAuth, function (request, response, next) {

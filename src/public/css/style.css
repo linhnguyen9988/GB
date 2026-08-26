@@ -1194,3 +1194,24 @@ table.dataTable tbody tr.selected {
         grid-template-columns: 1fr;
     }
 }
+
+#liveStatusBadge {
+    font-size: 0.8rem;
+    vertical-align: middle;
+}
+
+.live-badge-pulse {
+    animation: liveBadgePulse 1.4s ease-in-out infinite;
+}
+
+@keyframes liveBadgePulse {
+    0% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.55;
+    }
+    100% {
+        opacity: 1;
+    }
+}

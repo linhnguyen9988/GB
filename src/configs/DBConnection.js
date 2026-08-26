@@ -11,34 +11,20 @@ const pool = mysql.createPool({
     connectionLimit: 10,
     queueLimit: 0,
     multipleStatements: true,
-
-    // ── Chống "đứng im" khi không kết nối được MySQL ──────────────────
-    // Không set cái này thì Node sẽ chờ theo timeout của hệ điều hành
-    // (trên Windows có thể vài phút) thay vì báo lỗi sau vài giây.
-    connectTimeout: 10000, // 10s: bỏ cuộc và báo lỗi nếu không connect được
-
-    // ── Chống "connection ma" sau khi pool idle lâu (qua đêm, v.v.) ────
-    // Một số firewall/NAT/VPS âm thầm cắt kết nối rảnh; keep-alive giúp
-    // phát hiện sớm connection đã chết thay vì dùng nhầm nó rồi treo.
+    connectTimeout: 10000,
     enableKeepAlive: true,
     keepAliveInitialDelay: 10000,
 });
 
-// ── Bắt lỗi ở CẤP POOL ─────────────────────────────────────────────────
-// Nếu thiếu handler này, khi 1 connection trong pool bị rớt giữa chừng,
-// pool sẽ không giải phóng đúng slot đó -> sau vài lần là cạn hết
-// connectionLimit -> mọi query sau đó xếp hàng chờ vô thời hạn, im lặng.
 pool.on('error', (err) => {
     console.error('❌ [MySQL Pool Error]', err.code || err.message, '- pool sẽ tự tạo lại connection khi cần.');
 });
 
-// ── Kết nối thử lúc khởi động, có retry + log rõ ràng ──────────────────
-// Không để lỗi kết nối làm "treo" tiến trình trong im lặng: log từng
-// lần thử, và tự thử lại thay vì bắt người dùng bấm restart thủ công.
 const CONNECT_RETRY_DELAY_MS = 5000;
 let connectAttempt = 0;
 
 async function tryConnectOnce() {
+    console.log(`Begin MySQL Connect`);
     connectAttempt += 1;
     const conn = await pool.getConnection();
     try {

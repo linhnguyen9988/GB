@@ -602,7 +602,7 @@
     return map[Number(statuscode)] ?? 'secondary';
   }
 
-  function DetailDonHang(realorderid) {
+  function DetailDonHang(realorderid, onDone) {
     let motphan = '';
     if (realorderid.includes('1P1')) {
       realorderid = realorderid.replace('1P1', '');
@@ -614,6 +614,15 @@
       data: { realorderid: realorderid },
       dataType: "JSON",
       success: function (data) {
+        if (!data || !data.data || !data.data[0]) {
+          $('#qrresult').empty().append(
+            `<div class="qr-notfound-box text-center p-3">
+              <div class="text-muted mb-2"><i class="bi bi-exclamation-circle"></i> Không tìm thấy đơn hàng ứng với mã QR này.</div>
+            </div>`
+          );
+          if (typeof onDone === 'function') onDone();
+          return;
+        }
         var d = data.data[0];
         var status = d.statuscode;
         var badge = statusBadgeClass(status);
@@ -679,7 +688,16 @@
         $('#modaldetail').on('hidden.bs.modal', function () {
           var div = document.getElementById('modaldetail');
           div.remove();
+          if (typeof onDone === 'function') onDone();
         });
+      },
+      error: function () {
+        $('#qrresult').empty().append(
+          `<div class="qr-notfound-box text-center p-3">
+            <div class="text-muted mb-2"><i class="bi bi-exclamation-circle"></i> Lỗi tra cứu đơn hàng, vui lòng thử lại.</div>
+          </div>`
+        );
+        if (typeof onDone === 'function') onDone();
       }
     })
 
@@ -1541,24 +1559,16 @@
     scanner.start().then(function () { _startRot(); });
   };
 
-  function setResult(result) {
-    if (result.data.length < 5) {
-      $('#qrresult').empty();
-      return;
-    }
-    scanner.stop();
-    document.getElementById("video-container").style.display = "none";
-    if (isNumeric(result.data) || result.data.includes('1P1')) {
-      if (result.data.length == 12 || result.data.includes('1P1')) {
-        DetailDonHang(result.data);
-      }
-      khid = result.data;
-      $.ajax({
-        url: "/getfullinfo",
-        method: "POST",
-        data: { id: result.data },
-        dataType: "JSON",
-        success: function (data) {
+  function loadCustomerInfoByKhachId(khachId) {
+    // Tra thông tin đầy đủ của khách hàng theo đúng mã khách hàng (dùng cho
+    // trường hợp quét mã khách hàng, KHÔNG dùng cho mã đơn hàng).
+    khid = khachId;
+    $.ajax({
+      url: "/getfullinfo",
+      method: "POST",
+      data: { id: khachId },
+      dataType: "JSON",
+      success: function (data) {
           if (!data || !data.data || data.data.length === 0 || !data.data[0]) {
             handleQRNotFound('Không tìm thấy khách hàng hoặc đơn hàng ứng với mã QR này.');
             return;
@@ -1612,7 +1622,7 @@
                 </div>
                 <div class="qr-customer-actions">
                   ${buttonBusinessSuite}
-                  <button type="button" class="btn btn-outline-secondary btn-sm" onclick="PrintKH('${result.data}','${data.data[0].userid}','${data.data[0].fbname}','${data.data[0].phone}')" title="In KH"><i class="bi bi-printer"></i></button>
+                  <button type="button" class="btn btn-outline-secondary btn-sm" onclick="PrintKH('${khachId}','${data.data[0].userid}','${data.data[0].fbname}','${data.data[0].phone}')" title="In KH"><i class="bi bi-printer"></i></button>
                   <button class="open-message-modal btn btn-outline-warning btn-sm" data-customer-id="${data.data[0].userid}" data-customer-name="${data.data[0].fbname}" data-sender-page-id="${data.data[0].pageid}" title="Nhắn tin"><i class="bi bi-send-fill"></i></button>
                 </div>
               </div>
@@ -1808,14 +1818,36 @@
               }
             });
           }
-        },
-        error: function () {
-          handleQRNotFound('Lỗi tra cứu khách hàng/đơn hàng, vui lòng thử lại.');
-        }
+      },
+      error: function () {
+        handleQRNotFound('Lỗi tra cứu khách hàng, vui lòng thử lại.');
+      }
+    });
+  }
+
+  function setResult(result) {
+    if (result.data.length < 5) {
+      $('#qrresult').empty();
+      return;
+    }
+
+    var code = result.data;
+    scanner.stop();
+    document.getElementById("video-container").style.display = "none";
+
+    var isDonHang = code.length >= 12 || code.includes('1P1');
+    var isKhachHang = !isDonHang && isNumeric(code);
+
+    if (isDonHang) {
+      DetailDonHang(code, function () {
+        document.getElementById("video-container").style.display = "block";
+        window.scanner && window.scanner.start();
       });
+    } else if (isKhachHang) {
+      loadCustomerInfoByKhachId(code);
     } else {
       var searchkh = document.getElementById("tenkhach");
-      var qrarray = result.data.split(';');
+      var qrarray = code.split(';');
       searchkh.value = qrarray[1];
       document.getElementById("COD").value = qrarray[0];
       document.getElementById("searchkhach").click();

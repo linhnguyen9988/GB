@@ -15,11 +15,9 @@
                                         aria-describedby="basic-addon1" required>
                                     <!--<button type="button" class="btn btn-primary" id="scancomment"
                                     onclick="ScanComment()">Quét</button>-->
-                                    <button type="button" class="btn btn-primary" id="begin"
-                                        onclick="Begin()">Begin</button>
-                                    <button type="button" class="btn btn-primary" id="begin"
+                                    <button type="button" class="btn btn-primary" id="btnbot"
                                         onclick="ScrollBot()">BOT</button>
-                                        <button type="button" class="btn btn-primary" id="begin"
+                                        <button type="button" class="btn btn-primary" id="btnads"
                                         onclick="ADS()">ADS</button>
                                 </div>
                             </form>
@@ -35,7 +33,7 @@
                                 <select id="liveidcombobox" class="form-select">
                                     <% if(data.length){ for(var i=0; i< data.length; i++) {%>
                                         <option value="<%= data[i].id%>" id="<%= data[i].id%>"
-                                            data-note="<%= data[i].note%>">
+                                            data-note="<%= data[i].note%>" data-status="<%= data[i].status || '' %>">
                                             <%= data[i].name%> - <%= data[i].luotincuoi%>
                                         </option>
                                         <% } }else{ %>
@@ -48,6 +46,9 @@
                                     onclick="LoadLive()">Load</button>
                                 <!--<button type="button" class="btn btn-primary" id="btnloadlive"
                                 onclick="DeleteLive()">Del</button>-->
+                            </div>
+                            <div class="mt-1">
+                                <span id="liveStatusBadge" class="badge bg-light text-dark border">Chưa chọn live</span>
                             </div>
                         </div>
 

@@ -2,221 +2,198 @@
 <html lang="vi">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>QR + Code 128 Scanner</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Scanner Demo</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background: #0f0f0f; color: #f0f0f0;
-    min-height: 100vh; display: flex; flex-direction: column;
-    align-items: center; padding: 20px 16px;
+    margin: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #0b0d10; color: #e8eaed; min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
   }
-  h1 { font-size: 18px; font-weight: 500; margin-bottom: 4px; }
-  .subtitle { font-size: 13px; color: #888; margin-bottom: 16px; text-align: center; }
-
-  .status-bar {
-    width: 100%; max-width: 480px; display: flex; align-items: center;
-    font-size: 13px; color: #666; margin-bottom: 10px;
+  header { padding: 16px; text-align: center; width: 100%; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .engine-badge {
+    display: inline-block; font-size: 12px; padding: 3px 10px; border-radius: 999px;
+    background: #1f2937; color: #9ca3af; margin-top: 6px;
   }
-  .dot { width:8px; height:8px; border-radius:50%; background:#555; margin-right:6px; flex-shrink:0; }
-  .dot.on { background:#63dc96; animation:pulse 1.5s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-  .badge {
-    margin-left:auto; font-size:11px; padding:2px 8px;
-    border-radius:6px; background:#1e2e1e; color:#63dc96; border:1px solid #2a3d2a;
-    white-space:nowrap;
+  .engine-badge.native { background: #064e3b; color: #6ee7b7; }
+  .stage {
+    position: relative; width: 100%; max-width: 480px; aspect-ratio: 3/4;
+    background: #000; border-radius: 16px; overflow: hidden; margin: 8px 16px;
   }
-
-  /* Bọc vùng camera của html5-qrcode */
-  #reader-wrap {
-    width: 100%; max-width: 480px;
-    border-radius: 16px; overflow: hidden;
-    border: 1px solid #2a2a2a; background: #000;
-    min-height: 280px;
+  video { width: 100%; height: 100%; object-fit: cover; }
+  .frame-guide {
+    position: absolute; inset: 12%; border: 2px solid rgba(255,255,255,0.5);
+    border-radius: 12px; pointer-events: none;
   }
-
-  /* Override style mặc định của html5-qrcode cho phù hợp dark theme */
-  #reader { border: none !important; }
-  #reader video { border-radius: 0 !important; }
-  #reader__scan_region { background: transparent !important; }
-  #reader__scan_region img { display: none !important; } /* ẩn icon mặc định */
-  #reader__dashboard { background: #111 !important; border-top: 1px solid #222 !important; padding: 10px !important; }
-  #reader__dashboard_section_csr button {
-    background: #1a1a1a !important; color: #f0f0f0 !important;
-    border: 1px solid #333 !important; border-radius: 10px !important;
-    padding: 10px 16px !important; font-size: 14px !important; cursor: pointer !important;
+  .frame-guide.found { border-color: #34d399; box-shadow: 0 0 0 4px rgba(52,211,153,0.25); }
+  .status {
+    padding: 10px 16px; font-size: 14px; color: #9ca3af; text-align: center; min-height: 20px;
   }
-  #reader__dashboard_section_csr button:hover { background: #252525 !important; }
-  #reader__camera_selection {
-    background: #1a1a1a !important; color: #f0f0f0 !important;
-    border: 1px solid #333 !important; border-radius: 8px !important;
-    padding: 6px 10px !important; font-size: 13px !important;
+  .result {
+    width: 100%; max-width: 480px; margin: 8px 16px 24px; padding: 16px;
+    background: #111827; border-radius: 12px; display: none;
   }
-  #reader__status_span { color: #888 !important; font-size: 12px !important; }
-  #reader__header_message { display: none !important; }
-  /* Đổi màu khung quét sang xanh lá */
-  #reader__scan_region svg { stroke: #63dc96 !important; }
-
-  .result-area { width:100%; max-width:480px; margin-top:14px; }
-  .section-label { font-size:11px; color:#555; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; }
-  .result-card {
-    background:#1a1a1a; border:1px solid #2a2a2a; border-radius:12px;
-    padding:14px 16px; min-height:64px; display:flex; flex-direction:column;
-    gap:4px; justify-content:center; transition:border-color 0.3s;
+  .result.show { display: block; }
+  .result-label { font-size: 12px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; }
+  .result-format { display: inline-block; margin-top: 4px; font-size: 12px; padding: 2px 8px; background: #1e293b; border-radius: 999px; color: #93c5fd; }
+  .result-text { font-size: 16px; margin-top: 10px; word-break: break-all; }
+  button {
+    margin-top: 14px; padding: 10px 18px; border: none; border-radius: 8px;
+    background: #2563eb; color: white; font-size: 14px; cursor: pointer;
   }
-  .result-card.flash { border-color:#63dc96; }
-  .result-fmt { font-size:12px; color:#63dc96; }
-  .result-val { font-size:15px; font-weight:500; color:#fff; word-break:break-all; }
-  .result-empty { font-size:14px; color:#444; }
-
-  .history { width:100%; max-width:480px; margin-top:16px; padding-bottom:24px; }
-  .history-header {
-    display:flex; justify-content:space-between; font-size:11px; color:#555;
-    text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;
-  }
-  .history-clear { cursor:pointer; }
-  .history-list { display:flex; flex-direction:column; gap:6px; }
-  .h-item {
-    background:#141414; border:1px solid #222; border-radius:8px;
-    padding:8px 12px; display:flex; justify-content:space-between; align-items:center;
-    animation:fadeIn .2s ease;
-  }
-  @keyframes fadeIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1} }
-  .h-val { color:#ccc; font-size:13px; word-break:break-all; flex:1; margin-right:8px; }
-  .h-fmt { color:#63dc96; font-size:11px; white-space:nowrap; }
+  button:active { background: #1d4ed8; }
+  .fps { font-size: 11px; color: #4b5563; margin-top: 4px; }
 </style>
 </head>
 <body>
 
-<h1>QR + Code 128 Scanner</h1>
-<p class="subtitle">html5-qrcode + ZXing — quét mọi góc, tối ưu iPhone</p>
+<header>
+  <h1>Quét QR / Code128 trực tiếp</h1>
+  <span id="engineBadge" class="engine-badge">Đang kiểm tra engine...</span>
+</header>
 
-<div class="status-bar">
-  <span class="dot" id="dot"></span>
-  <span id="statusTxt">Đang tải...</span>
-  <span class="badge">QR &amp; Code 128</span>
+<div class="stage">
+  <video id="video" autoplay playsinline muted></video>
+  <div id="frameGuide" class="frame-guide"></div>
 </div>
 
-<div id="reader-wrap">
-  <div id="reader"></div>
+<div id="status" class="status">Đang mở camera...</div>
+<div id="fps" class="fps"></div>
+
+<div id="result" class="result">
+  <div class="result-label">Kết quả</div>
+  <span id="resultFormat" class="result-format"></span>
+  <div id="resultText" class="result-text"></div>
+  <button id="scanAgainBtn">Quét tiếp</button>
 </div>
 
-<div class="result-area">
-  <div class="section-label">Kết quả gần nhất</div>
-  <div class="result-card" id="resultCard">
-    <span class="result-empty">Chưa quét được gì</span>
-  </div>
-</div>
+<script type="module">
+const video = document.getElementById('video');
+const statusEl = document.getElementById('status');
+const engineBadge = document.getElementById('engineBadge');
+const frameGuide = document.getElementById('frameGuide');
+const resultBox = document.getElementById('result');
+const resultText = document.getElementById('resultText');
+const resultFormat = document.getElementById('resultFormat');
+const fpsEl = document.getElementById('fps');
+const scanAgainBtn = document.getElementById('scanAgainBtn');
 
-<div class="history">
-  <div class="history-header">
-    <span>Lịch sử</span>
-    <span class="history-clear" onclick="clearHistory()">Xóa</span>
-  </div>
-  <div class="history-list" id="historyList"></div>
-</div>
+let scanning = true;
+let frameCount = 0;
+let lastFpsTime = performance.now();
 
-<!-- html5-qrcode bundle nhúng inline -->
-<script>
-HTML5QRCODE_PLACEHOLDER
-</script>
+scanAgainBtn.addEventListener('click', () => {
+  resultBox.classList.remove('show');
+  frameGuide.classList.remove('found');
+  scanning = true;
+  statusEl.textContent = 'Đang quét...';
+});
 
-<script>
-let historyArr = [];
-let scanner    = null;
-let cooldown   = false;
-let lastCode   = '';
-
-function setStatus(txt, active) {
-  document.getElementById('statusTxt').textContent = txt;
-  document.getElementById('dot').className = 'dot' + (active ? ' on' : '');
+function showResult(text, format) {
+  scanning = false;
+  frameGuide.classList.add('found');
+  resultText.textContent = text;
+  resultFormat.textContent = format;
+  resultBox.classList.add('show');
+  statusEl.textContent = 'Đã quét được!';
+  if (navigator.vibrate) navigator.vibrate(80);
 }
 
-function onScanSuccess(decodedText, decodedResult) {
-  if (cooldown && decodedText === lastCode) return;
-  lastCode = decodedText;
-  cooldown = true;
-  setTimeout(() => { cooldown = false; }, 1500);
-
-  const fmt = decodedResult.result.format.formatName || 'Barcode';
-  const fmtLabel = fmt.includes('QR') ? 'QR Code' : 'Code 128';
-
-  showResult(decodedText, fmtLabel);
-  addHistory(decodedText, fmtLabel);
-
-  // Flash
-  const card = document.getElementById('resultCard');
-  card.classList.add('flash');
-  setTimeout(() => card.classList.remove('flash'), 600);
+function tickFps() {
+  frameCount++;
+  const now = performance.now();
+  if (now - lastFpsTime > 1000) {
+    fpsEl.textContent = `~${frameCount} lần thử/giây`;
+    frameCount = 0;
+    lastFpsTime = now;
+  }
 }
 
-function onScanFailure(err) {
-  // Bình thường khi không có mã trong frame — bỏ qua
+async function startCamera() {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+    audio: false,
+  });
+  video.srcObject = stream;
+  await video.play();
 }
 
-function init() {
-  setStatus('Đang khởi động camera...');
+// ----- Engine 1: BarcodeDetector native (ML Kit / Vision framework) -----
+async function runNativeEngine() {
+  engineBadge.textContent = '⚡ Native BarcodeDetector (ML Kit engine)';
+  engineBadge.classList.add('native');
+  const detector = new BarcodeDetector({ formats: ['qr_code', 'code_128'] });
 
-  scanner = new Html5Qrcode('reader', {
-    verbose: false,
-    // experimentalFeatures: false → KHÔNG dùng native BarcodeDetector
-    // Bắt buộc đi qua ZXing để support CODE_128 trên Safari iOS
-    experimentalFeatures: {
-      useBarCodeDetectorIfSupported: false
+  async function loop() {
+    if (!scanning) { requestAnimationFrame(loop); return; }
+    try {
+      const codes = await detector.detect(video);
+      tickFps();
+      if (codes.length > 0) {
+        showResult(codes[0].rawValue, codes[0].format);
+      }
+    } catch (e) { /* frame chưa sẵn sàng, bỏ qua */ }
+    requestAnimationFrame(loop);
+  }
+  loop();
+}
+
+// ----- Engine 2: zxing-wasm fallback (Safari, Firefox, desktop) -----
+async function runZxingFallback() {
+  engineBadge.textContent = '🔁 zxing-wasm (fallback, quét nhiều lần/giây)';
+  const { readBarcodes } = await import('https://esm.sh/zxing-wasm@2/reader');
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  async function loop() {
+    if (!scanning || video.readyState < 2) {
+      requestAnimationFrame(loop);
+      return;
     }
-  });
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
 
-  const config = {
-    fps: 15,
-    // qrbox: chiều rộng vùng quét — dùng function để responsive
-    qrbox: (viewfinderWidth, viewfinderHeight) => {
-      const size = Math.min(viewfinderWidth, viewfinderHeight) * 0.75;
-      return { width: Math.floor(size * 1.5), height: Math.floor(size) };
-    },
-    // Support cả QR lẫn Code 128
-    formatsToSupport: [
-      Html5QrcodeSupportedFormats.QR_CODE,
-      Html5QrcodeSupportedFormats.CODE_128,
-    ],
-    // Tắt beep mặc định (tuỳ thích)
-    disableFlip: false,
-    aspectRatio: 1.333, // 4:3 — phù hợp camera iPhone
-  };
-
-  scanner.start(
-    { facingMode: 'environment' }, // camera sau
-    config,
-    onScanSuccess,
-    onScanFailure
-  ).then(() => {
-    setStatus('Đang quét...', true);
-  }).catch(err => {
-    setStatus('Lỗi camera: ' + err);
-  });
+    try {
+      const results = await readBarcodes(canvas, {
+        formats: ['QRCode', 'Code128'],
+        tryHarder: true,
+        tryRotate: true,
+        tryInvert: true,
+        maxNumberOfSymbols: 1,
+      });
+      tickFps();
+      if (results.length > 0) {
+        showResult(results[0].text, results[0].format);
+      }
+    } catch (e) { /* bỏ qua frame lỗi */ }
+    requestAnimationFrame(loop);
+  }
+  loop();
 }
 
-function showResult(code, fmt) {
-  document.getElementById('resultCard').innerHTML =
-    `<span class="result-fmt">${fmt}</span><span class="result-val">${esc(code)}</span>`;
-}
-function addHistory(code, fmt) {
-  if (historyArr.length && historyArr[0].code === code) return;
-  historyArr.unshift({ code, fmt });
-  if (historyArr.length > 30) historyArr.pop();
-  document.getElementById('historyList').innerHTML = historyArr.map(h =>
-    `<div class="h-item"><span class="h-val">${esc(h.code)}</span><span class="h-fmt">${h.fmt}</span></div>`
-  ).join('');
-}
-function clearHistory() { historyArr = []; document.getElementById('historyList').innerHTML = ''; }
-function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+(async () => {
+  try {
+    await startCamera();
+    statusEl.textContent = 'Đang quét...';
 
-function waitForLib(cb, tries = 0) {
-  if (window.Html5Qrcode && window.Html5QrcodeSupportedFormats) { cb(); return; }
-  if (tries > 80) { setStatus('Không tải được thư viện'); return; }
-  setTimeout(() => waitForLib(cb, tries + 1), 100);
-}
-window.addEventListener('load', () => waitForLib(init));
+    if ('BarcodeDetector' in window) {
+      const supported = await window.BarcodeDetector.getSupportedFormats();
+      if (supported.includes('qr_code') || supported.includes('code_128')) {
+        await runNativeEngine();
+        return;
+      }
+    }
+    await runZxingFallback();
+  } catch (err) {
+    statusEl.textContent = 'Lỗi: ' + err.message + ' (cần cấp quyền camera, và mở qua HTTPS)';
+  }
+})();
 </script>
+
 </body>
 </html>
