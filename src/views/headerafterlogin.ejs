@@ -588,6 +588,52 @@
     });
   }
 
+  // type: 1-Duyệt đơn hàng, 2-Duyệt hoàn, 3-Phát tiếp
+  function CapNhatDonViettel(mavandon, type, label) {
+    document.getElementById("notetoshow").insertAdjacentHTML("afterend",
+      `<div class="modal fade" tabindex="-1" role="dialog" id="modalviettelnote">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content rounded-4 shadow">
+    <div class="modal-header p-4 pb-2 border-bottom-0">
+      <h5 class="fw-bold mb-0">Ghi chú cho "${label}"</h5>
+      <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+    </div>
+    <div class="modal-body p-4 pt-0">
+      <textarea class="form-control" id="viettelnotetext" rows="3" maxlength="150" placeholder="Không bắt buộc"></textarea>
+      <div class="text-end mt-3">
+        <button type="button" class="btn btn-light me-2" data-bs-dismiss="modal">Hủy</button>
+        <button type="button" class="btn btn-primary" onclick="ConfirmCapNhatDonViettel('${mavandon}', ${type}, '${label}')">Xác nhận</button>
+      </div>
+    </div>
+    </div>
+    </div>
+  </div>`);
+    $('#modalviettelnote').modal('show');
+    $('#modalviettelnote').on('hidden.bs.modal', function () {
+      var div = document.getElementById('modalviettelnote');
+      if (div) div.remove();
+    });
+  }
+
+  function ConfirmCapNhatDonViettel(mavandon, type, label) {
+    var note = document.getElementById('viettelnotetext').value.trim();
+    $('#modalviettelnote').modal('hide');
+
+    $.ajax({
+      url: "/capnhatdonviettel",
+      method: "POST",
+      data: { realorderid: mavandon, type: type, note: note },
+      dataType: "JSON",
+      success: function (data) {
+        ShowCenterToast('success', (data.message || 'Đã xử lý') + ': ' + mavandon, 3000);
+      },
+      error: function (xhr) {
+        var msg = (xhr.responseJSON && xhr.responseJSON.message) || ('Không thể ' + label + ', thử lại sau.');
+        ShowCenterToast('danger', msg + ': ' + mavandon, 3500);
+      }
+    });
+  }
+
   function statusBadgeClass(statuscode) {
     if (statuscode == null) return 'secondary';
     const map = {
@@ -627,8 +673,19 @@
         var status = d.statuscode;
         var badge = statusBadgeClass(status);
         var button = '';
+
+        if (Number(status) === 505) {
+          button += `<button type="button" class="btn btn-outline-success" onclick="CapNhatDonViettel('${realorderid}', 3, 'phát tiếp')" data-bs-dismiss="modal"><i class="bi bi-arrow-repeat"></i> Phát tiếp</button>`;
+          button += `<button type="button" class="btn btn-outline-danger" onclick="CapNhatDonViettel('${realorderid}', 2, 'duyệt hoàn')" data-bs-dismiss="modal"><i class="bi bi-box-arrow-in-left"></i> Duyệt hoàn</button>`;
+        }
+
         if (status < 105) {
-          button = `<button type="button" class="btn btn-outline-danger" onclick="CancelViettelOrder('${realorderid}')" data-bs-dismiss="modal"><i class="bi bi-x-circle"></i> Hủy đơn</button>`;
+          button += `<button type="button" class="btn btn-outline-danger" onclick="CancelViettelOrder('${realorderid}')" data-bs-dismiss="modal"><i class="bi bi-x-circle"></i> Hủy đơn</button>`;
+        }
+
+        var partialApproveStatuses = [202, 500, 505, 506, 507, 508, 509, 550];
+        if (partialApproveStatuses.includes(Number(status))) {
+          button += `<button type="button" class="btn btn-outline-primary" onclick="CapNhatDonViettel('${realorderid}', 1, 'duyệt 1 phần')" data-bs-dismiss="modal"><i class="bi bi-check2-circle"></i> Duyệt 1 phần</button>`;
         }
         document.getElementById("notetoshow").insertAdjacentHTML("afterend",
           `<div class="modal fade" tabindex="-1" role="dialog" id="modaldetail">
@@ -673,7 +730,7 @@
         </div>
 
         <div class="modal-footer order-detail-foot">
-          <button class="open-message-modal btn btn-outline-warning" data-customer-id="${d.userid}" data-customer-name="${d.name}" data-sender-page-id="${d.pageid}" data-bs-dismiss="modal"><i class="bi bi-send-fill"></i></button>
+          <button class="open-message-modal btn btn-outline-primary" data-customer-id="${d.userid}" data-customer-name="${d.name}" data-sender-page-id="${d.pageid}" data-bs-dismiss="modal"><i class="bi bi-send-fill"></i> Tin nhắn</button>
           <button type="button" class="btn btn-outline-primary" onclick="OrderJourney('${d.realorderid}','${d.name}','${d.userid}','${d.phone}')" data-bs-dismiss="modal"><i class="bi bi-truck"></i> Hành trình</button>
           ${button}
         </div>

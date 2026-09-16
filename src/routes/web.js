@@ -1108,6 +1108,27 @@ ORDER BY t1.id DESC;
         res.json({ success: true, message: 'Đã gửi' });
     });
 
+    const POD_LOG_FILE = path.join(__dirname, 'pod-webhooks.txt');
+
+    function logPodWebhookToFile(rawBody, orderNumber, podImages) {
+        const timestamp = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Saigon' });
+        const lines = [
+            '='.repeat(80),
+            `Thời gian ghi: ${timestamp}`,
+            `Đơn hàng: ${orderNumber}`,
+            `Số ảnh POD: ${podImages.length}`,
+            `Link ảnh: ${podImages.join(', ')}`,
+            '--- Toàn bộ payload webhook ---',
+            JSON.stringify(rawBody, null, 2),
+            '='.repeat(80),
+            '', ''
+        ].join('\n');
+
+        fs.appendFile(POD_LOG_FILE, lines, (err) => {
+            if (err) console.error('Lỗi ghi file pod-webhooks.txt:', err);
+        });
+    }
+
     router.post('/viettel', async (req, res) => {
         try {
             const body = req.body;
@@ -1124,13 +1145,35 @@ ORDER BY t1.id DESC;
                 statustext = 'Mới tạo';
             }
 
+            const reasonCode = data.REASON_CODE || null;
+
+            const podImages = data.POD?.IMAGES || [];
+            if (podImages.length > 0) {
+                console.log(`[POD] Đơn ${data.ORDER_NUMBER} ĐÃ CÓ ${podImages.length} ảnh POD:`, podImages);
+                logPodWebhookToFile(body, data.ORDER_NUMBER, podImages);
+            } else {
+                //console.log(`[POD] Đơn ${data.ORDER_NUMBER} chưa có ảnh POD (mảng rỗng)`);
+            }
+            const podImagesJson = podImages.length > 0 ? JSON.stringify(podImages) : null;
+
+            const orderNumber = data.ORDER_NUMBER;
+
             const db = DBConnection.promise();
+
+            const [dupRows] = await db.query(
+                'SELECT 1 FROM order_logs WHERE order_number = ? AND status_code = ? AND status_date_raw = ? LIMIT 1',
+                [orderNumber, status, data.ORDER_STATUSDATE]
+            );
+            if (dupRows.length > 0) {
+                //console.log(`[Duplicate] Bỏ qua webhook trùng: đơn ${orderNumber}, status=${status}, date=${data.ORDER_STATUSDATE}`);
+                return res.sendStatus(200);
+            }
+
             let phone = data.EMPLOYEE_PHONE || '';
             if (phone.startsWith('84')) {
                 phone = '0' + phone.substring(2);
             }
 
-            const orderNumber = data.ORDER_NUMBER;
             const is1P1 = /1P\d+$/i.test(orderNumber);
             const baseOrderNumber = is1P1 ? orderNumber.replace(/1P\d+$/i, '') : orderNumber;
 
@@ -1138,6 +1181,8 @@ ORDER BY t1.id DESC;
                 'SELECT * FROM lendon WHERE realorderid = ? LIMIT 1',
                 [orderNumber]
             );
+
+            const FINAL_STATUSES = new Set([501, 503, 504, 101, 107]);
 
             if (rows.length === 0 && is1P1) {
                 const [baseRows] = await db.query(
@@ -1149,15 +1194,15 @@ ORDER BY t1.id DESC;
                     const base = baseRows[0];
                     const timenow = new Date().toLocaleString("vi-VN", { timeZone: "Asia/Saigon" });
                     await db.query(
-                        `INSERT INTO lendon (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, statuscode, statustext, last_update)
-                     VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, NOW())`,
+                        `INSERT INTO lendon (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, statuscode, statustext, reason_code, pod_images, last_update)
+                 VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, NOW())`,
                         [
                             base.name, base.phone, base.address,
                             base.kg, 1, timenow,
                             orderNumber, orderNumber,
                             base.khid, base.userid, base.realfbid,
                             base.provider || 'Viettel',
-                            status, statustext
+                            status, statustext, reasonCode, podImagesJson
                         ]
                     );
                     console.log(`[1P1] Tạo đơn hoàn 1 phần mới: ${orderNumber} từ đơn gốc ${baseOrderNumber}`);
@@ -1166,18 +1211,27 @@ ORDER BY t1.id DESC;
                 }
             } else if (rows.length > 0) {
                 const currentStatus = parseInt(rows[0].statuscode) || 0;
-                if (status > currentStatus || status >= 107) {
+                const isCurrentFinal = FINAL_STATUSES.has(currentStatus);
+                const isNewFinal = FINAL_STATUSES.has(status);
+
+                const shouldUpdateStatus = !isCurrentFinal && (status > currentStatus || isNewFinal);
+                const shouldUpdateReasonOnly = isCurrentFinal && !shouldUpdateStatus &&
+                    ((reasonCode && !rows[0].reason_code) || (podImagesJson && !rows[0].pod_images));
+
+                if (shouldUpdateStatus) {
                     await db.query(`
-                    UPDATE lendon 
-                    SET statuscode = ?, 
-                        statustext = ?, 
-                        cod = ?,
-                        shipper_name = ?, 
-                        shipper_phone = ?,
-                        last_update = NOW()
-                    WHERE realorderid = ?`,
+                UPDATE lendon 
+                SET statuscode = ?, 
+                    statustext = ?, 
+                    cod = ?,
+                    shipper_name = ?, 
+                    shipper_phone = ?,
+                    reason_code = ?,
+                    pod_images = COALESCE(?, pod_images),
+                    last_update = NOW()
+                WHERE realorderid = ?`,
                         [status, statustext, data.MONEY_COLLECTION,
-                            data.EMPLOYEE_NAME || null, phone || null, orderNumber]
+                            data.EMPLOYEE_NAME || null, phone || null, reasonCode, podImagesJson, orderNumber]
                     );
 
                     const NOTIFY_STATUSES = {
@@ -1213,19 +1267,29 @@ ORDER BY t1.id DESC;
                             }
                         }
                     }
+                } else if (shouldUpdateReasonOnly) {
+                    await db.query(
+                        `UPDATE lendon 
+                 SET reason_code = COALESCE(reason_code, ?),
+                     pod_images = COALESCE(pod_images, ?),
+                     last_update = NOW()
+                 WHERE realorderid = ?`,
+                        [reasonCode, podImagesJson, orderNumber]
+                    );
+                    console.log(`[Reason/POD Only] Đơn ${orderNumber} đã final (status=${currentStatus}), bổ sung reason_code=${reasonCode || '(không đổi)'}, pod_images=${podImagesJson ? 'có' : '(không đổi)'}`);
                 } else {
-                    console.log(`[Skip Update] Đơn ${orderNumber}: Status cũ (${currentStatus}) mới hơn status nhận được (${status})`);
+                    console.log(`[Skip Update] Đơn ${orderNumber}: currentStatus=${currentStatus}${isCurrentFinal ? ' (đã chốt)' : ''}, status nhận được=${status} không phải bước tiến hợp lệ`);
                 }
             }
 
             await db.query(`
-            INSERT IGNORE INTO order_logs 
-            (order_number, status_code, status_name, location, note, money_collection, employee_name, employee_phone, status_date_raw) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        INSERT IGNORE INTO order_logs 
+        (order_number, status_code, status_name, location, note, money_collection, employee_name, employee_phone, status_date_raw, reason_code, pod_images) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [orderNumber, status, statustext,
                     data.LOCATION_CURRENTLY || data.LOCALION_CURRENTLY,
                     data.NOTE || '', data.MONEY_COLLECTION,
-                    data.EMPLOYEE_NAME || null, phone || null, data.ORDER_STATUSDATE]
+                    data.EMPLOYEE_NAME || null, phone || null, data.ORDER_STATUSDATE, reasonCode, podImagesJson]
             );
 
             res.sendStatus(200);
@@ -2330,6 +2394,61 @@ ORDER BY t1.id DESC;
         }
     });
 
+    router.post('/capnhatdonviettel', async function (req, res) {
+        const id = req.body.realorderid;
+        const type = parseInt(req.body.type, 10);
+        const note = (req.body.note || '').toString().substring(0, 150);
+
+        if (!id || ![1, 2, 3].includes(type)) {
+            return res.status(400).json({ message: "Thiếu mã đơn hoặc loại cập nhật không hợp lệ" });
+        }
+
+        try {
+            const data = await new Promise((resolve, reject) => {
+                DBConnection.query(`SELECT * FROM vietteltoken`, (err, rows) => {
+                    if (err) reject(err);
+                    else resolve(rows);
+                });
+            });
+
+            if (!data || data.length === 0) {
+                return res.status(404).json({ message: "Không tìm thấy Viettel token" });
+            }
+
+            const token = data[0].token;
+            const url = 'https://partner.viettelpost.vn/v2/order/UpdateOrder';
+
+            const response = await axios.post(url, {
+                "TYPE": type,
+                "ORDER_NUMBER": id,
+                "NOTE": note
+            }, {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'token': token
+                }
+            });
+
+            const body = response.data;
+
+            if (body.error === true || body.status !== 200) {
+                return res.status(400).json({ message: body.message || "Lỗi từ Viettel Post" });
+            }
+
+            res.json({
+                message: body.message || "Xử lý thành công"
+            });
+
+        } catch (error) {
+            console.error('Lỗi cập nhật đơn Viettel:', error.message);
+
+            res.status(500).json({
+                message: (error.response && error.response.data && error.response.data.message) || "Lỗi hệ thống hoặc lỗi kết nối API",
+                error: error.message
+            });
+        }
+    });
+
     router.post('/printviettelmanual', function (req, res) {
         var realorderid = req.body.realorderid;
         PrintBillViettel(realorderid);
@@ -2338,12 +2457,23 @@ ORDER BY t1.id DESC;
 
     router.post('/detaildonhang', function (req, res) {
         var realorderid = req.body.realorderid;
-        DBConnection.query(` SELECT * FROM lendon WHERE realorderid='${realorderid}'`,
+        DBConnection.query(
+            `SELECT lendon.*, khachhang.pageid AS pageid
+             FROM lendon
+             LEFT JOIN khachhang ON khachhang.userid = lendon.userid
+             WHERE lendon.realorderid = ?`,
+            [realorderid],
             async function (error, data) {
-                if (data.length > 0) {
+                if (error) {
+                    console.error('Lỗi /detaildonhang:', error.message);
+                    return res.status(500).json({ error: 'Lỗi truy vấn đơn hàng' });
+                }
+                if (data && data.length > 0) {
                     res.json({
                         data: data
                     });
+                } else {
+                    res.json({ data: [] });
                 }
             });
     });
@@ -2610,22 +2740,26 @@ ORDER BY t1.id DESC;
 
             if (!xa) return res.json({ error: 'Sai địa chỉ: không tìm được Xã/Phường' });
 
+            const sortCode = viettelOrder.SORT_CODE || '';
+            const tinhSort = sortCode ? `${tinh} - ${sortCode}` : tinh;
+
             const timenow = new Date().toLocaleString("vi-VN", { timeZone: "Asia/Saigon" });
             const now = new Date();
             const userId = req.user.id;
             let sql = "";
             if (edit != 1) {
-                sql = SqlString.format('INSERT INTO lendon (name,phone,address,cod,kg,status,date,orderid,realorderid,khid,userid,realfbid,time,provider,useraccountid) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);',
-                    [fbname, phone, address, cod, kgreal, 1, timenow, matuquan, finalRealOrderId, khid, userid, realfbid, now, 'Viettel', userId]);//dung userid
+                sql = SqlString.format('INSERT INTO lendon (name,phone,address,cod,kg,status,date,orderid,realorderid,khid,userid,realfbid,time,provider,useraccountid,sortcode) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);',
+                    [fbname, phone, address, cod, kgreal, 1, timenow, matuquan, finalRealOrderId, khid, userid, realfbid, now, 'Viettel', userId, sortCode]);//dung userid
             } else {
-                sql = SqlString.format(`UPDATE lendon SET name=?,phone=?,address=?,cod=?,kg=?,status=?,date=?,orderid=?,realorderid=?,khid=?,provider='Viettel' WHERE realorderid=?;`,
-                    [fbname, phone, address, cod, kgreal, 1, timenow, matuquan, finalRealOrderId, khid, finalRealOrderId]);
+                sql = SqlString.format(`UPDATE lendon SET name=?,phone=?,address=?,cod=?,kg=?,status=?,date=?,orderid=?,realorderid=?,khid=?,provider='Viettel',sortcode=? WHERE realorderid=?;`,
+                    [fbname, phone, address, cod, kgreal, 1, timenow, matuquan, finalRealOrderId, khid, sortCode, finalRealOrderId]);
             }
 
             await new Promise((resolve) => DBConnection.query(sql, resolve));
 
             res.json({
-                xa, huyen, tinh,
+                xa, huyen, tinh: tinhSort,
+                sortcode: sortCode,
                 realorderid: finalRealOrderId,
                 timenow,
                 matuquan
