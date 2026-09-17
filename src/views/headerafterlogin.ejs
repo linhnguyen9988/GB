@@ -345,7 +345,7 @@
         } else if (badge) {
           badge.remove();
         }
-        ShowToast('success', `<i class="bi bi-tag-fill"></i>`, 'Đã cập nhật', 'Đã lưu nhãn khách hàng.', 3000);
+        ShowCenterToast('success', 'Đã lưu nhãn khách hàng.', 3000);
       }
     })
   }
@@ -358,9 +358,9 @@
       dataType: "JSON",
       success: function (data) {
         if (data.data.hasOwnProperty('error')) {
-          ShowToast('danger', `<i class="bi bi-calendar-x"></i>`, 'Lỗi khởi động Chrome', data.data.error, 3000);
+          ShowCenterToast('danger', data.data.error, 3000);
         } else {
-          ShowToast('success', `<i class="bi bi-check-square"></i>`, 'Khởi động Chrome', data.data.success, 3000);
+          ShowCenterToast('success', data.data.success, 3000);
         }
       }
     });
@@ -378,7 +378,7 @@
       dataType: "JSON",
       success: function (data) {
         if (data.data.hasOwnProperty('error')) {
-          ShowToast('danger', `<i class="bi bi-calendar-x"></i>`, 'ERROR', data.data.error, 3000);
+          ShowCenterToast('danger', data.data.error, 3000);
         }
         $('#overlay').modal('show');
         setTimeout(function () {
@@ -438,7 +438,7 @@
   function UpdateRealID(userid) {
     var realfbid = document.getElementById("realfbidtoupdate").value;
     if (!isNumeric(realfbid) || realfbid.length < 3) {
-      ShowToast('danger', `<i class="bi bi-calendar-x"></i>`, 'ERROR', 'Must be number', 3000);
+      ShowCenterToast('danger', 'Must be number', 3000);
       return;
     }
     $.ajax({
@@ -448,10 +448,10 @@
       data: { userid: userid, realfbid: realfbid },
       success: function (data) {
         if (data.data.hasOwnProperty('error')) {
-          ShowToast('danger', `<i class="bi bi-calendar-x"></i>`, 'ERROR', data.data.error, 3000);
+          ShowCenterToast('danger', data.data.error, 3000);
         } else {
           document.getElementById("realfbid").value = realfbid;
-          ShowToast('success', `<i class="bi bi-calendar-x"></i>`, 'Update Real FB ID', 'Done', 3000);
+          ShowCenterToast('success', 'Done', 3000);
         }
         $('#modalupdaterealid').modal('hide');
       }
@@ -1096,10 +1096,10 @@
       dataType: "JSON",
       success: function (x) {
         if (x.data.hasOwnProperty('message_id')) {
-          ShowToast('success', '', '', 'Đã gửi tin nhắn.', 3000);
+          ShowCenterToast('success', 'Đã gửi tin nhắn.', 3000);
         } else {
           var mess = x.data.error.message;
-          ShowToast('danger', '', '', mess, 3000);
+          ShowCenterToast('danger', mess, 3000);
         }
       }
     });
@@ -1492,13 +1492,13 @@
       const data = await res.json();
 
       if (data.adx) {
-        ShowToast('info', '<i class="bi bi-geo-alt-fill"></i>', 'Viettel chuẩn hóa', data.adx, 4000);
+        ShowCenterToast('info', data.adx, 4000);
       }
 
       if (data.error) {
         opt.text = '❌ ' + address;
         opt.disabled = false;
-        ShowToast('danger', '<i class="bi bi-exclamation-triangle"></i>', 'Lỗi địa chỉ', data.error, 4000);
+        ShowCenterToast('danger', data.error, 4000);
         return;
       }
 
@@ -1513,13 +1513,13 @@
         opt.text = '✅ ' + address;
       } else {
         opt.text = '⚠️ ' + address;
-        ShowToast('warning', '<i class="bi bi-truck"></i>', 'J&T', data.jtError || 'Chưa có dữ liệu J&T', 4000);
+        ShowCenterToast('warning', data.jtError || 'Chưa có dữ liệu J&T', 4000);
       }
       opt.disabled = false;
     } catch (e) {
       opt.text = oldText;
       opt.disabled = false;
-      ShowToast('danger', '<i class="bi bi-wifi-off"></i>', 'Lỗi mạng', e.message, 4000);
+      ShowCenterToast('danger', e.message, 4000);
     }
   }
 

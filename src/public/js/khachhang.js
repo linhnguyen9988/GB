@@ -79,7 +79,7 @@ function LenDonKhachHang() {
         success: function (data) {
             if (data.hasOwnProperty('error')) {
                 if (btn) btn.disabled = false;
-                ShowToast('danger', '<i class="bi bi-x-circle"></i>', 'Lỗi lên đơn', data.error, 4000);
+                ShowCenterToast('danger', 'Lỗi lên đơn', data.error, 4000);
                 return;
             }
             document.getElementById('COD').value = 0;
@@ -144,7 +144,7 @@ function LenDonKhachHang() {
                 success: function (res) {
                     if (btn) btn.disabled = false;
                     if (res.success) {
-                        ShowToast('success', '<i class="bi bi-printer-fill"></i>', 'Đã lên đơn', `${fbnamex} • ${data.realorderid} • ${(+cod).toLocaleString()} đ`, 4000);
+                        ShowCenterToast('success', `${fbnamex} • ${data.realorderid} • ${(+cod).toLocaleString()} đ`, 4000);
                         FillDiaChi();
                     } else {
                         alert("Máy in đang Offline!");
@@ -158,7 +158,7 @@ function LenDonKhachHang() {
         },
         error: function () {
             if (btn) btn.disabled = false;
-            ShowToast('danger', '<i class="bi bi-wifi-off"></i>', 'Lỗi mạng', 'Không thể tạo đơn, kiểm tra lại kết nối', 4000);
+            ShowCenterToast('danger', 'Không thể tạo đơn, kiểm tra lại kết nối', 4000);
         }
     });
 }
@@ -338,7 +338,7 @@ function OnUpdateUser() {
         }
     });
 
-    ShowToast('primary', `<img src="${data[1].split('src="').pop().split('"')[0]}" class="rounded me-2" width="30px" height="30px">`, `<strong>${data[11]}</strong>`, 'Đã cập nhật thông tin khách hàng.', 3000);
+    ShowCenterToast('primary', 'Đã cập nhật thông tin khách hàng.', 3000);
 
     $.ajax({
         url: "/updateuser",
@@ -410,7 +410,7 @@ function InItKeys() {
         FillDiaChi();
     }).on('key', function (e, datatable, keyCode, cell, originalEvent) {
         var x = datatable.row(cell.index().row).data();
-        if ($('#message-input').is(':focus') || $('#notescan').is(':focus') || $('#diachiviettel').is(':focus') || $('#diachimodal').is(':focus') || $('#tblkhachhang_filter input').is(':focus') || $('#MessToSend').is(':focus') || $('#OrderNote').is(':focus') || $('#tenkhach').is(':focus') || $('#fbname').is(':focus') || $('#userphone').is(':focus') || $('#diachi').is(':focus') || $('#note').is(':focus')) {
+        if ($('#viettelnotetext').is(':focus') || $('#message-input').is(':focus') || $('#notescan').is(':focus') || $('#diachiviettel').is(':focus') || $('#diachimodal').is(':focus') || $('#tblkhachhang_filter input').is(':focus') || $('#MessToSend').is(':focus') || $('#OrderNote').is(':focus') || $('#tenkhach').is(':focus') || $('#fbname').is(':focus') || $('#userphone').is(':focus') || $('#diachi').is(':focus') || $('#note').is(':focus')) {
             return;
         }
         if (keyCode == 67) {
@@ -466,11 +466,11 @@ function UpdatePsid(uid) {
         dataType: "JSON",
         success: function (data) {
             if (data.data.hasOwnProperty('error')) {
-                ShowToast('danger', `<i class="bi bi-list-check"></i>&nbsp;`, 'Update', data.data.error.message, 3000);
+                ShowCenterToast('danger', data.data.error.message, 3000);
                 return;
             }
             document.getElementById("" + uid + "").src = data.data.picture.data.url;
-            ShowToast('success', `<i class="bi bi-list-check"></i>&nbsp;`, 'Update', 'Đã cập nhật KH.', 3000);
+            ShowCenterToast('success', 'Đã cập nhật KH.', 3000);
         }
     });
 }
@@ -737,7 +737,7 @@ function AddDiaChi() {
         dataType: "JSON",
         success: function (data) {
             if (data.hasOwnProperty('error')) {
-                ShowToast('danger', '<i class="bi bi-x-circle"></i>', 'Lỗi', data.error, 4000);
+                ShowCenterToast('danger', data.error, 4000);
                 return;
             }
 
@@ -767,7 +767,7 @@ function AddDiaChi() {
             select.appendChild(opt);
             select.value = opt.value;
 
-            ShowToast('success', '<i class="bi bi-check2-circle"></i>', 'Đã thêm', `GB: ${diachi}<br><small>Viettel: ${data.adx}</small>`, 5000);
+            ShowCenterToast('success', `GB: ${diachi}<br>Viettel: ${data.adx}`, 5000);
 
             document.getElementById('diachi').value = diachi;
             OnUpdateUser();
@@ -1053,7 +1053,7 @@ function loadDiaChiByPhone(phone) {
             selDiaChi.innerHTML = '';
             if (!res.data || res.data.length === 0) {
                 selDiaChi.innerHTML = '<option>Chưa có địa chỉ cho SĐT này</option>';
-                ShowToast('warning', '<i class="bi bi-phone"></i>', 'SĐT mới', 'Không tìm thấy địa chỉ', 3000);
+                ShowCenterToast('warning', 'Không tìm thấy địa chỉ', 3000);
                 return;
             }
             res.data.forEach(function (item) {
@@ -1084,7 +1084,7 @@ function loadDiaChiByPhone(phone) {
                 }
             };
 
-            ShowToast('info', '<i class="bi bi-check"></i>', 'Đã tải', res.data.length + ' địa chỉ cho ' + phone, 2500);
+            ShowCenterToast('info', res.data.length + ' địa chỉ cho ' + phone, 2500);
         },
         error: function (xhr) {
             console.error('Lỗi load địa chỉ:', xhr);

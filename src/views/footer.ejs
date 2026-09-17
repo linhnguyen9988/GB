@@ -1719,7 +1719,7 @@
       data: { html: xx },
       success: function (data) {
         if (data.hasOwnProperty('error')) {
-          ShowToast('error', '', '', data.data.error, 3000);
+          ShowCenterToast('error', data.data.error, 3000);
         }
       }
     });

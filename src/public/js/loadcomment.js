@@ -5,21 +5,15 @@ const toast = new Bs5Utils();
 function OnUpdateLiveNote() {
     var note = document.getElementById("livenote").value;
     var id = liveidfrominput.value;
-    if (id.length < 1 || note.length < 1) {
-        document.getElementById("livenote").value = '';
-        ShowToast('danger', `<i class="bi bi-calendar-x"></i>`, 'Lưu ghi chú', 'Không thể lưu ghi chú khi chưa có id hoặc chưa có ghi chú', 3000);
-        return;
-    } else {
-        $.ajax({
-            url: "/updatelivenote",
-            method: "POST",
-            data: { note: note, liveid: id },
-            dataType: "JSON",
-            success: function (data) {
-                ShowToast('success', `<i class="bi bi-check-square"></i>`, 'Lưu ghi chú', 'Đã lưu ghi chú', 3000);
-            }
-        });
-    }
+    $.ajax({
+        url: "/updatelivenote",
+        method: "POST",
+        data: { note: note, liveid: id },
+        dataType: "JSON",
+        success: function (data) {
+            ShowCenterToast('success', 'Đã lưu ghi chú', 3000);
+        }
+    });
 }
 function getRowIdx() {
     return $('#comment_table').DataTable().cell({
@@ -180,7 +174,7 @@ function UpdateComment(openmess) {
         dataType: "JSON",
         success: function (data) {
             if (data.data.hasOwnProperty('error')) {
-                ShowToast('danger', `<i class="bi bi-list-check"></i>&nbsp;`, 'Cập nhật bình luận', data.data.error.message, 3000);
+                ShowCenterToast('danger', data.data.error.message, 3000);
                 return;
             }
             var table = $('#comment_table').DataTable();
@@ -196,7 +190,7 @@ function UpdateComment(openmess) {
             if (openmess == 1) {
                 OpenMessenger(x[18], data.data.from.id);
             }
-            ShowToast('success', `<i class="bi bi-list-check"></i>&nbsp;`, 'Cập nhật bình luận', 'Đã cập nhật bình luận, có thể mở hộp thư hoặc xem live.', 3000);
+            ShowCenterToast('success', 'Đã cập nhật bình luận, có thể mở hộp thư hoặc xem live.', 3000);
         }
     });
 }
@@ -207,7 +201,7 @@ function GetViettelToken() {
         method: "POST",
         dataType: "JSON",
         success: function () {
-            ShowToast('success', `<i class="bi bi-list-check"></i>&nbsp;`, 'Mã đẩy đơn', 'Đã cập nhật mã đẩy đơn mới nhất.', 3000);
+            ShowCenterToast('success', 'Đã cập nhật mã đẩy đơn mới nhất.', 3000);
         }
     });
 }
@@ -215,7 +209,7 @@ function InItKeys() {
     var t = $('#comment_table').DataTable();
     t.on('key', function (e, datatable, keyCode, cell, originalEvent) {
         var x = datatable.row(cell.index().row).data();
-        if ($('#message-input').is(':focus') || $('#notescan').is(':focus') || $('#diachiviettel').is(':focus') || $('#diachimodal').is(':focus') || $('#gia').is(':focus') || $('#slchot').is(':focus') || $('#comment_table_filter input').is(':focus') || $('#livenote').is(':focus') || $('#OrderNote').is(':focus') || $('#MessToSend').is(':focus') || $('#link').is(':focus') || $('#usernote').is(':focus') || $('#userphone').is(':focus') || $('#useraddress').is(':focus') || $('#diachi').is(':focus') || $('#note').is(':focus')) {
+        if ($('#viettelnotetext').is(':focus') || $('#message-input').is(':focus') || $('#notescan').is(':focus') || $('#diachiviettel').is(':focus') || $('#diachimodal').is(':focus') || $('#gia').is(':focus') || $('#slchot').is(':focus') || $('#comment_table_filter input').is(':focus') || $('#livenote').is(':focus') || $('#OrderNote').is(':focus') || $('#MessToSend').is(':focus') || $('#link').is(':focus') || $('#usernote').is(':focus') || $('#userphone').is(':focus') || $('#useraddress').is(':focus') || $('#diachi').is(':focus') || $('#note').is(':focus')) {
             return;
         }
         if (keyCode == 67) {
@@ -328,7 +322,7 @@ async function LoadLive() {
             UpdateLiveStatusBadge(statusRes.status);
             if (statusRes.status === 'LIVE') {
                 JoinLiveRoom(liveid);
-                ShowToast('primary', '<div class="spinner-border text-light" role="status"></div>&nbsp;', 'Quét bình luận', `Live đang phát trực tiếp, đang nhận bình luận realtime cho ID: ${liveid}`, 3000);
+                ShowCenterToast('primary', `Live đang phát trực tiếp, đang nhận bình luận: ${liveid}`, 3000);
             } else if (currentPostId === liveid) {
                 LeaveLiveRoom();
             }
@@ -342,7 +336,7 @@ async function LoadLive() {
         dataType: "JSON",
         success: function (data) {
             if (data.data.hasOwnProperty('error')) {
-                ShowToast('danger', `<i class="bi bi-calendar-x"></i>`, 'Load bình luận', data.data.error, 3000);
+                ShowCenterToast('danger', data.data.error, 3000);
                 document.getElementById("btnloadlive").disabled = false;
                 document.getElementById("btnloadlive").innerHTML = 'Load';
                 return;
@@ -421,8 +415,8 @@ async function LoadLive() {
                                 }
                             }
                         }
-                        if(phone === null){
-                            phone='';
+                        if (phone === null) {
+                            phone = '';
                         }
                         if (phone.length > 0) {
                             name = name + `<br><span class="label label--pink">${phone}<a href="tel:${data.data[i].phone}">📱</a></span>`;
@@ -496,7 +490,7 @@ async function LoadLive() {
                 }
                 document.getElementById("btnloadlive").disabled = false;
                 document.getElementById("btnloadlive").innerHTML = 'Load';
-                ShowToast('success', `<i class="bi bi-check-square"></i>`, 'Load bình luận', 'Hoàn thành trong ' + end() + ' mili giây', 3000);
+                ShowCenterToast('success', 'Load xong trong ' + end() + ' mili giây', 3000);
             }
             $('#comment_table tbody').html(html);
             $('#comment_table').DataTable(
@@ -751,7 +745,7 @@ async function ScanComment(soluong) {
         dataType: "JSON",
         success: function (data) {
             if (data.data.hasOwnProperty('error')) {
-                ShowToast('danger', `<i class="bi bi-calendar-x"></i>`, 'Quét bình luận', data.data.error, 3000);
+                ShowCenterToast('danger', data.data.error, 3000);
                 document.getElementById("scancomment").disabled = false;
                 document.getElementById("scancomment").innerHTML = 'Quét';
                 return;
@@ -791,8 +785,8 @@ async function ScanComment(soluong) {
                             zlabel = `<span class="badge bg-warning">${xlabel}</span>`;
                         }
                         var phone = data.data[i].phone;
-                        if(phone === null){
-                            phone='';
+                        if (phone === null) {
+                            phone = '';
                         }
                         var timesort = new Date(data.data[i].datecreate).getTime();
                         var name = `<img src="/images/ava/${data.data[i].userid}.jpg" class="avatar" onerror="tryAgain(this)">${data.data[i].name}`;
@@ -890,7 +884,7 @@ async function ScanComment(soluong) {
                     }
                 }
             }
-            ShowToast('success', `<i class="bi bi-check-square"></i>`, 'Quét bình luận', 'Hoàn thành trong ' + end() + ' mili giây', 3000);
+            ShowCenterToast('success', 'Quét xong trong ' + end() + ' mili giây', 3000);
             scancount++;
             if (scancount > 50) {
                 RC();
@@ -921,7 +915,7 @@ socket.on('new-comment', (data) => {
     var t = $('#comment_table').DataTable();
     var cmtidcol = t.column(8).data().toArray();
     if (cmtidcol.includes(data.cmtid)) return;
-    
+
     var note = data.customerInfo.note;
     if (note === undefined || note === null) {
         note = '';
@@ -1192,7 +1186,7 @@ async function Chotxxx(buttongia) {
     var id = data[25];
     var slchot = document.getElementById("slchot").value;
     if (slchot > 20) {
-        ShowToast('danger', `<img src='${data[1].split('src="').pop().split('"')[0]}' class="rounded me-2" width="30px" height="30px">`, data[1].split('avatar">').pop().split('<br')[0], 'Số lượng chốt quá lớn! ' + message, 3000);
+        ShowCenterToast('danger', 'Số lượng chốt quá lớn! ', 3000);
         return;
     }
     if (xx == '&nbsp;') {
@@ -1321,6 +1315,7 @@ async function Chot(buttongia) {
     var luotcuoilive = (xx_val === 0) ? luotcuoi : luotincuoi;
 
     var slchot = parseInt(document.getElementById("slchot").value) || 1;
+    document.getElementById("slchot").value = 1;
     var gia = buttongia > 0 ? buttongia : document.getElementById("gia").value;
     var cleanPrice = gia.toString().replace(/[^0-9]/g, "");
     UpdatePhone();
@@ -1376,8 +1371,6 @@ async function Chot(buttongia) {
         }
     }).draw(false);
 
-    document.getElementById("slchot").value = 1;
-
     $.ajax({
         url: "/updatechot",
         method: "POST",
@@ -1416,21 +1409,21 @@ function SendMessage(chat) {
         dataType: "JSON",
         success: function (x) {
             if (x.data.hasOwnProperty('message_id')) {
-                ShowToast('success', `<img src='${data[1].split('src="').pop().split('"')[0]}' class="rounded me-2" width="30px" height="30px">`, data[26], 'Đã gửi tin nhắn.', 3000);
+                ShowCenterToast('success', 'Đã gửi tin nhắn cho: ' + data[1].split('avatar">').pop().split('<br')[0], 3000);
             } else {
                 var mess = x.data.error.message;
                 if (mess.includes('Activity already replied to')) {
-                    ShowToast('danger', `<img src='${data[1].split('src="').pop().split('"')[0]}' class="rounded me-2" width="30px" height="30px">`, data[1].split('avatar">').pop().split('<br')[0], 'Bình luận này đã trả lời rồi.', 3000);
+                    ShowCenterToast('danger', data[1].split('avatar">').pop().split('<br')[0] + ': Bình luận này đã trả lời rồi.', 3000);
                 } else if (mess.includes('This user cant reply to this activity')) {
-                    ShowToast('danger', `<img src='${data[1].split('src="').pop().split('"')[0]}' class="rounded me-2" width="30px" height="30px">`, data[1].split('avatar">').pop().split('<br')[0], 'Người này đã chặn bạn nhắn tin.', 3000);
+                    ShowCenterToast('danger', data[1].split('avatar">').pop().split('<br')[0] + ': Người này đã chặn bạn nhắn tin.', 3000);
                 } else if (mess.includes('Invalid comment_id parameter') || mess.includes('Thông số comment_id không hợp lệ')) {
-                    ShowToast('danger', `<img src='${data[1].split('src="').pop().split('"')[0]}' class="rounded me-2" width="30px" height="30px">`, data[1].split('avatar">').pop().split('<br')[0], 'Bình luận đã bị xóa, không thể nhắn tin.', 3000);
+                    ShowCenterToast('danger', data[1].split('avatar">').pop().split('<br')[0] + ': Bình luận đã bị xóa, không thể nhắn tin.', 3000);
                 } else if (mess.includes('Activity replying time expired')) {
-                    ShowToast('danger', `<img src='${data[1].split('src="').pop().split('"')[0]}' class="rounded me-2" width="30px" height="30px">`, data[1].split('avatar">').pop().split('<br')[0], 'Bình luận này đã quá 7 ngày, không thể nhắn tin', 3000);
+                    ShowCenterToast('danger', data[1].split('avatar">').pop().split('<br')[0] + ': Bình luận này đã quá 7 ngày, không thể nhắn tin', 3000);
                 } else if (mess.includes('The session is invalid because the user logged out')) {
-                    ShowToast('danger', `<img src='${data[1].split('src="').pop().split('"')[0]}' class="rounded me-2" width="30px" height="30px">`, data[1].split('avatar">').pop().split('<br')[0], 'Lỗi kết nối tài khoản nhắn tin. Vui lòng làm mới kết nối/', 3000);
+                    ShowCenterToast('danger', data[1].split('avatar">').pop().split('<br')[0] + ': Lỗi kết nối tài khoản nhắn tin. Vui lòng làm mới kết nối/', 3000);
                 } else {
-                    ShowToast('danger', `<img src='${data[1].split('src="').pop().split('"')[0]}' class="rounded me-2" width="30px" height="30px">`, data[1].split('avatar">').pop().split('<br')[0], mess, 3000);
+                    ShowCenterToast('danger', data[1].split('avatar">').pop().split('<br')[0] + ': ' + mess, 3000);
                 }
             }
         }
