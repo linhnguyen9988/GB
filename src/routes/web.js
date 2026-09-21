@@ -3401,7 +3401,7 @@ ORDER BY t1.id DESC;
 
     router.post("/action", jwtAuth, function (request, response, next) {
         var liveid = request.body.liveid;
-        DBConnection.query(' SELECT livecomment.idx, livecomment.mess, livecomment.userid, livecomment.timecomment, livecomment.name, livecomment.message, livecomment.datecreate, livecomment.chot, livecomment.gia, livecomment.commentid, livecomment.luotin, livecomment.count, livecomment.app, livecomment.liveid, livecomment.pageid, livecomment.updateava, livecomment.realfbid, khachhang.id, khachhang.phone, khachhang.diachi, khachhang.avalink, khachhang.label, khachhang.note, khachhang.fbnamex, khachhang.aka, khachhang.nuocngoai, khachhang.realfbid, khachhang.threadid FROM livecomment INNER JOIN khachhang ON livecomment.userid=khachhang.userid AND liveid= ? ', liveid,
+        DBConnection.query(' SELECT livecomment.idx, livecomment.mess, livecomment.userid, livecomment.timecomment, livecomment.name, livecomment.message, livecomment.datecreate, livecomment.chot, livecomment.gia, livecomment.commentid, livecomment.luotin, livecomment.count, livecomment.app, livecomment.liveid, livecomment.pageid, livecomment.updateava, livecomment.realfbid, livecomment.slchot, khachhang.id, khachhang.phone, khachhang.diachi, khachhang.avalink, khachhang.label, khachhang.note, khachhang.fbnamex, khachhang.aka, khachhang.nuocngoai, khachhang.realfbid, khachhang.threadid FROM livecomment INNER JOIN khachhang ON livecomment.userid=khachhang.userid AND liveid= ? ', liveid,
             function (error, data) {
                 if (error) {
                     response.json({
@@ -3970,12 +3970,13 @@ ORDER BY t1.id DESC;
             data: cid
         });
     });
+
     router.post('/updatexa', function (request, response, next) {
         const io = socket.getIo();
         var chot = request.body.chot;
         var cid = request.body.commentid;
         var liveid = request.body.liveid;
-        DBConnection.query(SqlString.format('UPDATE livecomment SET chot=?, gia=? WHERE commentid=?', [chot, '', cid]));
+        DBConnection.query(SqlString.format('UPDATE livecomment SET chot=?, gia=?, slchot=1 WHERE commentid=?', [chot, '', cid]));
         const newXaData = {
             cid: cid,
             chot: chot,//nay la chu~ XA

@@ -369,7 +369,7 @@ async function LoadLive() {
                         if (xlabel.includes('Nước')) {
                             zlabel = `<span class="badge bg-info">${xlabel}</span>`;
                         } else if (xlabel.includes('Xả') || xlabel.includes('Bom')) {
-                            zlabel = `<span class="badge bg-danger">${xlabel}</span>`;
+                            zlabel = `<span class="tag tag-red tag-pulse">${xlabel}</span>`;
                         } else if (xlabel.includes('Thân')) {
                             zlabel = `<span class="badge bg-success">${xlabel}</span>`;
                         } else if (xlabel.includes('Có')) {
@@ -454,6 +454,15 @@ async function LoadLive() {
                         if (message == null || message == undefined) {
                             message = '';
                         }
+                        var slchot = data.data[i].slchot;
+                        var slchottext = ''; 
+                        var giatext = '';
+                        if(slchot > 1){
+                            slchottext =`<span class='tag tag-purple tag-pulse'>x ${slchot}</span>`;
+                        }
+                        if(data.data[i].gia != ''){
+                            giatext = `<span class='tag tag-green tag-pulse'>💰${data.data[i].gia}</span>`;
+                        }
                         html += `
                                 <tr>
                                     <td>${(i + 1)}</td>
@@ -462,7 +471,7 @@ async function LoadLive() {
                                     <td>${phone}</td>
                                     <td>${zlabel}</td>
                                     <td><center><span class="badge bg-${xbel}">${data.data[i].chot}</span></center></td>
-                                    <td><center><span class="badge bg-success">${data.data[i].gia}</span></center></td>
+                                    <td><center>${giatext}${slchottext}</center></td>
                                     <td>${data.data[i].count}</td>
                                     <td>${data.data[i].commentid}</td>
                                     <td>${timesort}</td>
@@ -1363,10 +1372,15 @@ async function Chot(buttongia) {
         liveElement.innerHTML = liveElement.innerHTML.split('-')[0] + '- ' + luotcuoilive;
     }
 
+    let slchottext = '';
+    if(slchot >1){
+        slchottext =`<span class='tag tag-purple tag-pulse'>x ${slchot}</span>`;
+    } 
+    
     table.rows().every(function (rowIdx) {
         if (table.cell(rowIdx, 8).data() == data[8]) {
             table.cell(rowIdx, 5).data("<center><span class='badge bg-primary'>CHỐT</span></center>");
-            table.cell(rowIdx, 6).data("<center><span class='badge bg-success'>" + gia + "</span></center>");
+            table.cell(rowIdx, 6).data(`<center><span class='tag tag-green tag-pulse'>💰${gia}</span>${slchottext}</center>`);
             table.cell(rowIdx, 16).data(luotcuoi);
         }
     }).draw(false);
