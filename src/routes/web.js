@@ -529,6 +529,45 @@ async function tryInsertMessageAsComment(khachhang, sender, text, timemess, page
     }
 }
 
+function normalizePhone(raw) {
+    let p = String(raw || '').replace(/[\s.\-()]/g, '');
+    if (p.startsWith('+84')) p = '0' + p.slice(3);
+    else if (/^84\d{9}$/.test(p)) p = '0' + p.slice(2);
+    return p;
+}
+
+function decodeEmoji(s) {
+    if (!s) return '';
+    return String(s)
+        .replace(/\\u\{([0-9a-fA-F]+)\}/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+        .replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
+}
+
+function emojiToCode(s) {
+    const cps = [];
+    for (const ch of String(s || '')) cps.push(ch.codePointAt(0).toString(16).toUpperCase());
+    let code = cps.join('-');
+    if (code === '2764-FE0F') code = '2764';   
+    return code;
+}
+
+function codeToEmoji(code) {
+    if (!code) return '';
+    return String(code).split('-').map(h => String.fromCodePoint(parseInt(h, 16))).join('');
+}
+
+function emitReactionSummary(io, mid, extra) {
+    DBConnection.query(
+        'SELECT emoji_code, COUNT(*) AS count FROM reactions WHERE messid = ? GROUP BY emoji_code',
+        [mid],
+        (err, rows) => {
+            if (err) { console.error('Lỗi lấy tổng hợp reaction:', err); return; }
+            const list = rows.map(r => ({ emoji: codeToEmoji(r.emoji_code), count: Number(r.count) }));
+            io.emit('reaction', Object.assign({ mid: mid, reactions: list }, extra));
+        }
+    );
+}
+
 let initWebRoutes = (app) => {
     router.post('/api/send-message', (req, res) => {
         upload.single('image')(req, res, async (err) => {
@@ -879,14 +918,14 @@ ORDER BY t1.id DESC;
             }
 
             const queryReactions = SqlString.format(
-                'SELECT messid, reaction_emoji, COUNT(*) as count FROM reactions WHERE messid IN (?) GROUP BY messid, reaction_emoji;',
+                'SELECT messid, emoji_code, COUNT(*) as count FROM reactions WHERE messid IN (?) GROUP BY messid, emoji_code;',
                 [messageMessids]
             );
 
             DBConnection.query(queryReactions, function (err, reactions) {
                 if (err) {
-                    console.error('Lỗi khi lấy reactions:', err);
-                    return res.status(500).json({ error: 'Lỗi server khi lấy dữ liệu reactions' });
+                    console.error('Lỗi khi lấy reactions:', err.code, err.sqlMessage);
+                    reactions = [];
                 }
 
                 const reactionsMap = new Map();
@@ -895,8 +934,8 @@ ORDER BY t1.id DESC;
                         reactionsMap.set(reaction.messid, []);
                     }
                     reactionsMap.get(reaction.messid).push({
-                        emoji: reaction.reaction_emoji,
-                        count: reaction.count
+                        emoji: codeToEmoji(reaction.emoji_code),
+                        count: Number(reaction.count)
                     });
                 });
 
@@ -1182,7 +1221,9 @@ ORDER BY t1.id DESC;
                 [orderNumber]
             );
 
-            const FINAL_STATUSES = new Set([501, 503, 504, 101, 107]);
+            const FINAL_STATUSES = new Set([101, 107, 201, 501, 503, 504]);
+
+            const FLUTTER_500 = new Set([500, 502, 505, 506, 507, 508, 509, 515, 550, 551]);
 
             if (rows.length === 0 && is1P1) {
                 const [baseRows] = await db.query(
@@ -1213,8 +1254,9 @@ ORDER BY t1.id DESC;
                 const currentStatus = parseInt(rows[0].statuscode) || 0;
                 const isCurrentFinal = FINAL_STATUSES.has(currentStatus);
                 const isNewFinal = FINAL_STATUSES.has(status);
+                const isFlutterMove = FLUTTER_500.has(currentStatus) && FLUTTER_500.has(status);
 
-                const shouldUpdateStatus = !isCurrentFinal && (status > currentStatus || isNewFinal);
+                const shouldUpdateStatus = !isCurrentFinal && (status > currentStatus || isNewFinal || isFlutterMove);
                 const shouldUpdateReasonOnly = isCurrentFinal && !shouldUpdateStatus &&
                     ((reasonCode && !rows[0].reason_code) || (podImagesJson && !rows[0].pod_images));
 
@@ -1971,27 +2013,35 @@ ORDER BY t1.id DESC;
                         DBConnection.query(sqlMsg, async function (err, result) {
                             if (err) { console.error("Lỗi lưu tin:", err); return resolve(); }
 
-                            // messid đã tồn tại (Facebook gửi lại webhook trùng) -> bỏ qua, không emit lại
                             if (!result || result.affectedRows === 0) {
                                 console.log(`[FB webhook] Bỏ qua tin nhắn trùng, messid=${messid}`);
                                 return resolve();
                             }
 
-                            DBConnection.query("SELECT * FROM khachhang WHERE userid='" + khachhang + "' LIMIT 1", async function (error, data) {
+                            DBConnection.query("SELECT * FROM khachhang WHERE userid=? LIMIT 1", [khachhang], async function (error, data) {
                                 var curCus = (data && data.length > 0) ? data[0] : null;
 
                                 if (curCus) {
-                                    if (text && !is_echo && !curCus.phone) {
+                                    var qrPayload = messData.quick_reply && messData.quick_reply.payload;
+                                    var isPhoneQR = !is_echo && qrPayload && /^\+?[\d\s.\-()]{8,20}$/.test(String(qrPayload));
+
+                                    if (isPhoneQR) {
+                                        if (!curCus.phone) {
+                                            var qrPhone = normalizePhone(qrPayload);
+                                            DBConnection.query('UPDATE khachhang SET phone=? WHERE id=?', [qrPhone, curCus.id]);
+                                            curCus.phone = qrPhone;
+                                        }
+                                    } else if (text && !is_echo && !curCus.phone) {
                                         var phoneMatch = text.match(/0[98735]([0-9]|\s|-|\.){8,12}/);
                                         if (phoneMatch) {
                                             var newPhone = phoneMatch[0].replace(/\D/g, '');
-                                            DBConnection.query("UPDATE khachhang SET phone='" + newPhone + "' WHERE id=" + curCus.id);
+                                            DBConnection.query('UPDATE khachhang SET phone=? WHERE id=?', [newPhone, curCus.id]);
                                             curCus.phone = newPhone;
                                         }
                                     }
                                     const avatar = `https://aodaigiabao.com/images/ava/${khachhang}.jpg`
                                     EmitMessage(curCus.id, curCus.phone, avatar, sender, recipient, text || '', timemess, curCus.fbname, finalImageString, curCus.label, curCus.pageid, curCus.diachi, curCus.nuocngoai, echo, curCus.note, messid, templateJson, replyToMid ? { mid: replyToMid, text: replyToText, image: replyToImage, sender: replyToSender } : null);
-                                    if (!is_echo && text && sender !== GlobalPageID && sender !== GlobalPageID2) {
+                                    if (!is_echo && text && !isPhoneQR && sender !== GlobalPageID && sender !== GlobalPageID2) {
                                         tryInsertMessageAsComment(khachhang, sender, text, timemess, pageid, io);
                                     }
                                     resolve();
@@ -2010,16 +2060,22 @@ ORDER BY t1.id DESC;
                                         if (phoneMatch) phone = phoneMatch[0].replace(/\D/g, '');
                                     }
 
-                                    axios.post("https://graph.facebook.com/v19.0/me/messages?access_token=" + token, {
-                                        recipient: { id: khachhang },
-                                        message: { text: "Áo dài Gia Bảo chào " + fbname + "! Mã của bạn: " + khachhang }
-                                    }).catch(() => { });
-
                                     var sqlInsert = SqlString.format('INSERT INTO khachhang (userid,fbname,phone,avalink,pageid,fbnamex,tag,diachi,label) VALUES(?,?,?,?,?,?,?,?,?)',
                                         [khachhang, fbname, phone, picture, pageid, LocDau(fbname), khachhang, '', '']);
 
                                     DBConnection.query(sqlInsert, function (err, result) {
+                                        if (err && err.code !== 'ER_DUP_ENTRY') console.error('Lỗi thêm khách mới:', err);
                                         if (!err) {
+                                            axios.post("https://graph.facebook.com/v19.0/me/messages?access_token=" + token, {
+                                                recipient: { id: khachhang },
+                                                messaging_type: "RESPONSE",
+                                                message: {
+                                                    text: "Áo dài Gia Bảo chào " + fbname + "! Mã của bạn: " + khachhang +
+                                                          "\nBấm nút bên dưới để cung cấp SĐT chốt đơn ạ.",
+                                                    quick_replies: [{ content_type: "user_phone_number" }]
+                                                }
+                                            }).catch((e) => console.error('Lỗi gửi tin chào:', (e.response && e.response.data) || e.message));
+
                                             EmitMessage(result.insertId, phone, picture, sender, recipient, text || '', timemess, fbname, finalImageString, '', pageid, '', '', echo, '', messid, templateJson, replyToMid ? { mid: replyToMid, text: replyToText, image: replyToImage, sender: replyToSender } : null);
                                             if (!is_echo && text && sender !== GlobalPageID && sender !== GlobalPageID2) {
                                                 tryInsertMessageAsComment(khachhang, sender, text, timemess, pageid, io);
@@ -2058,31 +2114,28 @@ ORDER BY t1.id DESC;
             } else if (value.hasOwnProperty('reaction')) {
                 const senderId = value.sender.id;
                 const mid = value.reaction.mid;
-                let emoji = value.reaction.emoji;
-                const reactionTime = value.timestamp;
+                const action = value.reaction.action || 'react';
+                const emoji = decodeEmoji(value.reaction.emoji);
+                const emojiCode = emojiToCode(emoji);
+                if (!mid) return;
 
-                try {
-                    if (emoji.includes('\\u')) {
-                        emoji = JSON.parse(`"${emoji}"`);
-                    }
-                } catch (e) {
-                    console.error('Lỗi decode emoji:', emoji, e);
+                const done = (error) => {
+                    if (error) console.error('Lỗi lưu reaction:', error.code, error.sqlMessage, emojiCode);
+                    emitReactionSummary(io, mid, { senderId: senderId, emoji: codeToEmoji(emojiCode), action: action });
+                };
+
+                if (action === 'unreact') {
+                    DBConnection.query('DELETE FROM reactions WHERE messid = ? AND sender_id = ?', [mid, senderId], done);
+                } else if (!emojiCode) {
+                    console.error('Reaction không có emoji:', JSON.stringify(value.reaction));
+                } else {
+                    DBConnection.query(
+                        'INSERT INTO reactions (messid, sender_id, emoji_code, timestamp) VALUES (?, ?, ?, ?) ' +
+                        'ON DUPLICATE KEY UPDATE emoji_code = VALUES(emoji_code), timestamp = VALUES(timestamp)',
+                        [mid, senderId, emojiCode, value.timestamp],
+                        done
+                    );
                 }
-
-                DBConnection.query(
-                    'INSERT INTO reactions (messid, sender_id, reaction_emoji, timestamp) VALUES (?, ?, ?, ?)',
-                    [mid, senderId, emoji, reactionTime],
-                    (error, results) => {
-                        if (error) {
-                            console.error('Lỗi khi lưu reaction:', error);
-                        }
-                    }
-                );
-                io.emit('reaction', {
-                    senderId: senderId,
-                    mid: mid,
-                    emoji: emoji,
-                });
                 return;
             } else if (value.referral) {
                 const ref = value.referral;

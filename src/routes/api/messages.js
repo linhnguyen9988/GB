@@ -8,15 +8,8 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 
-// Accept image, video, and audio uploads. FB Send API attachment uploads
-// (non-resumable) are capped around 25MB, so we enforce the same limit here
-// and reject anything else early instead of wasting time uploading it.
 const ALLOWED_MIME_PREFIXES = ['image/', 'video/', 'audio/'];
 
-// Dart's http package can't always guess a proper Content-Type for a given
-// file (camera-recorded temp files, some file_picker results, etc.) and
-// falls back to 'application/octet-stream'. When that happens we fall back
-// to the file's extension instead of rejecting it outright.
 const EXT_TYPE_MAP = {
   '.jpg': 'image', '.jpeg': 'image', '.png': 'image', '.gif': 'image',
   '.webp': 'image', '.heic': 'image', '.heif': 'image', '.bmp': 'image',
@@ -26,7 +19,6 @@ const EXT_TYPE_MAP = {
   '.ogg': 'audio', '.oga': 'audio', '.amr': 'audio', '.opus': 'audio', '.flac': 'audio',
 };
 
-// Returns 'image' | 'video' | 'audio' | null
 function detectAttachmentType(file) {
   const mimePrefix = ALLOWED_MIME_PREFIXES.find((p) => (file.mimetype || '').startsWith(p));
   if (mimePrefix) return mimePrefix.replace('/', '');
@@ -43,11 +35,6 @@ const upload = multer({
   },
 });
 
-// multer throws synchronously/via callback on file-size or fileFilter
-// rejections. Without catching it explicitly here, Express falls back to its
-// default error handler, which returns a raw HTML 500 instead of JSON —
-// that's the "báo lỗi 500" the client was seeing whenever an attachment was
-// too large or an unsupported type.
 function uploadAttachment(req, res, next) {
   upload.single('file')(req, res, (err) => {
     if (err) {
@@ -94,7 +81,6 @@ router.get('/conversation/:sender', auth, async (req, res) => {
   const sender = req.params.sender;
 
   try {
-    // Query 1: lấy tin nhắn — đơn giản, không JOIN
     const [messages] = await db.query(
       `SELECT * FROM messaging 
        WHERE sender = ? OR recipient = ?
@@ -106,7 +92,6 @@ router.get('/conversation/:sender', auth, async (req, res) => {
       return res.json({ messages: [], readWatermark: 0, reactions: [] });
     }
 
-    // Query 2: reactions chỉ cho những messid vừa lấy — không scan toàn bảng
     const messids = messages.map(m => m.messid);
     const [reactions] = await db.query(
       `SELECT messid, reaction_emoji FROM reactions WHERE messid IN (?)`,
@@ -166,8 +151,6 @@ router.post('/send', auth, uploadAttachment, async (req, res) => {
       return rows.map(r => r.commentid);
     };
 
-    // attachmentType is 'image' | 'video' | 'audio' — determines both the
-    // upload payload type and the outgoing message attachment type.
     const sendDirect = async (attachmentId, attachmentType, textContent) => {
       let imageSent = false, textSent = false;
 
@@ -268,8 +251,6 @@ router.post('/send', auth, uploadAttachment, async (req, res) => {
         let cleanupPaths = [file.path];
 
         if (attachmentType === 'image') {
-          // Images get re-encoded/resized before upload to keep things fast
-          // and cheap; video/audio are sent through as-is.
           const optimizedPath = file.path + '_opt.jpg';
           await sharp(file.path)
             .rotate()

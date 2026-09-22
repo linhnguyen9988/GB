@@ -29,12 +29,6 @@
     align-items: center;
 }
 
-/* Đã bỏ 2 rule ghim cứng z-index (.modal-backdrop.fade.show và #modalQR2) —
-   chúng phá vỡ cơ chế tự tính z-index khi mở modal lồng modal (vd: bấm "Hành trình"
-   ngay trong modal chi tiết đơn, hoặc mở QR khi đang có modal khác), khiến backdrop
-   nằm đè lên modal không bấm được. Để Bootstrap 5 tự quản lý z-index như modal chi tiết
-   đơn hàng (vốn không bị ghim z-index và hoạt động đúng). */
-
 .modal-content-messenger {
     background-color: #fff;
     margin: 5% auto;
@@ -405,36 +399,60 @@
 }
 
 .message-reactions-container {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    position: absolute;
-    bottom: 0;
-    right: 0;
-    z-index: 20;
-    padding: 2px 4px;
-    background-color: transparent;
-    border: none;
-    box-shadow: none;
-}
-
-.message-received-messenger .message-reactions-container {
-    right: auto;
-    left: 0;
-}
-
-.reaction-item {
-    font-size: 11px;
-    margin: 0 0px;
-    cursor: pointer;
+    align-self: flex-end;
+    position: relative;
+    z-index: 2;
+    gap: 1px;
+    margin: -8px 10px 6px 0;
+    padding: 2px 7px;
+    min-height: 20px;
+    line-height: 1;
+    white-space: nowrap;
+    background-color: #fff;
+    border: 1px solid #e4e6eb;
+    border-radius: 999px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+    cursor: default;
     user-select: none;
-    display: flex;
-    align-items: center;
+}
+
+.reaction-emoji {
+    font-size: 13px;
+    line-height: 1;
 }
 
 .reaction-count {
-    font-size: 10px;
-    color: #888;
-    margin-left: 2px;
+    margin-left: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #65676b;
+}
+
+[data-bs-theme="dark"] .message-reactions-container {
+    background-color: #3a3b3c;
+    border-color: #555;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+[data-bs-theme="dark"] .reaction-count {
+    color: #b0b3b8;
+}
+
+/* hiệu ứng nảy nhẹ khi có reaction mới đến realtime */
+.message-reactions-container.reaction-pop {
+    animation: reaction-pop 0.28s ease-out;
+}
+
+@keyframes reaction-pop {
+    0%   { transform: scale(0.5); opacity: 0; }
+    70%  { transform: scale(1.15); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .message-reactions-container.reaction-pop { animation: none; }
 }
 
 .message-info-footer {
@@ -911,7 +929,7 @@
     background: #333333;
     color: #d0d0d0;
 }
-/* ── Tin nhắn dạng template (button/generic) - vd: "Xem đơn hàng", "Gọi bưu tá" ── */
+
 .message-template-card {
     background-color: #fff;
     border: 1px solid #e2e2e2;

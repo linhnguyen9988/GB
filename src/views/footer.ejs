@@ -125,6 +125,44 @@
     return modalMessagesContainer.querySelector(`[data-msg-id="${CSS.escape(String(msgId))}"]`);
   }
 
+  function buildReactionsHtml(reactions) {
+    if (!reactions || !reactions.length) return '';
+    const list = reactions
+      .map(r => ({ emoji: (r.emoji === '❤') ? '❤️' : r.emoji, count: Number(r.count) || 1 }))
+      .sort((x, y) => y.count - x.count);
+    const total = list.reduce((sum, r) => sum + r.count, 0);
+    const title = list.map(r => `${r.emoji} ${r.count}`).join('  ·  ');
+    const emojis = list.slice(0, 3).map(r => `<span class="reaction-emoji">${r.emoji}</span>`).join('');
+    const countHtml = total > 1 ? `<span class="reaction-count">${total}</span>` : '';
+    return `<div class="message-reactions-container" title="${title}">${emojis}${countHtml}</div>`;
+  }
+
+  function updateMessageReactions(mid, reactions) {
+    const row = findRowByMsgId(mid);
+    if (!row) return; 
+    const wrapper = row.querySelector('.message-content-wrapper');
+    if (!wrapper) return;
+
+    const old = wrapper.querySelector('.message-reactions-container');
+    if (old) old.remove();
+
+    const html = buildReactionsHtml(reactions);
+    if (!html) return;
+
+    const anchor = wrapper.querySelector('.message-status-time-wrapper');
+    if (anchor) anchor.insertAdjacentHTML('beforebegin', html);
+    else wrapper.insertAdjacentHTML('beforeend', html);
+
+    const pill = wrapper.querySelector('.message-reactions-container');
+    if (pill) pill.classList.add('reaction-pop');
+  }
+
+  socket.on('reaction', (data) => {
+    if (data && Array.isArray(data.reactions)) {
+      updateMessageReactions(data.mid, data.reactions);
+    }
+  });
+
   function scrollToRowAndHighlight(row) {
     row.scrollIntoView({ behavior: 'smooth', block: 'center' });
     row.classList.add('message-row-highlight');
@@ -554,18 +592,7 @@
         }
       }
 
-      let reactionsHtml = '';
-      if (msg.reactions && msg.reactions.length > 0) {
-        reactionsHtml = '<div class="message-reactions-container">';
-        msg.reactions.forEach(reaction => {
-          if (reaction.emoji === '❤') {
-            reaction.emoji = '❤️';
-          }
-          const reactionCount = reaction.count > 1 ? `<span class="reaction-count">${reaction.count}</span>` : '';
-          reactionsHtml += `<span class="reaction-item" title="${reaction.count} reaction">${reaction.emoji}${reactionCount}</span>`;
-        });
-        reactionsHtml += '</div>';
-      }
+      const reactionsHtml = buildReactionsHtml(msg.reactions);
 
       let statusHtml = '';
       if (isPageSender) {
