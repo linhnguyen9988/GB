@@ -916,7 +916,7 @@
                     <div class="tracking-card">
                         <span class="card-status" style="color:${isSuccess ? '#28a745' : '#dc3545'}"><i class="bi bi-telephone${isSuccess ? '-inbound' : '-x'}"></i> ${log.CALL_STATUS || ''}</span>
                         - <span class="card-time">${log.CALL_TIME || ''}</span>
-                        <div class="card-location">⏱️ Thời lượng: ${durationSec}s</div>
+                        <div class="card-location">⏱️ ${isSuccess ? 'Thời lượng' : 'Đổ chuông'}: ${durationSec}s</div>
                         ${log.EMPLOYEE_FULLNAME ? `<a href="tel:${phone}" class="shipper-tag"><b>${log.EMPLOYEE_FULLNAME}</b>&nbsp;${phone ? '- ' + phone : ''}</a>` : ''}
                     </div>`;
           });

@@ -10,6 +10,14 @@ const path = require('path');
 
 const ALLOWED_MIME_PREFIXES = ['image/', 'video/', 'audio/'];
 
+function codeToEmoji(code) {
+  if (!code) return '';
+  return String(code)
+    .split('-')
+    .map((h) => String.fromCodePoint(parseInt(h, 16)))
+    .join('');
+}
+
 const EXT_TYPE_MAP = {
   '.jpg': 'image', '.jpeg': 'image', '.png': 'image', '.gif': 'image',
   '.webp': 'image', '.heic': 'image', '.heif': 'image', '.bmp': 'image',
@@ -93,10 +101,14 @@ router.get('/conversation/:sender', auth, async (req, res) => {
     }
 
     const messids = messages.map(m => m.messid);
-    const [reactions] = await db.query(
-      `SELECT messid, reaction_emoji FROM reactions WHERE messid IN (?)`,
+    const [rawReactions] = await db.query(
+      `SELECT messid, emoji_code FROM reactions WHERE messid IN (?)`,
       [messids]
     );
+    const reactions = rawReactions.map(r => ({
+      messid: r.messid,
+      reaction_emoji: codeToEmoji(r.emoji_code),
+    }));
 
     const readWatermark = messages
       .filter(m => m.isread === 1)

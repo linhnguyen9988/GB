@@ -1174,8 +1174,8 @@ ORDER BY t1.id DESC;
             if (body.TOKEN !== 'aodaigiabao') {
                 return res.status(401).send('Unauthorized');
             }
-
             const data = body.DATA;
+            
             let status = parseInt(data.ORDER_STATUS);
             let statustext = data.STATUS_NAME;
 
@@ -1196,7 +1196,7 @@ ORDER BY t1.id DESC;
             const podImagesJson = podImages.length > 0 ? JSON.stringify(podImages) : null;
 
             const orderNumber = data.ORDER_NUMBER;
-
+            //logPodWebhookToFile(body, data.ORDER_NUMBER, podImages);//de xem webhook thoi, sau nay bo di
             const db = DBConnection.promise();
 
             const [dupRows] = await db.query(
@@ -1303,7 +1303,7 @@ ORDER BY t1.id DESC;
                                 status,
                                 noti_id: notiId
                             };
-                            if (!data.NOTE.includes('hẹn phát lại') && !data.NOTE.includes('Áo dài Gia Bảo')) {
+                            if (!data.NOTE != null && !data.NOTE.includes('hẹn phát lại') && !data.NOTE.includes('Áo dài Gia Bảo')) {
                                 SendCanhBao(orderNumber, data.EMPLOYEE_NAME, phone, data.MONEY_COLLECTION, data.NOTE);
                                 await sendFcmToUser(db, userId, title, body, payload);
                             }

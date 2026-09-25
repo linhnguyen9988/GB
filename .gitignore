@@ -4,6 +4,7 @@
 .idea/
 .env
 *.zip
+*.txt
 src/public/images/
 src/public/donhang/
 /.vscode
