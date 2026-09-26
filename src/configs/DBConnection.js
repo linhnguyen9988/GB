@@ -10,7 +10,7 @@ const pool = mysql.createPool({
     charset: 'utf8mb4',
     waitForConnections: true,
     connectionLimit: 10,
-    queueLimit: 20,
+    queueLimit: 200,
     multipleStatements: true,
     connectTimeout: 10000,
     enableKeepAlive: true,

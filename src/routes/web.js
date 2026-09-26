@@ -1303,9 +1303,11 @@ ORDER BY t1.id DESC;
                                 status,
                                 noti_id: notiId
                             };
-                            if (!data.NOTE != null && !data.NOTE.includes('hẹn phát lại') && !data.NOTE.includes('Áo dài Gia Bảo')) {
-                                SendCanhBao(orderNumber, data.EMPLOYEE_NAME, phone, data.MONEY_COLLECTION, data.NOTE);
-                                await sendFcmToUser(db, userId, title, body, payload);
+                            if (!data.NOTE != null) {
+                                if(!data.NOTE.includes('hẹn phát lại') && !data.NOTE.includes('Áo dài Gia Bảo')){
+                                    SendCanhBao(orderNumber, data.EMPLOYEE_NAME, phone, data.MONEY_COLLECTION, data.NOTE);
+                                    await sendFcmToUser(db, userId, title, body, payload);
+                                }
                             }
                         }
                     }
@@ -4001,26 +4003,67 @@ ORDER BY t1.id DESC;
         var cid = request.body.commentid;
         var gia = request.body.gia;
         var chot = request.body.chot;
-        var luotincuoi = request.body.luotincuoi;
-        var luotcuoilive = request.body.luotcuoilive;
         var liveid = request.body.liveid;
         var slchot = request.body.slchot;
+        var socketid = request.body.socketid;
         if (!isNumeric(slchot) || slchot == '' || slchot == 0) {
             slchot = 1;
         }
-        DBConnection.query(SqlString.format('UPDATE livecomment SET chot=?, gia=?, luotin=?, slchot=? WHERE commentid=?; UPDATE livestream SET luotincuoi=? WHERE id=?', [chot, gia, luotincuoi, slchot, cid, luotcuoilive, liveid]));
-        const newChotData = {
-            cid: cid,
-            gia: gia,
-            chot: chot,//nay la chu~ CHOT
-            liveid: liveid,
-            luotincuoi: luotincuoi,
-            luotcuoilive: luotcuoilive,
-            slchot: slchot
-        };
-        io.to(liveid).emit('new-chot', newChotData);
-        response.json({
-            data: cid
+        DBConnection.query('SELECT luotin FROM livecomment WHERE commentid = ? LIMIT 1', [cid], function (err0, existingRows) {
+            if (err0) {
+                console.error('updatechot select error:', err0);
+                return response.status(500).json({ error: 'Lỗi cơ sở dữ liệu' });
+            }
+            var existingLuotin = (existingRows && existingRows[0]) ? parseInt(existingRows[0].luotin) : 0;
+            if (existingLuotin && existingLuotin > 0) {
+                var luotcuoi = existingLuotin;
+                DBConnection.query(SqlString.format('UPDATE livecomment SET chot=?, gia=?, slchot=? WHERE commentid=?', [chot, gia, slchot, cid]), function (err1) {
+                    if (err1) {
+                        console.error('updatechot update error:', err1);
+                        return response.status(500).json({ error: 'Lỗi cơ sở dữ liệu' });
+                    }
+                    const newChotData = {
+                        cid: cid,
+                        gia: gia,
+                        chot: chot,//nay la chu~ CHOT
+                        liveid: liveid,
+                        luotcuoilive: luotcuoi,
+                        slchot: slchot
+                    };
+                    io.to(liveid).emit('new-chot', newChotData);
+                    if (socketid) {
+                        io.to(socketid).emit('new-chot', newChotData);
+                    }
+                    response.json({ data: cid, luotcuoi: luotcuoi });
+                });
+            } else {
+                DBConnection.query(
+                    'UPDATE livestream SET luotincuoi = @newluot := luotincuoi + 1 WHERE id = ?; ' +
+                    'UPDATE livecomment SET chot = ?, gia = ?, luotin = @newluot, slchot = ? WHERE commentid = ?; ' +
+                    'SELECT @newluot AS luotcuoi;',
+                    [liveid, chot, gia, slchot, cid],
+                    function (err2, results) {
+                        if (err2) {
+                            console.error('updatechot increment error:', err2);
+                            return response.status(500).json({ error: 'Lỗi cơ sở dữ liệu' });
+                        }
+                        var luotcuoi = results && results[2] && results[2][0] ? results[2][0].luotcuoi : null;
+                        const newChotData = {
+                            cid: cid,
+                            gia: gia,
+                            chot: chot,//nay la chu~ CHOT
+                            liveid: liveid,
+                            luotcuoilive: luotcuoi,
+                            slchot: slchot
+                        };
+                        io.to(liveid).emit('new-chot', newChotData);
+                        if (socketid) {
+                            io.to(socketid).emit('new-chot', newChotData);
+                        }
+                        response.json({ data: cid, luotcuoi: luotcuoi });
+                    }
+                );
+            }
         });
     });
 
@@ -4029,27 +4072,41 @@ ORDER BY t1.id DESC;
         var chot = request.body.chot;
         var cid = request.body.commentid;
         var liveid = request.body.liveid;
+        var socketid = request.body.socketid;
         DBConnection.query(SqlString.format('UPDATE livecomment SET chot=?, gia=?, slchot=1 WHERE commentid=?', [chot, '', cid]));
         const newXaData = {
             cid: cid,
-            chot: chot,//nay la chu~ XA
+            chot: chot,
         };
         io.to(liveid).emit('new-xa', newXaData);
+        if (socketid) {
+            io.to(socketid).emit('new-xa', newXaData);
+        }
         response.json({
             data: cid
         });
     });
     router.post('/updatephone', jwtAuth, function (request, response, next) {
+        const io = socket.getIo();
         var name = '';
         var userid = request.body.userid;
         var phone = request.body.phone;
         var userrequest = '';
         var lastuser = '';
         var realfbid = request.body.realfbid;
+        var liveid = request.body.liveid;
+        var socketid = request.body.socketid;
         if (realfbid.length > 1) {
             DBConnection.query(SqlString.format('UPDATE khachhang SET phone=? WHERE userid=?', [phone, userid, realfbid]));
         } else {
             DBConnection.query(SqlString.format('UPDATE khachhang SET phone=? WHERE userid=?', [phone, userid]));
+        }
+        const newPhoneData = { userid: userid, phone: phone, liveid: liveid };
+        if (liveid) {
+            io.to(liveid).emit('new-phone', newPhoneData);
+        }
+        if (socketid) {
+            io.to(socketid).emit('new-phone', newPhoneData);
         }
         DBConnection.query(SqlString.format("SELECT fbname,userid,label,realfbid FROM khachhang WHERE phone=? GROUP BY realfbid", [phone]),
             function (error, data) {

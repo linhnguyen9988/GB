@@ -77,6 +77,7 @@ function UpdateUser() {
     });
     $('#modaledit').modal('hide');
 }
+
 function ShowEdit(title, id, phone, diachi, note, label, realfbid, nn) {
     document.getElementById("notetoshow").insertAdjacentHTML("afterend",
         `<div class="modal" tabindex="-1" role="dialog" id="modaledit">
@@ -1111,6 +1112,7 @@ async function UpdatePhone() {
     var userid = data[12];
     var diachi = data[10];
     var realfbid = data[22];
+    var liveid = data[17];
 
     var regexp = "0[98735]([0-9]|\s|-|\.){8,12}";
     let phone_numbers = [];
@@ -1126,27 +1128,18 @@ async function UpdatePhone() {
         if (oldphone.length < 9) {
             SendMessage("Chào chị, để gửi hàng nhanh nhất, em xin địa chỉ để khi chốt hàng em xác nhận đơn và chuyển hàng liền cho chị ạ. Em cám ơn!");
         }
-        table.rows().every(function (rowIdx, tableLoop, rowLoop) {
-            if (table.cell(rowIdx, 12).data() == data[12]) {
-                table.cell(rowIdx, 3).data(phone);
-                if (!table.cell(rowIdx, 1).data().includes(phone)) {
-                    table.cell(rowIdx, 1).data(table.cell(rowIdx, 1).data() + `<br><span class="label label--pink">` + phone + `<a href="tel:${phone}">📱</a></span>`);
-                }
-            }
-        }).draw(false);
-
-        await sendPhoneUpdate(userid, phone, realfbid, diachi);
+        await sendPhoneUpdate(userid, phone, realfbid, diachi, liveid);
     }
 }
 
-async function sendPhoneUpdate(userid, phone, realfbid, diachi) {
+async function sendPhoneUpdate(userid, phone, realfbid, diachi, liveid) {
     try {
         const response = await fetch("/updatephone", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
             },
-            body: JSON.stringify({ userid: userid, phone: phone, realfbid: realfbid }),
+            body: JSON.stringify({ userid: userid, phone: phone, realfbid: realfbid, liveid: liveid, socketid: socket.id }),
         });
 
         const data = await response.json();
@@ -1168,6 +1161,24 @@ async function sendPhoneUpdate(userid, phone, realfbid, diachi) {
         console.error('Error:', error);
     }
 }
+
+socket.on('new-phone', (data) => {
+    var table = $('#comment_table').DataTable();
+    var updated = false;
+    table.rows().every(function (rowIdx) {
+        if (table.cell(rowIdx, 12).data() == data.userid) {
+            updated = true;
+            table.cell(rowIdx, 3).data(data.phone);
+            if (!table.cell(rowIdx, 1).data().includes(data.phone)) {
+                table.cell(rowIdx, 1).data(table.cell(rowIdx, 1).data() + `<br><span class="label label--pink">` + data.phone + `<a href="tel:${data.phone}">📱</a></span>`);
+            }
+        }
+    }).draw(false);
+    if (updated) {
+        ShowCenterToast('success', 'Đã cập nhật số điện thoại: ' + data.phone, 3000);
+    }
+});
+
 
 function highAndLow(numbers) {
     var arr = numbers.split(",").map(Number);
@@ -1299,12 +1310,20 @@ async function Chotxxx(buttongia) {
     });
 };
 
+var pendingChot = {};
+
 async function Chot(buttongia) {
     var table = $('#comment_table').DataTable();
     if (table.rows().count() === 0) return;
 
     var data = table.row(getRowIdx()).data();
     if (!data) return;
+
+    var commentid = data[8];
+    var liveid = data[17];
+    if (pendingChot[commentid]) {
+        return;
+    }
 
     var id = data[25];
     var realid = data[22];
@@ -1315,14 +1334,6 @@ async function Chot(buttongia) {
         avatarUrl = window.location.origin + avatarUrl;
     }
 
-    var zz = table.column(16).data().toArray();
-    var luotincuoi = parseInt(highAndLow(zz.toString().replaceAll('&nbsp;', '0'))) || 0;
-
-    var xx = data[16];
-    var xx_val = (xx == '&nbsp;' || !xx) ? 0 : parseInt(xx);
-    var luotcuoi = (xx_val === 0) ? (luotincuoi + 1) : xx_val;
-    var luotcuoilive = (xx_val === 0) ? luotcuoi : luotincuoi;
-
     var slchot = parseInt(document.getElementById("slchot").value) || 1;
     document.getElementById("slchot").value = 1;
     var gia = buttongia > 0 ? buttongia : document.getElementById("gia").value;
@@ -1331,20 +1342,94 @@ async function Chot(buttongia) {
     if (realid.length < 1) {
         UpdateComment(0);
     }
-    var printData = {
-        date: ToDay(),
-        luotcuoi: luotcuoi,
-        name: rawNameHtml.split('<br>')[0].replace(/<[^>]*>?/gm, '').trim(),
-        phone: data[3] ? data[3].replace(/<[^>]*>?/gm, '').trim() : "",
-        comment: data[2] ? data[2].replace(/<[^>]*>?/gm, '').trim() : "",
-        gia: cleanPrice,
+
+    table.rows().every(function (rowIdx) {
+        if (table.cell(rowIdx, 8).data() == commentid) {
+            table.cell(rowIdx, 5).data("<center><span class='badge bg-secondary'>Đang chốt...</span></center>");
+        }
+    }).draw(false);
+
+    pendingChot[commentid] = {
+        liveid: liveid,
         id: id,
-        avabase64: avatarUrl,
+        rawNameHtml: rawNameHtml,
+        avatarUrl: avatarUrl,
+        phone: data[3],
+        comment: data[2],
         note: document.getElementById("livenote").value,
         address: data[10],
-        region: data[23]
+        region: data[23],
+        gia: cleanPrice,
+        slchot: slchot,
+        timeoutId: setTimeout(function () {
+            FailChot(commentid, 'Không nhận được phản hồi từ máy chủ, vui lòng thử lại.');
+        }, 10000)
     };
 
+    $.ajax({
+        url: "/updatechot",
+        method: "POST",
+        data: { commentid: commentid, chot: "CHỐT", gia: gia, liveid: liveid, slchot: slchot, socketid: socket.id },
+        dataType: "JSON",
+        error: function () {
+            FailChot(commentid, 'Gửi yêu cầu chốt đơn thất bại.');
+        }
+    });
+}
+
+function FailChot(commentid, message) {
+    if (!pendingChot[commentid]) return;
+    clearTimeout(pendingChot[commentid].timeoutId);
+    delete pendingChot[commentid];
+    var table = $('#comment_table').DataTable();
+    table.rows().every(function (rowIdx) {
+        if (table.cell(rowIdx, 8).data() == commentid) {
+            table.cell(rowIdx, 5).data("<center><span class='badge bg-danger'>Lỗi, thử lại</span></center>");
+        }
+    }).draw(false);
+    ShowToast('danger', `<i class="bi bi-x-octagon"></i>`, 'Chốt đơn', message, 4000);
+}
+
+socket.on('new-chot', async (data) => {
+    var table = $('#comment_table').DataTable();
+    var luotcuoilive = data.luotcuoilive;
+
+    let slchottext = '';
+    if (data.slchot > 1) {
+        slchottext = `<span class='tag tag-purple tag-pulse'>x ${data.slchot}</span>`;
+    }
+
+    table.rows().every(function (rowIdx) {
+        if (table.cell(rowIdx, 8).data() == data.cid) {
+            table.cell(rowIdx, 5).data("<center><span class='badge bg-primary'>CHỐT</span></center>");
+            table.cell(rowIdx, 6).data(`<center><span class='tag tag-green tag-pulse'>💰${data.gia}</span>${slchottext}</center>`);
+            table.cell(rowIdx, 16).data(luotcuoilive);
+        }
+    }).draw(false);
+
+    let liveElement = document.getElementById(data.liveid);
+    if (liveElement) {
+        liveElement.innerHTML = liveElement.innerHTML.split('-')[0] + '- ' + luotcuoilive;
+    }
+
+    var pending = pendingChot[data.cid];
+    if (!pending) return;
+    clearTimeout(pending.timeoutId);
+    delete pendingChot[data.cid];
+
+    var printData = {
+        date: ToDay(),
+        luotcuoi: luotcuoilive,
+        name: pending.rawNameHtml.split('<br>')[0].replace(/<[^>]*>?/gm, '').trim(),
+        phone: pending.phone ? pending.phone.replace(/<[^>]*>?/gm, '').trim() : "",
+        comment: pending.comment ? pending.comment.replace(/<[^>]*>?/gm, '').trim() : "",
+        gia: pending.gia,
+        id: pending.id,
+        avabase64: pending.avatarUrl,
+        note: pending.note,
+        address: pending.address,
+        region: pending.region
+    };
 
     const resPdf = await fetch('/api/generate-pdf', {
         method: 'POST',
@@ -1353,7 +1438,7 @@ async function Chot(buttongia) {
     }).then(r => r.json());
 
     if (resPdf.success) {
-        for (var k = 0; k < slchot; k++) {
+        for (var k = 0; k < pending.slchot; k++) {
             fetch('/print-order', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1366,51 +1451,39 @@ async function Chot(buttongia) {
             });
         }
     }
-
-    let liveElement = document.getElementById(data[17]);
-    if (liveElement) {
-        liveElement.innerHTML = liveElement.innerHTML.split('-')[0] + '- ' + luotcuoilive;
-    }
-
-    let slchottext = '';
-    if(slchot >1){
-        slchottext =`<span class='tag tag-purple tag-pulse'>x ${slchot}</span>`;
-    } 
-    
-    table.rows().every(function (rowIdx) {
-        if (table.cell(rowIdx, 8).data() == data[8]) {
-            table.cell(rowIdx, 5).data("<center><span class='badge bg-primary'>CHỐT</span></center>");
-            table.cell(rowIdx, 6).data(`<center><span class='tag tag-green tag-pulse'>💰${gia}</span>${slchottext}</center>`);
-            table.cell(rowIdx, 16).data(luotcuoi);
-        }
-    }).draw(false);
-
-    $.ajax({
-        url: "/updatechot",
-        method: "POST",
-        data: { commentid: data[8], chot: "CHỐT", gia: gia, luotincuoi: luotcuoi, liveid: data[17], luotcuoilive: luotcuoilive, slchot: slchot },
-        dataType: "JSON"
-    });
-}
+});
 
 function XaHang() {
     var table = $('#comment_table').DataTable();
     var data = $('#comment_table').DataTable().row(getRowIdx()).data();
     var commentid = data[8];
+    var liveid = data[17];
     table.rows().every(function (rowIdx, tableLoop, rowLoop) {
         if (table.cell(rowIdx, 8).data() == data[8]) {
-            table.cell(rowIdx, 5).data("<center><span class='badge bg-danger'>XẢ</span></center>");
-            table.cell(rowIdx, 6).data("");
+            table.cell(rowIdx, 5).data("<center><span class='badge bg-secondary'>Đang xả...</span></center>");
         }
     }).draw(false);
     $.ajax({
         url: "/updatexa",
         method: "POST",
-        data: { commentid: commentid, chot: "XẢ", liveid: data[17] },
+        data: { commentid: commentid, chot: "XẢ", liveid: liveid, socketid: socket.id },
         dataType: "JSON",
-        success: function (data) { }
+        error: function () {
+            ShowToast('danger', `<i class="bi bi-x-octagon"></i>`, 'Xả hàng', 'Gửi yêu cầu xả hàng thất bại, vui lòng thử lại.', 4000);
+        }
     });
 }
+
+socket.on('new-xa', (data) => {
+    var table = $('#comment_table').DataTable();
+    table.rows().every(function (rowIdx) {
+        if (table.cell(rowIdx, 8).data() == data.cid) {
+            table.cell(rowIdx, 5).data("<center><span class='badge bg-danger'>XẢ</span></center>");
+            table.cell(rowIdx, 6).data("");
+        }
+    }).draw(false);
+});
+
 function SendMessage(chat) {
     var data = $('#comment_table').DataTable().row(getRowIdx()).data();
     var commentid = data[8];
