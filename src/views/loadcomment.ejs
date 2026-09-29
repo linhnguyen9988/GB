@@ -7,24 +7,6 @@
                 <div class="card-body">
                     <div class="row">
                         <div class="col-sm-2">
-                            <form class="was-validated">
-                                <div class="input-group mb-1">
-                                    <span class="input-group-text">ID</span>
-                                    <input type="text" id="liveidinput" class="form-control input-sm"
-                                        placeholder="Nhập liveid vào" aria-label="LiveID"
-                                        aria-describedby="basic-addon1" required>
-                                    <!--<button type="button" class="btn btn-primary" id="scancomment"
-                                    onclick="ScanComment()">Quét</button>-->
-                                </div>
-                            </form>
-                            <div class="d-none d-md-block">
-                                <div class="input-group mb-3">
-                                    <input type="text" id="livenote" class="form-control input-sm"
-                                        onfocusout="OnUpdateLiveNote()" placeholder="Ghi chú live">
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-sm-2">
                             <div class="input-group mb-1">
                                 <select id="soluonglive" class="form-select">
                                     <option value="1">1</option>
@@ -47,74 +29,60 @@
                                 </select>
                                 <button type="button" class="btn btn-primary" id="btnloadlive"
                                     onclick="LoadLive()">Load</button>
-                                <!--<button type="button" class="btn btn-primary" id="btnloadlive"
-                                onclick="DeleteLive()">Del</button>-->
                             </div>
                             <div class="mt-1">
                                 <span id="liveStatusBadge" class="badge bg-light text-dark border">Chưa chọn live</span>
                             </div>
-                            <!--<div class="d-none d-md-block">
-                                <label for="holdToast">
-                                    <input type="checkbox" id="holdToast">
-                                    Giữ thông báo
-                                </label>
-                                <span id="referral"></span>
-                            </div>-->
-                            
+                            <form class="was-validated">
+                                <div class="input-group mb-1">
+                                    <span class="input-group-text" hidden>ID</span>
+                                    <input type="text" id="liveidinput" class="form-control input-sm"
+                                        placeholder="Nhập liveid vào" aria-label="LiveID"
+                                        aria-describedby="basic-addon1" required hidden>
+                                </div>
+                            </form>
+                            <div class="d-none d-md-block">
+                                <div class="input-group mb-3">
+                                    <input type="text" id="livenote" class="form-control input-sm"
+                                        onfocusout="OnUpdateLiveNote()" placeholder="Ghi chú live">
+                                </div>
+                            </div>
                         </div>
-                        <div class="col-sm-5 d-none d-md-block">
-                            <div class="input-group mb-1">
-                                <div class="col-1">
-                                    <input type="text" pattern="[0-9]+" inputmode="numeric" id="slchot" value="1"
-                                        class="form-control input-sm" width="20px" min="1" max="10"
-                                        onfocus="SelectX(this)" onkeyup="onlyNumberAmount(this)">
-                                </div>
-                                <div class="col-2">
-                                    <input type="text" pattern="[0-9]+" inputmode="numeric" id="gia"
-                                        class="form-control input-sm" width="20px" min="0" max="50"
-                                        onfocus="SelectX(this)" onkeyup="onlyNumberAmount(this)">
-                                </div>
 
-                                <button type="button" class="btn btn-outline-success"
-                                    onclick="Chot(this.innerHTML)">19</button>
-                                <button type="button" class="btn btn-outline-success"
-                                    onclick="Chot(this.innerHTML)">29</button>
-                                <button type="button" class="btn btn-outline-success"
-                                    onclick="Chot(this.innerHTML)">39</button>
-                                <button type="button" class="btn btn-outline-success"
-                                    onclick="Chot(this.innerHTML)">45</button>
-                                <button type="button" class="btn btn-outline-success"
-                                    onclick="Chot(this.innerHTML)">49</button>
-                                <button type="button" class="btn btn-outline-success"
-                                    onclick="Chot(this.innerHTML)">50</button>
-                                <button type="button" class="btn btn-outline-success"
-                                    onclick="Chot(this.innerHTML)">59</button>
-                                <button type="button" class="btn btn-outline-success"
-                                    onclick="Chot(this.innerHTML)">60</button>
-                                <button type="button" class="btn btn-outline-success"
-                                    onclick="Chot(this.innerHTML)">65</button>
-                                <button type="button" class="btn btn-outline-success"
-                                    onclick="Chot(this.innerHTML)">70</button>
-                                <button type="button" class="btn btn-outline-success"
-                                    onclick="Chot(this.innerHTML)">79</button>
-                                <button type="button" class="btn btn-outline-success"
-                                    onclick="Chot(this.innerHTML)">80</button>
-                                <button type="button" class="btn btn-outline-success"
-                                    onclick="Chot(this.innerHTML)">89</button>
-                                <button type="button" class="btn btn-outline-success"
-                                    onclick="Chot(this.innerHTML)">90</button>
-                                <button type="button" class="btn btn-outline-success"
-                                    onclick="Chot(this.innerHTML)">100</button>
-                                <button type="button" class="btn btn-outline-success"
-                                    onclick="Chot(this.innerHTML)">110</button>
-                                <button type="button" class="btn btn-outline-success"
-                                    onclick="Chot(this.innerHTML)">139</button>
-                                <button type="button" class="btn btn-outline-success"
-                                    onclick="Chot(this.innerHTML)">140</button>
-                                <button type="button" class="btn btn-outline-success"
-                                    onclick="Chot(this.innerHTML)">150</button>
-                                <button type="button" class="btn btn-outline-success"
-                                    onclick="Chot()">OK</button>
+                        <div class="col-sm-10 d-none d-md-block">
+                            <div class="d-flex flex-wrap gap-2 align-items-center mb-1">
+                                <input type="text" pattern="[0-9]+" inputmode="numeric" id="slchot" value="1"
+                                    class="form-control text-center"
+                                    style="width:58px!important; min-width:58px; max-width:58px; height:46px!important; border-radius:12px; background:transparent; border:1.5px solid #c724b1; color:#c724b1; font-size:16px; padding:0; font-weight:800; white-space:nowrap;"
+                                    min="1" max="10"
+                                    onfocus="SelectX(this)" onkeyup="onlyNumberAmount(this)">
+
+                                <input type="text" pattern="[0-9]+" inputmode="numeric" id="gia"
+                                    class="form-control text-center"
+                                    style="width:58px!important; min-width:72; max-width:72px; height:46px!important; border-radius:12px; background:transparent; border:1.5px solid #8d28eb; color:#8d28eb; font-size:16px; padding:0; font-weight:900; white-space:nowrap;"
+                                    min="0" max="50"
+                                    onfocus="SelectX(this)" onkeyup="onlyNumberAmount(this)">
+
+                                <button type="button" class="btn btn-outline-success" style="width:58px; height:46px; border-radius:12px; white-space:nowrap; padding:0;" onclick="Chot(this.innerHTML)">19</button>
+                                <button type="button" class="btn btn-outline-success" style="width:58px; height:46px; border-radius:12px; white-space:nowrap; padding:0;" onclick="Chot(this.innerHTML)">29</button>
+                                <button type="button" class="btn btn-outline-success" style="width:58px; height:46px; border-radius:12px; white-space:nowrap; padding:0;" onclick="Chot(this.innerHTML)">39</button>
+                                <button type="button" class="btn btn-outline-success" style="width:58px; height:46px; border-radius:12px; white-space:nowrap; padding:0;" onclick="Chot(this.innerHTML)">45</button>
+                                <button type="button" class="btn btn-outline-success" style="width:58px; height:46px; border-radius:12px; white-space:nowrap; padding:0;" onclick="Chot(this.innerHTML)">49</button>
+                                <button type="button" class="btn btn-outline-success" style="width:58px; height:46px; border-radius:12px; white-space:nowrap; padding:0;" onclick="Chot(this.innerHTML)">50</button>
+                                <button type="button" class="btn btn-outline-success" style="width:58px; height:46px; border-radius:12px; white-space:nowrap; padding:0;" onclick="Chot(this.innerHTML)">59</button>
+                                <button type="button" class="btn btn-outline-success" style="width:58px; height:46px; border-radius:12px; white-space:nowrap; padding:0;" onclick="Chot(this.innerHTML)">60</button>
+                                <button type="button" class="btn btn-outline-success" style="width:58px; height:46px; border-radius:12px; white-space:nowrap; padding:0;" onclick="Chot(this.innerHTML)">65</button>
+                                <button type="button" class="btn btn-outline-success" style="width:58px; height:46px; border-radius:12px; white-space:nowrap; padding:0;" onclick="Chot(this.innerHTML)">70</button>
+                                <button type="button" class="btn btn-outline-success" style="width:58px; height:46px; border-radius:12px; white-space:nowrap; padding:0;" onclick="Chot(this.innerHTML)">75</button>
+                                <button type="button" class="btn btn-outline-success" style="width:58px; height:46px; border-radius:12px; white-space:nowrap; padding:0;" onclick="Chot(this.innerHTML)">80</button>
+                                <button type="button" class="btn btn-outline-success" style="width:58px; height:46px; border-radius:12px; white-space:nowrap; padding:0;" onclick="Chot(this.innerHTML)">89</button>
+                                <button type="button" class="btn btn-outline-success" style="width:58px; height:46px; border-radius:12px; white-space:nowrap; padding:0;" onclick="Chot(this.innerHTML)">90</button>
+                                <button type="button" class="btn btn-outline-success" style="width:68px; height:46px; border-radius:12px; white-space:nowrap; padding:0;" onclick="Chot(this.innerHTML)">100</button>
+                                <button type="button" class="btn btn-outline-success" style="width:68px; height:46px; border-radius:12px; white-space:nowrap; padding:0;" onclick="Chot(this.innerHTML)">110</button>
+                                <button type="button" class="btn btn-outline-success" style="width:68px; height:46px; border-radius:12px; white-space:nowrap; padding:0;" onclick="Chot(this.innerHTML)">139</button>
+                                <button type="button" class="btn btn-outline-success" style="width:68px; height:46px; border-radius:12px; white-space:nowrap; padding:0;" onclick="Chot(this.innerHTML)">140</button>
+                                <button type="button" class="btn btn-outline-success" style="width:68px; height:46px; border-radius:12px; white-space:nowrap; padding:0;" onclick="Chot(this.innerHTML)">150</button>
+                                <button type="button" class="btn btn-outline-success" style="width:58px; height:46px; border-radius:12px; white-space:nowrap; padding:0;" onclick="Chot()">OK</button>
                             </div>
                         </div>
                     </div>
@@ -133,7 +101,7 @@
                         <th></th>
                         <th></th>
                         <th></th>
-                        <th></th><!-- 10 -->
+                        <th></th>
                         <th style="width: 10%"><img src="/images/icon/action.png"> Action</th>
                         <th></th>
                         <th style="width: 10%"><img src="/images/icon/timetable.png"> Time</th>
@@ -156,7 +124,6 @@
                 <tbody></tbody>
             </table>
         </div>
-
     </div>
     <script src="/js/loadcomment.js"></script>
-    <%- include('footer'); -%>
+<%- include('footer'); -%>

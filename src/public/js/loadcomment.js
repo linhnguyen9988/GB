@@ -73,6 +73,10 @@ function UpdateUser() {
         data: { phone: phone, diachi: diachi, label: label, note: note, userid: userid, realfbid: realfbid, nn: nn },
         dataType: "JSON",
         success: function (data) {
+            ShowCenterToast('success', 'Đã sửa thành công', 3000);
+        },
+        error: function () {
+            ShowCenterToast('danger', 'Sửa thất bại, vui lòng thử lại', 3000);
         }
     });
     $('#modaledit').modal('hide');
@@ -210,7 +214,10 @@ function InItKeys() {
     var t = $('#comment_table').DataTable();
     t.on('key', function (e, datatable, keyCode, cell, originalEvent) {
         var x = datatable.row(cell.index().row).data();
-        if ($('#viettelnotetext').is(':focus') || $('#message-input').is(':focus') || $('#notescan').is(':focus') || $('#diachiviettel').is(':focus') || $('#diachimodal').is(':focus') || $('#gia').is(':focus') || $('#slchot').is(':focus') || $('#comment_table_filter input').is(':focus') || $('#livenote').is(':focus') || $('#OrderNote').is(':focus') || $('#MessToSend').is(':focus') || $('#link').is(':focus') || $('#usernote').is(':focus') || $('#userphone').is(':focus') || $('#useraddress').is(':focus') || $('#diachi').is(':focus') || $('#note').is(':focus')) {
+        if ($('#modalxaconfirm').hasClass('show')) {
+            return;
+        }
+        if ($('#viettelnotetext').is(':focus') || $('#message-input').is(':focus') || $('#notescan').is(':focus') || $('#diachiviettel').is(':focus') || $('#diachimodal').is(':focus') || $('#gia').is(':focus') || $('#slchot').is(':focus') || $('#gia_m').is(':focus') || $('#slchot_m').is(':focus') || $('#comment_table_filter input').is(':focus') || $('#livenote').is(':focus') || $('#OrderNote').is(':focus') || $('#MessToSend').is(':focus') || $('#link').is(':focus') || $('#usernote').is(':focus') || $('#userphone').is(':focus') || $('#useraddress').is(':focus') || $('#diachi').is(':focus') || $('#note').is(':focus')) {
             return;
         }
         if (keyCode == 67) {
@@ -464,6 +471,7 @@ async function LoadLive() {
                         if(data.data[i].gia != ''){
                             giatext = `<span class='tag tag-green tag-pulse'>💰${data.data[i].gia}</span>`;
                         }
+                        var xabadge = (data.data[i].gia != '' && data.data[i].gia != null) ? XaBadgeHtml() : '';
                         html += `
                                 <tr>
                                     <td>${(i + 1)}</td>
@@ -472,7 +480,7 @@ async function LoadLive() {
                                     <td>${phone}</td>
                                     <td>${zlabel}</td>
                                     <td><center><span class="badge bg-${xbel}">${data.data[i].chot}</span></center></td>
-                                    <td><center>${giatext}${slchottext}</center></td>
+                                    <td><center>${giatext}${slchottext}${xabadge}</center></td>
                                     <td>${data.data[i].count}</td>
                                     <td>${data.data[i].commentid}</td>
                                     <td>${timesort}</td>
@@ -868,7 +876,7 @@ async function ScanComment(soluong) {
                             phone,//3
                             zlabel,//4
                             `<center><span class="badge bg-${xbel}">${data.data[i].chot}</span></center>`,//5
-                            `<center><span class="badge bg-success">${data.data[i].gia}</span></center>`,//6
+                            `<center><span class="badge bg-success">${data.data[i].gia}</span>${(data.data[i].slchot > 1 ? `<span class='tag tag-purple tag-pulse'>x ${data.data[i].slchot}</span>` : '')}${(data.data[i].gia != '' && data.data[i].gia != null) ? XaBadgeHtml() : ''}</center>`,//6
                             data.data[i].count,//7
                             data.data[i].commentid,//8
                             timesort,//9
@@ -1402,7 +1410,7 @@ socket.on('new-chot', async (data) => {
     table.rows().every(function (rowIdx) {
         if (table.cell(rowIdx, 8).data() == data.cid) {
             table.cell(rowIdx, 5).data("<center><span class='badge bg-primary'>CHỐT</span></center>");
-            table.cell(rowIdx, 6).data(`<center><span class='tag tag-green tag-pulse'>💰${data.gia}</span>${slchottext}</center>`);
+            table.cell(rowIdx, 6).data(`<center><span class='tag tag-green tag-pulse'>💰${data.gia}</span>${slchottext}${XaBadgeHtml()}</center>`);
             table.cell(rowIdx, 16).data(luotcuoilive);
         }
     }).draw(false);
@@ -1453,13 +1461,74 @@ socket.on('new-chot', async (data) => {
     }
 });
 
-function XaHang() {
+
+function XaBadgeHtml() {
+    return `<span class='tag tag-red tag-pulse badge-xa-gia' role='button' style='cursor:pointer;margin-left:4px;' title='Xả hàng đơn này'>Xả</span>`;
+}
+
+var xaPending = null;
+
+function EnsureXaConfirmModal() {
+    if (document.getElementById('modalxaconfirm')) return;
+    document.body.insertAdjacentHTML('beforeend',
+        `<div class="modal fade" tabindex="-1" id="modalxaconfirm" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+      <div class="modal-content rounded-4 shadow">
+        <div class="modal-body text-center p-4">
+          <h5 class="fw-bold mb-2">Xác nhận xả hàng?</h5>
+          <div id="xaconfirmtext" class="mb-3 text-muted"></div>
+          <div class="d-flex justify-content-center gap-2">
+            <button type="button" class="btn btn-light" data-bs-dismiss="modal">Hủy</button>
+            <button type="button" class="btn btn-danger" id="xaconfirmbtn">Xả</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`);
+    document.getElementById('xaconfirmbtn').addEventListener('click', function () {
+        if (xaPending) {
+            var p = xaPending;
+            xaPending = null;
+            XaHang(p.commentid, p.liveid);
+        }
+        $('#modalxaconfirm').modal('hide');
+    });
+    $('#modalxaconfirm').on('shown.bs.modal', function () {
+        document.getElementById('xaconfirmbtn').focus();
+    });
+    $('#modalxaconfirm').on('hidden.bs.modal', function () {
+        xaPending = null;
+    });
+}
+
+document.addEventListener('click', function (e) {
+    var badge = e.target.closest('#comment_table tbody .badge-xa-gia');
+    if (!badge) return;
+    e.stopPropagation();
+    var tr = badge.closest('tr');
+    var row = $('#comment_table').DataTable().row(tr);
+    var data = row.data();
+    if (!data) return;
+    var name = $('<div>').html(data[1]).contents().filter(function () { return this.nodeType === 3; }).first().text().trim();
+    var gia = $('<div>').html(data[6]).find('.tag-green').text().trim();
+    var sl = $('<div>').html(data[6]).find('.tag-purple').text().trim();
+    xaPending = { commentid: data[8], liveid: data[17] };
+    EnsureXaConfirmModal();
+    document.getElementById('xaconfirmtext').textContent = [name, gia, sl].filter(Boolean).join(' ');
+    $('#modalxaconfirm').modal('show');
+}, true);
+
+function XaHang(cid, lid) {
     var table = $('#comment_table').DataTable();
-    var data = $('#comment_table').DataTable().row(getRowIdx()).data();
-    var commentid = data[8];
-    var liveid = data[17];
+    var commentid = cid;
+    var liveid = lid;
+    if (!commentid) {
+        var data = table.row(getRowIdx()).data();
+        commentid = data[8];
+        liveid = data[17];
+    }
     table.rows().every(function (rowIdx, tableLoop, rowLoop) {
-        if (table.cell(rowIdx, 8).data() == data[8]) {
+        if (table.cell(rowIdx, 8).data() == commentid) {
             table.cell(rowIdx, 5).data("<center><span class='badge bg-secondary'>Đang xả...</span></center>");
         }
     }).draw(false);
@@ -1609,3 +1678,55 @@ async function handlePrintLabel(rowElement) {
         lastTapComment = currentTime;
     }, true);*/
 })();
+
+function ChotMobile() {
+    var giaM = document.getElementById('gia_m');
+    var slM = document.getElementById('slchot_m');
+    var gia = (giaM.value || '').trim();
+    var sl = parseInt(slM.value) || 1;
+    if (gia.length === 0) {
+        ShowCenterToast('danger', 'Vui lòng nhập giá', 2000);
+        giaM.focus();
+        return;
+    }
+    try {
+        getRowIdx();
+    } catch (err) {
+        ShowCenterToast('danger', 'Vui lòng chọn dòng cần chốt', 2000);
+        return;
+    }
+    document.getElementById('gia').value = gia;
+    document.getElementById('slchot').value = sl;
+    Chot();
+    slM.value = 1;
+}
+
+function InitMobileChot() {
+    if (document.getElementById('chot_mobile_box')) return;
+    var anchor = document.getElementById('liveStatusBadge');
+    if (!anchor) return;
+    anchor.insertAdjacentHTML('afterend',
+        `<div id="chot_mobile_box" class="d-md-none ms-2 align-middle" style="display:inline-block;">
+            <div class="d-flex align-items-center gap-1">
+                <input type="text" inputmode="numeric" id="slchot_m" class="form-control form-control-sm text-center" style="width:52px;" placeholder="SL" value="1">
+                <input type="text" inputmode="numeric" id="gia_m" class="form-control form-control-sm text-center" style="width:74px;" placeholder="Giá">
+                <button type="button" id="chot_m_btn" class="btn btn-primary btn-sm">OK</button>
+            </div>
+        </div>`);
+    document.getElementById('chot_m_btn').addEventListener('click', ChotMobile);
+    document.getElementById('gia_m').addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter') {
+            ev.preventDefault();
+            ChotMobile();
+        }
+        ev.stopPropagation();
+    });
+    document.getElementById('slchot_m').addEventListener('keydown', function (ev) {
+        ev.stopPropagation();
+    });
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', InitMobileChot);
+} else {
+    InitMobileChot();
+}
