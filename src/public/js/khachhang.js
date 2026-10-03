@@ -14,23 +14,23 @@ function handleCheckDonHang() {
         if (typeof OrderJourney === "function") {
             OrderJourney(orderNum, name, uId, phone);
         } else {
-            alert("Không tìm thấy hàm OrderJourney");
+            ShowAlertModal("Không tìm thấy hàm OrderJourney");
         }
     } catch (e) {
-        alert("Lỗi thực thi: " + e.message);
+        ShowAlertModal("Lỗi thực thi: " + e.message);
     }
 }
 
 function handleXemChiTietDon() {
     var orderNum = document.getElementById('donhangdalen').value;
     if (!orderNum || orderNum === 'undefined') {
-        alert("Chưa có đơn hàng nào để xem chi tiết!");
+        ShowAlertModal("Chưa có đơn hàng nào để xem chi tiết!");
         return;
     }
     if (typeof DetailDonHang === "function") {
         DetailDonHang(orderNum);
     } else {
-        alert("Không tìm thấy hàm DetailDonHang");
+        ShowAlertModal("Không tìm thấy hàm DetailDonHang");
     }
 }
 
@@ -44,17 +44,17 @@ function LenDonKhachHang() {
     var realfbid = realfbidEl ? realfbidEl.value : '';
 
     if (phone.length != 10 && phone.substring(0, 2) != '02') {
-        alert('Sai SĐT');
+        ShowAlertModal('Sai SĐT');
         return;
     }
     if (!add || add.selectedIndex < 0 || !add.options[add.selectedIndex]) {
-        alert('Chưa có địa chỉ');
+        ShowAlertModal('Chưa có địa chỉ');
         return;
     }
     var opt = add.options[add.selectedIndex];
     var address = (opt.dataset && opt.dataset.address) ? opt.dataset.address : opt.text.replace(/^[✅⚠️🔄❌]\s*/, '');
     if (!address || address.length < 5) {
-        alert('Chưa có địa chỉ');
+        ShowAlertModal('Chưa có địa chỉ');
         return;
     }
     if (!isNumeric(cod) || cod < 0) cod = 0;
@@ -147,7 +147,7 @@ function LenDonKhachHang() {
                         ShowCenterToast('success', `${fbnamex} • ${data.realorderid} • ${(+cod).toLocaleString()} đ`, 4000);
                         FillDiaChi();
                     } else {
-                        alert("Máy in đang Offline!");
+                        ShowAlertModal("Máy in đang Offline!");
                     }
                 },
                 error: function () {
@@ -722,11 +722,11 @@ function AddDiaChi() {
     window.userid = userid;
 
     if (phone.length !== 10 && !(phone.length === 11 && phone.startsWith("02"))) {
-        alert('Sai số điện thoại, kiểm tra lại');
+        ShowAlertModal('Sai số điện thoại, kiểm tra lại');
         return;
     }
     if (diachi.length < 10) {
-        alert('Địa chỉ phải trên 10 ký tự');
+        ShowAlertModal('Địa chỉ phải trên 10 ký tự');
         return;
     }
 
@@ -766,11 +766,10 @@ function AddDiaChi() {
 
             select.appendChild(opt);
             select.value = opt.value;
-
-            ShowCenterToast('success', `GB: ${diachi}<br>Viettel: ${data.adx}`, 5000);
+            //OnUpdateUser();
+            ShowAlertModal(`GB: ${diachi}\nViettel: ${data.adx}`,'success');
 
             document.getElementById('diachi').value = diachi;
-            OnUpdateUser();
         }
     });
 }

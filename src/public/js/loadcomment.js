@@ -214,7 +214,7 @@ function InItKeys() {
     var t = $('#comment_table').DataTable();
     t.on('key', function (e, datatable, keyCode, cell, originalEvent) {
         var x = datatable.row(cell.index().row).data();
-        if ($('#modalxaconfirm').hasClass('show')) {
+        if ($('#modalxaconfirm').hasClass('show') || $('#modalalertx').hasClass('show')) {
             return;
         }
         if ($('#viettelnotetext').is(':focus') || $('#message-input').is(':focus') || $('#notescan').is(':focus') || $('#diachiviettel').is(':focus') || $('#diachimodal').is(':focus') || $('#gia').is(':focus') || $('#slchot').is(':focus') || $('#gia_m').is(':focus') || $('#slchot_m').is(':focus') || $('#comment_table_filter input').is(':focus') || $('#livenote').is(':focus') || $('#OrderNote').is(':focus') || $('#MessToSend').is(':focus') || $('#link').is(':focus') || $('#usernote').is(':focus') || $('#userphone').is(':focus') || $('#useraddress').is(':focus') || $('#diachi').is(':focus') || $('#note').is(':focus')) {

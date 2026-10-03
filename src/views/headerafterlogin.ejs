@@ -61,6 +61,66 @@
   window.CURRENT_USER_ID = "<%= user.id %>";
   const socket = io();
   var lockToast = 0;
+
+  var alertModalQueue = [];
+  var alertModalShowing = false;
+
+  function EnsureAlertModal() {
+    if (document.getElementById('modalalertx')) return;
+    document.body.insertAdjacentHTML('beforeend',
+      `<div class="modal fade" tabindex="-1" id="modalalertx" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+      <div class="modal-content rounded-4 shadow">
+        <div class="modal-body text-center p-4">
+          <div id="alertx_icon" class="mb-2" style="font-size:2.6rem;line-height:1;"></div>
+          <h5 id="alertx_title" class="fw-bold mb-2"></h5>
+          <div id="alertx_msg" class="mb-3" style="white-space:pre-line;word-break:break-word;"></div>
+          <button type="button" class="btn btn-primary px-4" id="alertx_ok" data-bs-dismiss="modal">OK</button>
+        </div>
+      </div>
+    </div>
+  </div>`);
+    var el = $('#modalalertx');
+    el.on('shown.bs.modal', function () {
+      document.getElementById('alertx_ok').focus();
+    });
+    el.on('hidden.bs.modal', function () {
+      alertModalShowing = false;
+      if ($('.modal.show').length) {
+        document.body.classList.add('modal-open');
+      }
+      if (alertModalQueue.length) {
+        var n = alertModalQueue.shift();
+        ShowAlertModal(n.message, n.type);
+      }
+    });
+  }
+
+  function ShowAlertModal(message, type) {
+    message = (message === undefined || message === null) ? '' : String(message);
+    if (alertModalShowing) {
+      alertModalQueue.push({ message: message, type: type });
+      return;
+    }
+    if (!type) {
+      if (message.indexOf('✅') === 0) type = 'success';
+      else if (message.indexOf('❌') === 0 || /^lỗi/i.test(message)) type = 'danger';
+      else type = 'warning';
+    }
+    message = message.replace(/^(✅|❌)\s*/, '');
+    var cfg = {
+      success: { icon: '✅', title: 'Thành công' },
+      danger: { icon: '❌', title: 'Lỗi' },
+      warning: { icon: '⚠️', title: 'Thông báo' },
+      info: { icon: 'ℹ️', title: 'Thông báo' }
+    }[type] || { icon: '⚠️', title: 'Thông báo' };
+    EnsureAlertModal();
+    document.getElementById('alertx_icon').textContent = cfg.icon;
+    document.getElementById('alertx_title').textContent = cfg.title;
+    document.getElementById('alertx_msg').textContent = message;
+    alertModalShowing = true;
+    $('#modalalertx').modal('show');
+  }
   async function PrintFromMess(id, name, phone, url, text, diachi, nuocngoai) {
     let giaValue = document.getElementById("gia").value;
 
@@ -103,11 +163,11 @@
           .then(res => {
             if (res.success) {
             } else {
-              alert("Máy in đang Offline!");
+              ShowAlertModal("Máy in đang Offline!");
             }
           });
       } else {
-        alert("Lỗi khi tạo file in trên Server!");
+        ShowAlertModal("Lỗi khi tạo file in trên Server!");
       }
     } catch (err) {
       console.error("Lỗi hệ thống in:", err);
@@ -292,7 +352,7 @@
   function OnUpdatePhone(userid) {
     let phone = document.getElementById("phoneviettel").value;
     if (!isNumeric(phone)) {
-      alert('Sai số điện thoại.')
+      ShowAlertModal('Sai số điện thoại.')
     }
     $.ajax({
       url: "/onupdatephone",
@@ -777,7 +837,7 @@
         document.execCommand('copy');
         showSuccess(element, toast);
       } catch (err) {
-        alert('Lỗi: Trình duyệt không hỗ trợ copy');
+        ShowAlertModal('Lỗi: Trình duyệt không hỗ trợ copy');
       }
       document.body.removeChild(textArea);
     }
@@ -809,7 +869,7 @@
 
   function OrderJourney(orderNumber, customerName, userId, customerPhone) {
     if (!orderNumber || orderNumber === 'undefined') {
-      alert("Mã vận đơn không hợp lệ!");
+      ShowAlertModal("Mã vận đơn không hợp lệ!");
       return;
     }
 
@@ -954,7 +1014,7 @@
       window.copiedText = freeship;
     } catch (err) {
       console.error('Lỗi khi truy cập clipboard:', err);
-      alert('Lỗi: Vui lòng cho phép trang web truy cập clipboard và thử lại.');
+      ShowAlertModal('Lỗi: Vui lòng cho phép trang web truy cập clipboard và thử lại.');
       window.copiedText = '';
       return;
     }
@@ -967,7 +1027,7 @@
       window.copiedText = thuship; // Đã sửa lỗi chính tả ở đây
     } catch (err) {
       console.error('Lỗi khi truy cập clipboard:', err);
-      alert('Lỗi: Vui lòng cho phép trang web truy cập clipboard và thử lại.');
+      ShowAlertModal('Lỗi: Vui lòng cho phép trang web truy cập clipboard và thử lại.');
       window.copiedText = '';
       return;
     }
@@ -1144,11 +1204,11 @@
         .then(res => {
           if (res.success) {
           } else {
-            alert("Máy in đang Offline!");
+            ShowAlertModal("Máy in đang Offline!");
           }
         });
     } else {
-      alert("Lỗi tạo PDF từ Server!");
+      ShowAlertModal("Lỗi tạo PDF từ Server!");
     }
   }
 
@@ -1195,7 +1255,7 @@
       });
 
     if (!htmlTuFile) {
-      alert("Không lấy được nội dung file!");
+      ShowAlertModal("Không lấy được nội dung file!");
       return;
     }
 
@@ -1218,7 +1278,7 @@
           $('#qrresult').empty();
           document.getElementById("video-container").style.display = "block";
         } else {
-          alert("Máy in đang Offline!");
+          ShowAlertModal("Máy in đang Offline!");
         }
       },
       error: function () {
@@ -1248,15 +1308,15 @@
     tinhjt = selectedOpt.dataset.tinhjt || '';
 
     if (!jtready || !xajt) {
-      alert('Địa chỉ chưa có dữ liệu J&T. Bấm + để validate địa chỉ mới.');
+      ShowAlertModal('Địa chỉ chưa có dữ liệu J&T. Bấm + để validate địa chỉ mới.');
       return;
     }
     if (phone.length != 10 && phone.substring(0, 2) != '02') {
-      alert('Sai SDT');
+      ShowAlertModal('Sai SDT');
       return;
     }
     if (address.length < 5) {
-      alert('Chưa có địa chỉ');
+      ShowAlertModal('Chưa có địa chỉ');
       return;
     }
     if (cod == '' || cod < 0) cod = 0;
@@ -1287,14 +1347,14 @@
       success: function (data) {
         document.getElementById("pushjtorder").disabled = false;
         if (data.success) {
-          alert('✅ J&T: ' + data.order_code);
+          ShowAlertModal('✅ J&T: ' + data.order_code);
         } else {
-          alert('❌ ' + data.message);
+          ShowAlertModal('❌ ' + data.message);
         }
       },
       error: function () {
         document.getElementById("pushjtorder").disabled = false;
-        alert('Lỗi kết nối server');
+        ShowAlertModal('Lỗi kết nối server');
       }
     });
   }
@@ -1307,11 +1367,11 @@
     var kg = document.getElementById("SOKG").value;
 
     if (phone.length != 10 && phone.substring(0, 2) != '02') {
-      alert('Sai SDT');
+      ShowAlertModal('Sai SDT');
       return;
     }
     if (address.length < 5) {
-      alert('Chưa có địa chỉ');
+      ShowAlertModal('Chưa có địa chỉ');
       return;
     }
     if (cod == '' || cod < 0) {
@@ -1331,7 +1391,7 @@
       success: function (data) {
         if (data.hasOwnProperty('error')) {
           document.getElementById("pushviettelorder").disabled = false;
-          alert(data.error);
+          ShowAlertModal(data.error);
           return;
         }
         kg = kg * 1000;
@@ -1405,7 +1465,7 @@
               $('#qrresult').empty();
               document.getElementById("video-container").style.display = "block";
             } else {
-              alert("Máy in đang Offline!");
+              ShowAlertModal("Máy in đang Offline!");
             }
           },
           error: function () {
@@ -1534,11 +1594,11 @@
     var phone = document.getElementById("phoneviettel").value.trim();
 
     if (phone.length !== 10 && !(phone.length === 11 && phone.startsWith("02"))) {
-      alert('Sai số điện thoại, kiểm tra lại');
+      ShowAlertModal('Sai số điện thoại, kiểm tra lại');
       return;
     }
     if (diachi.length < 10) {
-      alert('Địa chỉ phải trên 10 ký tự');
+      ShowAlertModal('Địa chỉ phải trên 10 ký tự');
       return;
     }
 
@@ -1549,7 +1609,7 @@
       dataType: "JSON",
       success: function (data) {
         if (data.hasOwnProperty('error')) {
-          alert(data.error);
+          ShowAlertModal(data.error);
           return;
         }
 
@@ -1581,7 +1641,7 @@
         select.appendChild(opt);
         select.value = opt.value;
 
-        alert(`GB: ${diachi}\nViettel: ${data.adx}`);
+        ShowAlertModal(`GB: ${diachi}\nViettel: ${data.adx}`,'success');
         UpdateAddress2(userid);
       }
     });
@@ -1599,8 +1659,6 @@
   const video = document.getElementById('qr-video');
   const videoContainer = document.getElementById('video-container');
   const camList = document.getElementById('cam-list');
-  // Hiện khi quét QR mà không tìm thấy khách hàng/đơn hàng (lỗi tra cứu hoặc không có dữ liệu):
-  // hiện nút "Thử lại" và bật lại camera quét QR ngay, không để camera bị tắt.
   function handleQRNotFound(message) {
     $('#qrresult').empty().append(`
       <div class="qr-notfound-box text-center p-3">
@@ -1617,8 +1675,6 @@
   };
 
   function loadCustomerInfoByKhachId(khachId) {
-    // Tra thông tin đầy đủ của khách hàng theo đúng mã khách hàng (dùng cho
-    // trường hợp quét mã khách hàng, KHÔNG dùng cho mã đơn hàng).
     khid = khachId;
     $.ajax({
       url: "/getfullinfo",
@@ -1651,7 +1707,7 @@
           userid = data.data[0].userid;
           phonex = data.data[0].phone;
           if (data.data[0].phone.length != 10 && data.data[0].phone.substring(0, 2) != '02') {
-            alert('Số điện thoại của khách bị sai, kiểm tra lại.')
+            ShowAlertModal('Số điện thoại của khách bị sai, kiểm tra lại.')
           }
           var buttonBusinessSuite = '';
           if (realid.length > 1) {
