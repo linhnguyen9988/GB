@@ -1034,33 +1034,104 @@
     window.openMessageModalAndPaste(userid, fbnamex, PageIDx);
   }
 
-  function ShowAKA(title, note, aka, diachi) {
+  function akaEsc(v) {
+    return String(v === null || v === undefined ? '' : v)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function akaLabelBadge(label) {
+    label = label || '';
+    if (label.includes('Xả') || label.includes('Bom')) return `<span class="badge bg-danger">${akaEsc(label)}</span>`;
+    if (label.includes('Có')) return `<span class="badge bg-warning text-dark">${akaEsc(label)}</span>`;
+    if (label.includes('Thân')) return `<span class="badge bg-success">${akaEsc(label)}</span>`;
+    return label ? `<span class="badge bg-secondary">${akaEsc(label)}</span>` : '';
+  }
+
+  function akaBorder(label) {
+    label = label || '';
+    if (label.includes('Xả') || label.includes('Bom')) return 'border-danger border-2';
+    if (label.includes('Có')) return 'border-warning border-2';
+    return '';
+  }
+
+  function akaCard(c) {
+    var page = String(c.pageid || '');
+    var otherPage = page == '223266991771270' ? '102116919355833' : '223266991771270';
+    var real = c.realfbid || '';
+    var inbox = function (assetId) {
+      return `https://business.facebook.com/latest/inbox/messenger?asset_id=${assetId}&selected_item_id=${encodeURIComponent(real)}&mailbox_id=&thread_type=FB_MESSAGE`;
+    };
+    var pageNo = page == '223266991771270' ? 1 : (page == '102116919355833' ? 2 : '');
+    return `
+      <div class="border ${akaBorder(c.label)} rounded-3 p-3 mb-3">
+        <div class="d-flex align-items-center mb-2">
+          <img src="/images/ava/${akaEsc(c.userid)}.jpg" class="rounded-circle me-3" width="48" height="48" onerror="this.src='/images/ava/default.jpg'">
+          <div class="flex-grow-1">
+            <div class="fw-bold">${akaEsc(c.fbname)} ${pageNo ? `<span class="badge bg-light text-dark border">Page ${pageNo}</span>` : ''} ${akaLabelBadge(c.label)}</div>
+            <div class="text-muted small">ID: ${akaEsc(c.userid)}</div>
+          </div>
+        </div>
+        <div class="small mb-1"><i class="bi bi-phone-fill"></i> ${akaEsc(c.phone)} <a href="tel:${akaEsc(c.phone)}">📱</a></div>
+        ${c.diachi ? `<div class="small mb-1"><i class="bi bi-geo-alt-fill"></i> ${akaEsc(c.diachi)}</div>` : ''}
+        ${c.note && c.note != 'null' ? `<div class="small mb-1"><i class="bi bi-journal-bookmark-fill"></i> ${akaEsc(c.note)}</div>` : ''}
+        <div class="mt-2 d-flex flex-wrap gap-2">
+          <button type="button" class="open-message-modal btn btn-outline-primary btn-sm" data-customer-id="${akaEsc(c.userid)}" data-customer-name="${akaEsc(c.fbname)}" data-sender-page-id="${akaEsc(page)}" data-bs-dismiss="modal"><i class="bi bi-chat-square-text-fill"></i> Nhắn tin</button>
+          ${real ? `<a class="btn btn-outline-secondary btn-sm" target="_blank" href="${inbox(page)}"><i class="bi bi-messenger"></i> Inbox${pageNo ? ' P' + pageNo : ''}</a>
+          <a class="btn btn-outline-secondary btn-sm" target="_blank" href="${inbox(otherPage)}"><i class="bi bi-messenger"></i> Inbox ${pageNo == 1 ? 'P2' : 'P1'}</a>` : ''}
+          <button type="button" class="btn btn-outline-secondary btn-sm" onclick="navigator.clipboard.writeText('${akaEsc(c.fbname).replace(/'/g, "\\'")}')"><i class="bi bi-files"></i></button>
+        </div>
+      </div>`;
+  }
+
+  function ShowAKA(title, note, aka, diachi, list) {
+    var old = document.getElementById('modalaka');
+    if (old) {
+      $('#modalaka').off('hidden.bs.modal');
+      old.remove();
+      $('.modal-backdrop').remove();
+    }
+    var bodyHtml;
+    if (Array.isArray(list) && list.length > 0) {
+      bodyHtml = `<div class="mb-3 text-muted">${note ? note : ''}</div>` + list.map(akaCard).join('');
+    } else {
+      bodyHtml = `
+            <i class="bi bi-journal-bookmark-fill"></i>: ${note}<br>
+            <i class="bi bi-people-fill"></i>:${aka}<br>
+            <i class="bi bi-geo-alt-fill"></i>:${diachi}`;
+    }
     document.getElementById("notetoshow").insertAdjacentHTML("afterend",
       `<div class="modal" tabindex="-1" role="dialog" id="modalaka">
-    <div class="modal-dialog" role="document">
+    <div class="modal-dialog modal-dialog-scrollable" role="document">
       <div class="modal-content rounded-4 shadow">
-        <div class="modal-header p-5 pb-4 border-bottom-0">
+        <div class="modal-header p-4 pb-3 border-bottom-0">
           <h3 class="fw-bold mb-0">${title}</h3>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
-  
-        <div class="modal-body p-5 pt-0">
-            <i class="bi bi-journal-bookmark-fill"></i>: ${note}<br>
-            <i class="bi bi-people-fill"></i>:${aka}<br>
-            <i class="bi bi-geo-alt-fill"></i>:${diachi}
-        </div>
+        <div class="modal-body p-4 pt-0">${bodyHtml}</div>
       </div>
     </div>
   </div>`);
-    if ($('#modalaka').hasClass('show')) {
-      console.log('Duplicated.');
-    } else {
-      $('#modalaka').modal('show');
-    }
-
+    $('#modalaka').modal('show');
     $('#modalaka').on('hidden.bs.modal', function () {
       var div = document.getElementById('modalaka');
-      div.remove();
+      if (div) div.remove();
+    });
+  }
+
+  function OpenAKAByPhone(phone, userid, realfbid) {
+    $.ajax({
+      url: "/getakadetail",
+      method: "POST",
+      data: { phone: phone, userid: userid, realfbid: realfbid },
+      dataType: "JSON",
+      success: function (res) {
+        if (res.data && res.data.length > 0) {
+          ShowAKA('Trùng SĐT ' + akaEsc(phone), 'Có ' + res.data.length + ' nick khác dùng số này:', '', '', res.data);
+        } else {
+          ShowAKA('Trùng SĐT', 'Không tìm thấy nick nào khác dùng số này.', '', '');
+        }
+      }
     });
   }
 

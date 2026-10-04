@@ -30,6 +30,48 @@ var request = require('request');
 var SqlString = require('sqlstring');
 var CryptoJS = require("crypto-js");
 const socket = require('../socket');
+const AKA_SQL = "(SELECT GROUP_CONCAT(DISTINCT k2.fbname SEPARATOR ' - ') FROM khachhang k2 WHERE khachhang.phone IS NOT NULL AND khachhang.phone<>'' AND k2.phone=khachhang.phone AND k2.userid<>khachhang.userid AND (khachhang.realfbid IS NULL OR khachhang.realfbid='' OR k2.realfbid IS NULL OR k2.realfbid<>khachhang.realfbid)) AS aka";
+
+function attachAka(rows, cb) {
+    rows = rows || [];
+    var phones = [];
+    var seenPhone = {};
+    rows.forEach(function (r) {
+        var ph = (r.phone || '').toString().trim();
+        if (ph.length >= 9 && !seenPhone[ph]) { seenPhone[ph] = true; phones.push(ph); }
+    });
+    if (phones.length === 0) {
+        rows.forEach(function (r) { r.aka = ''; });
+        return cb(rows);
+    }
+    DBConnection.query('SELECT userid, realfbid, fbname, phone FROM khachhang WHERE phone IN (?)', [phones], function (error, list) {
+        if (error) {
+            console.error('attachAka:', error);
+            rows.forEach(function (r) { r.aka = ''; });
+            return cb(rows);
+        }
+        var byPhone = {};
+        list.forEach(function (o) {
+            var ph = (o.phone || '').toString().trim();
+            (byPhone[ph] = byPhone[ph] || []).push(o);
+        });
+        rows.forEach(function (r) {
+            var ph = (r.phone || '').toString().trim();
+            var seen = {};
+            var names = [];
+            (byPhone[ph] || []).forEach(function (o) {
+                if (String(o.userid) === String(r.userid)) return;
+                if (r.realfbid && String(o.realfbid) === String(r.realfbid)) return;
+                var key = o.realfbid ? 'r' + o.realfbid : 'u' + o.userid;
+                if (seen[key]) return;
+                seen[key] = true;
+                names.push(o.fbname);
+            });
+            r.aka = names.join(' - ');
+        });
+        cb(rows);
+    });
+}
 const { pushToUser } = require('../socket');
 const multer = require('multer');
 const sharp = require('sharp');
@@ -489,7 +531,7 @@ async function tryInsertMessageAsComment(khachhang, sender, text, timemess, page
         const liveid = liveRows[0].liveid;
 
         const [cusRows] = await db.query(
-            `SELECT * FROM khachhang WHERE userid = ? LIMIT 1`, [khachhang]
+            `SELECT *, ${AKA_SQL} FROM khachhang WHERE userid = ? LIMIT 1`, [khachhang]
         );
         const cus = cusRows.length > 0 ? cusRows[0] : null;
         const fbname = cus ? (cus.fbname || 'Khách hàng') : 'Khách hàng';
@@ -1750,7 +1792,7 @@ ORDER BY t1.id DESC;
             );
 
             const [customerInfoResult] = await db.query(
-                'SELECT * FROM khachhang WHERE userid = ? LIMIT 1', [userid]
+                'SELECT *, ' + AKA_SQL + ' FROM khachhang WHERE userid = ? LIMIT 1', [userid]
             );
             const customerInfo = customerInfoResult.length > 0 ? customerInfoResult[0] : {};
 
@@ -2299,7 +2341,7 @@ ORDER BY t1.id DESC;
                             await queryAsync(khachhangSql);
                         }
 
-                        const customerInfoResult = await queryAsync(`SELECT * FROM khachhang WHERE userid='${userid}' LIMIT 1`);
+                        const customerInfoResult = await queryAsync(`SELECT *, ${AKA_SQL} FROM khachhang WHERE userid='${userid}' LIMIT 1`);
                         const customerInfo = (customerInfoResult && customerInfoResult.length > 0) ? customerInfoResult[0] : {};
 
                         const newCommentData = {
@@ -3418,7 +3460,11 @@ ORDER BY t1.id DESC;
             DBConnection.query(
                 ` SELECT livecomment.idx, livecomment.mess, livecomment.userid, livecomment.timecomment, livecomment.name, livecomment.message, livecomment.datecreate, livecomment.chot, livecomment.gia, livecomment.commentid, livecomment.luotin, livecomment.count, livecomment.app, livecomment.liveid, livecomment.pageid, livecomment.updateava, livecomment.realfbid, khachhang.id, khachhang.phone, khachhang.diachi, khachhang.avalink, khachhang.label, khachhang.note, khachhang.fbnamex, khachhang.aka, khachhang.nuocngoai, khachhang.realfbid, khachhang.threadid FROM livecomment INNER JOIN khachhang ON (livecomment.userid=khachhang.userid) AND (${zzz.substring(0, zzz.length - 4)}) ORDER BY idx DESC LIMIT ${soluong}`,
                 function (error, data) {
-                    response.json({ data: data });
+                    if (error) {
+                        console.error(error);
+                        return response.json({ data: [] });
+                    }
+                    attachAka(data, function (rows) { response.json({ data: rows }); });
                 }
             );
         })();
@@ -3464,8 +3510,10 @@ ORDER BY t1.id DESC;
                     });
                     throw error;
                 } else {
-                    response.json({
-                        data: data
+                    attachAka(data, function (rows) {
+                        response.json({
+                            data: rows
+                        });
                     });
                 }
             });
@@ -3741,6 +3789,10 @@ ORDER BY t1.id DESC;
         var type = '';
         var baseon = '';
         var id = '';
+        
+        if (cmtid && (cmtid.match(/_/g) || []).length !== 1) {
+            return res.json({ data: { skipped: true, message: 'Comment ảo, bỏ qua.' } });
+        }
         if (cmtid === '' || chat.includes('..')) {
             type = 'UPDATE';
             baseon = 'id';
@@ -3931,6 +3983,31 @@ ORDER BY t1.id DESC;
             });
     });
 
+    function attachAkaCount(rows, cb) {
+        var phones = [];
+        rows.forEach(function (r) {
+            var ph = (r.phone || '').toString().trim();
+            if (ph.length >= 9 && phones.indexOf(ph) === -1) phones.push(ph);
+        });
+        if (phones.length === 0) {
+            rows.forEach(function (r) { r.akacount = 0; r.aka = ''; });
+            return cb(rows);
+        }
+        DBConnection.query(
+            "SELECT phone, COUNT(DISTINCT IF(realfbid IS NULL OR realfbid='', userid, realfbid)) AS cnt FROM khachhang WHERE phone IN (?) GROUP BY phone",
+            [phones],
+            function (error, counts) {
+                var map = {};
+                if (!error && counts) counts.forEach(function (c) { map[c.phone] = c.cnt; });
+                rows.forEach(function (r) {
+                    var c = map[(r.phone || '').toString().trim()] || 1;
+                    r.akacount = c > 1 ? c - 1 : 0;
+                    r.aka = r.akacount > 0 ? (r.aka || 'AKA') : '';
+                });
+                cb(rows);
+            });
+    }
+
     router.post('/getuserinfo', jwtAuth, function (request, response, next) {
         var stringforsearch = request.body.stringforsearch;
         var searchstring = LocDau(stringforsearch);
@@ -3951,7 +4028,7 @@ ORDER BY t1.id DESC;
                 }
 
                 if (data.length > 0) {
-                    response.json({ data: data });
+                    attachAkaCount(data, function (rows) { response.json({ data: rows }); });
                 } else {
                     const phoneQuery = `SELECT * FROM khachhang WHERE phone LIKE ?`;
                     DBConnection.query(phoneQuery, [searchValue], function (error, data) {
@@ -3959,7 +4036,7 @@ ORDER BY t1.id DESC;
                             console.error(error);
                             return response.status(500).json({ error: 'Database query failed' });
                         }
-                        response.json({ data: data });
+                        attachAkaCount(data, function (rows) { response.json({ data: rows }); });
                     });
                 }
             });
@@ -3975,7 +4052,7 @@ ORDER BY t1.id DESC;
                 console.error(error);
                 return response.status(500).json({ error: 'Database query failed' });
             }
-            response.json({ data: data });
+            attachAkaCount(data, function (rows) { response.json({ data: rows }); });
         });
     });
 
@@ -4086,21 +4163,25 @@ ORDER BY t1.id DESC;
             data: cid
         });
     });
+    
+    function dedupeByPerson(rows) {
+        var seen = {};
+        var out = [];
+        (rows || []).forEach(function (r) {
+            var key = (r.realfbid && String(r.realfbid).length > 0) ? 'r' + r.realfbid : 'u' + r.userid;
+            if (!seen[key]) { seen[key] = true; out.push(r); }
+        });
+        return out;
+    }
+
     router.post('/updatephone', jwtAuth, function (request, response, next) {
         const io = socket.getIo();
-        var name = '';
         var userid = request.body.userid;
         var phone = request.body.phone;
-        var userrequest = '';
-        var lastuser = '';
-        var realfbid = request.body.realfbid;
+        var realfbid = request.body.realfbid || '';
         var liveid = request.body.liveid;
         var socketid = request.body.socketid;
-        if (realfbid.length > 1) {
-            DBConnection.query(SqlString.format('UPDATE khachhang SET phone=? WHERE userid=?', [phone, userid, realfbid]));
-        } else {
-            DBConnection.query(SqlString.format('UPDATE khachhang SET phone=? WHERE userid=?', [phone, userid]));
-        }
+        DBConnection.query(SqlString.format('UPDATE khachhang SET phone=? WHERE userid=?', [phone, userid]));
         const newPhoneData = { userid: userid, phone: phone, liveid: liveid };
         if (liveid) {
             io.to(liveid).emit('new-phone', newPhoneData);
@@ -4108,39 +4189,57 @@ ORDER BY t1.id DESC;
         if (socketid) {
             io.to(socketid).emit('new-phone', newPhoneData);
         }
-        DBConnection.query(SqlString.format("SELECT fbname,userid,label,realfbid FROM khachhang WHERE phone=? GROUP BY realfbid", [phone]),
-            function (error, data) {
-                var xabom = 'none';
-                if (data.length > 1) {
-                    for (var i = 0; i < data.length; i++) {
-                        if (data[i].userid == realfbid) {
-                            return;
-                        }
-                        name += data[i].fbname + ' - ';
-                        userrequest += data[i].userid + ';';
-                        lastuser = userrequest.replaceAll(userid + ';', '');
-                        if (data[i].label.includes('Xả')) {
-                            xabom = 'Xả hàng'
-                        } else if (data[i].label.includes('Bom')) {
-                            xabom = 'Bom hàng'
-                        } else if (data[i].label.includes('Có')) {
-                            xabom = 'Có vấn đề'
-                        }
-                    }
-                    name = name.substring(0, name.length - 3);
-                    if (xabom == 'none') {
-                        DBConnection.query(SqlString.format('UPDATE khachhang SET aka=?,akauid=? WHERE phone=?', [name, lastuser, phone]));
-                    } else {
-                        DBConnection.query(SqlString.format('UPDATE khachhang SET aka=?, label=?, akauid=? WHERE phone=?', [name, xabom, lastuser, phone]));
-                    }
-                    response.json({
-                        data: JSON.parse('{"name": "' + name + '", "bom": "' + xabom + '"}')
-                    });
-                } else {
-                    response.json({
-                        data: JSON.parse('{"message": "OK"}')
-                    });
+        
+        DBConnection.query(
+            SqlString.format("SELECT id,fbname,userid,realfbid,pageid,label,note,diachi,phone,threadid FROM khachhang WHERE phone=? AND userid<>? AND (realfbid IS NULL OR realfbid='' OR realfbid<>?) ORDER BY id DESC", [phone, userid, realfbid]),
+            function (error, othersRaw) {
+                var others = dedupeByPerson(othersRaw);
+                if (error) {
+                    console.error(error);
+                    return response.json({ data: { message: 'OK' } });
                 }
+                if (!others || others.length === 0) {
+                    return response.json({ data: { message: 'OK' } });
+                }
+                var xabom = 'none';
+                var names = [];
+                var uids = [];
+                others.forEach(function (o) {
+                    var lb = o.label || '';
+                    names.push(o.fbname);
+                    uids.push(o.userid);
+                    if (lb.includes('Xả')) xabom = 'Xả hàng';
+                    else if (lb.includes('Bom')) xabom = 'Bom hàng';
+                    else if (lb.includes('Có') && xabom == 'none') xabom = 'Có vấn đề';
+                });
+                var name = names.join(' - ');
+                var akauid = uids.join(';') + ';';
+                if (xabom == 'none') {
+                    DBConnection.query(SqlString.format('UPDATE khachhang SET aka=?,akauid=? WHERE phone=?', [name, akauid, phone]));
+                } else {
+                    DBConnection.query(SqlString.format('UPDATE khachhang SET aka=?, label=?, akauid=? WHERE phone=?', [name, xabom, akauid, phone]));
+                }
+                response.json({
+                    data: { name: name, bom: xabom, list: others }
+                });
+            });
+    });
+
+    router.post('/getakadetail', jwtAuth, function (req, res) {
+        var phone = (req.body.phone || '').toString().replace(/\D/g, '');
+        var userid = (req.body.userid || '').toString();
+        var realfbid = (req.body.realfbid || '').toString();
+        if (phone.length < 9) {
+            return res.json({ data: [] });
+        }
+        DBConnection.query(
+            SqlString.format("SELECT id,fbname,userid,realfbid,pageid,label,note,diachi,phone,threadid FROM khachhang WHERE phone=? AND userid<>? AND (realfbid IS NULL OR realfbid='' OR realfbid<>?) ORDER BY id DESC", [phone, userid, realfbid]),
+            function (error, data) {
+                if (error) {
+                    console.error(error);
+                    return res.status(500).json({ error: 'Database query failed' });
+                }
+                res.json({ data: dedupeByPerson(data) });
             });
     });
 

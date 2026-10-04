@@ -100,76 +100,168 @@ function DeleteLive() {
         }
     });
 }
+function EditEsc(v) {
+    return String(v === null || v === undefined || v === 'null' ? '' : v)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function EditPlainName(title, fallback) {
+    var tmp = document.createElement('div');
+    tmp.innerHTML = title || '';
+    tmp.querySelectorAll('span, svg, i, button, small, br').forEach(function (el) { el.remove(); });
+    var t = (tmp.textContent || '').trim();
+    return t || fallback || '';
+}
+
+function EditOrderBadge(code) {
+    var cls = (typeof statusBadgeClass === 'function') ? statusBadgeClass(code) : 'secondary';
+    return cls;
+}
+
+function LoadEditRecentOrders(userid, realfbid, name, phone) {
+    var box = document.getElementById('edit-recent-orders');
+    if (!box) return;
+    $.ajax({
+        url: '/api/orders/recent',
+        method: 'GET',
+        data: { userid: userid, realfbid: realfbid, limit: 3 },
+        dataType: 'JSON',
+        success: function (res) {
+            var box2 = document.getElementById('edit-recent-orders');
+            if (!box2) return;
+            var list = (res && res.data) ? res.data : [];
+            if (list.length === 0) {
+                box2.innerHTML = '<div class="text-muted small text-center py-2">Khách chưa có đơn nào.</div>';
+                return;
+            }
+            box2.innerHTML = list.map(function (o) {
+                var cod = new Intl.NumberFormat('vi-VN').format(o.cod || 0) + ' ₫';
+                var d = o.time ? new Date(o.time) : null;
+                var dateStr = (d && !isNaN(d)) ? d.toLocaleDateString('vi-VN') : '';
+                var st = o.statustext || ('Mã ' + (o.statuscode === null || o.statuscode === undefined ? '?' : o.statuscode));
+                var code = o.realorderid || o.orderid || '';
+                return '<div class="border rounded-3 p-2 px-3 mb-2">'
+                    + '<div class="d-flex justify-content-between align-items-center gap-2">'
+                    + '<span class="fw-bold text-break small">' + EditEsc(code) + '</span>'
+                    + '<span class="badge bg-' + EditOrderBadge(o.statuscode) + '">' + EditEsc(st) + '</span>'
+                    + '</div>'
+                    + '<div class="d-flex justify-content-between align-items-center mt-1">'
+                    + '<div class="small text-muted">'
+                    + '<span class="text-success fw-semibold">COD ' + EditEsc(cod) + '</span>'
+                    + ' · ' + EditEsc(o.kg === null || o.kg === undefined ? '' : o.kg) + ' Kg'
+                    + (dateStr ? ' · ' + EditEsc(dateStr) : '')
+                    + '</div>'
+                    + '<button type="button" class="btn btn-outline-primary btn-sm py-0 edit-order-journey" data-order="' + EditEsc(code) + '"><i class="bi bi-truck"></i> Hành trình</button>'
+                    + '</div></div>';
+            }).join('');
+            box2.querySelectorAll('.edit-order-journey').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    EditOpenJourney(btn.getAttribute('data-order'), name, userid, phone);
+                });
+            });
+        },
+        error: function () {
+            var box2 = document.getElementById('edit-recent-orders');
+            if (box2) box2.innerHTML = '<div class="text-danger small text-center py-2">Không tải được danh sách đơn.</div>';
+        }
+    });
+}
+
+function EditOpenJourney(orderNumber, name, userid, phone) {
+    var tm = document.getElementById('trackingModal');
+    if (!tm) return;
+    tm.style.zIndex = 1075;
+    $(tm).one('shown.bs.modal', function () {
+        var bds = document.querySelectorAll('.modal-backdrop');
+        if (bds.length) bds[bds.length - 1].style.zIndex = 1070;
+    });
+    $(tm).one('hidden.bs.modal', function () {
+        tm.style.zIndex = '';
+        if (document.getElementById('modaledit')) document.body.classList.add('modal-open');
+    });
+    OrderJourney(orderNumber, name, userid, phone);
+}
+
 function ShowEdit(title, id, phone, diachi, note, label, realfbid, nn) {
+    var name = EditPlainName(title, id);
+    var labels = ['Thân thiết', 'Bom hàng', 'Xả hàng', 'Có vấn đề'];
+    var curLabel = (label === null || label === undefined || label === 'null') ? '' : String(label).trim();
+    var labelOpts = '<option value="">— Không nhãn —</option>' + labels.map(function (l) {
+        return '<option value="' + l + '"' + (l === curLabel ? ' selected' : '') + '>' + l + '</option>';
+    }).join('');
+    if (curLabel && labels.indexOf(curLabel) === -1) {
+        labelOpts += '<option value="' + EditEsc(curLabel) + '" selected>' + EditEsc(curLabel) + '</option>';
+    }
+    var nnOpts = '<option value=""' + ((nn !== 'Nước ngoài' && nn !== 'Trong nước') ? ' selected' : '') + '>Chưa chọn</option>'
+        + '<option value="Trong nước"' + (nn === 'Trong nước' ? ' selected' : '') + '>Trong nước</option>'
+        + '<option value="Nước ngoài"' + (nn === 'Nước ngoài' ? ' selected' : '') + '>Nước ngoài</option>';
+    var badge = '';
+    if (curLabel.indexOf('Xả') !== -1 || curLabel.indexOf('Bom') !== -1) badge = '<span class="badge bg-danger">' + EditEsc(curLabel) + '</span>';
+    else if (curLabel.indexOf('Có') !== -1) badge = '<span class="badge bg-warning text-dark">' + EditEsc(curLabel) + '</span>';
+    else if (curLabel.indexOf('Thân') !== -1) badge = '<span class="badge bg-success">' + EditEsc(curLabel) + '</span>';
+
     document.getElementById("notetoshow").insertAdjacentHTML("afterend",
         `<div class="modal" tabindex="-1" role="dialog" id="modaledit">
-    <div class="modal-dialog" role="document">
+    <div class="modal-dialog modal-dialog-scrollable" role="document">
       <div class="modal-content rounded-4 shadow">
-        <div class="modal-header p-5 pb-4 border-bottom-0">
-          <!-- <h5 class="modal-title">Modal title</h5> -->
-          <h3 class="fw-bold mb-0">${title}</h3>
+        <div class="modal-header p-4 pb-3 border-bottom-0">
+          <div class="d-flex align-items-center flex-grow-1 me-3" style="min-width:0">
+            <img src="/images/ava/${EditEsc(id)}.jpg" class="rounded-circle me-3" width="48" height="48" onerror="this.src='/images/ava/default.jpg'">
+            <div style="min-width:0">
+              <h3 class="fw-bold mb-0 text-truncate">${EditEsc(name)}</h3>
+              <div class="mt-1">${badge}</div>
+            </div>
+          </div>
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
-  
-        <div class="modal-body p-5 pt-0">
-        <div class="p-3 py-5">
-        <div class="row mt-2">
-            <div class="col-md-12">
-                <div class="input-group mb-3">
-                    <span class="input-group-text"><i class="bi bi-person-square"></i></span>
-                    <input type="text" id="fbid" class="form-control input-sm" value="${id}" disabled>
-                </div>
-                <div class="input-group mb-3">
-                    <span class="input-group-text"><i class="bi bi-person-square"></i></span>
-                    <input type="text" id="realfbid" class="form-control input-sm" value="${realfbid}" disabled>
-                </div>
+
+        <div class="modal-body p-4 pt-0">
+          <div class="border rounded-3 p-3 mb-3 bg-body-tertiary small">
+            <div class="d-flex justify-content-between"><span class="text-muted">ID</span><span class="text-break">${EditEsc(id)}</span></div>
+            <div class="d-flex justify-content-between mt-1"><span class="text-muted">Real FB ID</span><span class="text-break">${EditEsc(realfbid)}</span></div>
+            <input type="hidden" id="fbid" value="${EditEsc(id)}">
+            <input type="hidden" id="realfbid" value="${EditEsc(realfbid)}">
+          </div>
+
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label small text-muted mb-1" for="userphone"><i class="bi bi-phone-fill"></i> Số điện thoại</label>
+              <input type="text" id="userphone" class="form-control" inputmode="tel" value="${EditEsc(phone)}">
             </div>
-        
-            <div class="col-md-6">
-                <div class="input-group mb-3">
-                    <span class="input-group-text"><i class="bi bi-phone-fill"></i></i></span>
-                    <input type="text" id="userphone" class="form-control input-sm" value="${phone}">
-                </div>
+            <div class="col-6">
+              <label class="form-label small text-muted mb-1" for="labelkh"><i class="bi bi-tag-fill"></i> Nhãn</label>
+              <select id="labelkh" class="form-select">${labelOpts}</select>
             </div>
-            <div class="col-md-6">
-                <div class="input-group mb-3">
-                    <span class="input-group-text"><i class="bi bi-tag-fill"></i></span>
-                    <select id="labelkh" class="form-select">
-                        <option selected hidden disabled>${label}</option>
-                        <option value="Thân thiết">Thân thiết</option>
-                        <option value="Bom hàng">Bom hàng</option>
-                        <option value="Xả hàng">Xả hàng</option>
-                        <option value="Có vấn đề">Có vấn đề</option>
-                        <option value="Xóa">Xóa</option>
-                    </select>
-                </div>
+            <div class="col-6">
+              <label class="form-label small text-muted mb-1" for="nuocngoai"><i class="bi bi-globe2"></i> Khu vực</label>
+              <select id="nuocngoai" class="form-select">${nnOpts}</select>
             </div>
-            <div class="col-md-6">
-                <div class="input-group mb-3">
-                    <span class="input-group-text"><i class="bi bi-globe2"></i></span>
-                    <select id="nuocngoai" class="form-select">
-                        <option selected hidden disabled>${nn}</option>
-                        <option value="Nước ngoài">Nước ngoài</option>
-                        <option value="Trong nước">Trong nước</option>
-                    </select>
-                </div>
+            <div class="col-12">
+              <label class="form-label small text-muted mb-1" for="diachi"><i class="bi bi-geo-alt-fill"></i> Địa chỉ</label>
+              <textarea class="form-control" id="diachi" rows="2">${EditEsc(diachi)}</textarea>
             </div>
-            <div class="col-md-12">
-                <div class="input-group mb-3">
-                    <span class="input-group-text"><svg width="20px" height="20px" viewBox="0 0 512 512" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" fill="currentColor"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <title>location-filled</title> <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"> <g id="location-outline" fill="currentColor" transform="translate(106.666667, 42.666667)"> <path d="M149.333333,7.10542736e-15 C231.807856,7.10542736e-15 298.666667,66.8588107 298.666667,149.333333 C298.666667,176.537017 291.413333,202.026667 278.683512,224.008666 C270.196964,238.663333 227.080238,313.32711 149.333333,448 C71.5864284,313.32711 28.4697022,238.663333 19.9831547,224.008666 C7.25333333,202.026667 2.84217094e-14,176.537017 2.84217094e-14,149.333333 C2.84217094e-14,66.8588107 66.8588107,7.10542736e-15 149.333333,7.10542736e-15 Z M149.333333,85.3333333 C113.987109,85.3333333 85.3333333,113.987109 85.3333333,149.333333 C85.3333333,184.679557 113.987109,213.333333 149.333333,213.333333 C184.679557,213.333333 213.333333,184.679557 213.333333,149.333333 C213.333333,113.987109 184.679557,85.3333333 149.333333,85.3333333 Z" id="Combined-Shape"> </path> </g> </g> </g></svg></span>
-                    <textarea class="form-control" id="diachi" rows="2">${diachi}</textarea>
-                </div>
+            <div class="col-12">
+              <label class="form-label small text-muted mb-1" for="note"><i class="bi bi-journal-bookmark-fill"></i> Ghi chú</label>
+              <textarea class="form-control" id="note" rows="4">${EditEsc(note)}</textarea>
             </div>
-            <div class="col-md-12"><textarea class="form-control" id="note" rows="5">${note}</textarea></div>
-        <div class="row mt-2">
-                            <div class="text-center"><button class="btn btn-primary" type="button"
-                                    onclick="UpdateUser()">Lưu</button></div>
-                        </div>
-    </div>
+            <div class="col-12">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <label class="form-label small text-muted mb-0"><i class="bi bi-box-seam-fill"></i> 3 đơn gần nhất</label>
+              </div>
+              <div id="edit-recent-orders"><div class="text-center text-muted small py-2"><span class="spinner-border spinner-border-sm"></span> Đang tải...</div></div>
+            </div>
+          </div>
+
+          <div class="d-flex gap-2 mt-4">
+            <button class="btn btn-outline-secondary flex-grow-1" type="button" data-bs-dismiss="modal">Hủy</button>
+            <button class="btn btn-primary flex-grow-1" type="button" onclick="UpdateUser()"><i class="bi bi-check-lg"></i> Lưu</button>
+          </div>
         </div>
       </div>
     </div>
   </div>`);
+    LoadEditRecentOrders(id, realfbid, name, phone);
     if (numx == 0) {
         $('#modaledit').modal('show');
         numx = 1;
@@ -334,7 +426,7 @@ function InItKeys() {
                 });
             }
         } else if (keyCode == 190) {
-            SendMessage("Chào chị, để gửi hàng nhanh nhất, em xin địa chỉ để khi chốt hàng em xác nhận đơn và chuyển hàng liền cho chị ạ. Em cám ơn!");
+            SendWelcome();
         } else {
             //console.log('Key press: ' + keyCode + ' for cell ' + cell.data() + ' on Row ID ' + getRowIdx());
         }
@@ -438,7 +530,7 @@ async function LoadLive() {
                             name = name + `<svg fill="currentColor" width="20px" height="20px" viewBox="0 0 32 32" version="1.1" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="0.704"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <title>globe1</title> <path d="M15.5 2c-8.008 0-14.5 6.492-14.5 14.5s6.492 14.5 14.5 14.5 14.5-6.492 14.5-14.5-6.492-14.5-14.5-14.5zM10.752 3.854c-0.714 1.289-1.559 3.295-2.113 6.131h-4.983c1.551-2.799 4.062-4.993 7.096-6.131zM3.154 10.987h5.316c-0.234 1.468-0.391 3.128-0.415 5.012h-6.060c0.067-1.781 0.468-3.474 1.159-5.012zM1.988 17.001h6.072c0.023 1.893 0.188 3.541 0.422 5.012h-5.29c-0.694-1.543-1.138-3.224-1.204-5.012zM3.67 23.015h4.977c0.559 2.864 1.416 4.867 2.134 6.142-3.046-1.134-5.557-3.336-7.111-6.142zM15.062 30.009c-1.052-0.033-2.067-0.199-3.045-0.46-0.755-1.236-1.736-3.363-2.356-6.534h5.401v6.994zM15.062 22.013h-5.578c-0.234-1.469-0.396-3.119-0.421-5.012h5.998v5.012zM15.062 15.999h-6.004c0.025-1.886 0.183-3.543 0.417-5.012h5.587v5.012zM15.062 9.985h-5.422c0.615-3.148 1.591-5.266 2.344-6.525 0.987-0.266 2.015-0.435 3.078-0.47v6.995zM29.003 15.999h-5.933c-0.025-1.884-0.182-3.544-0.416-5.012h5.172c0.693 1.541 1.108 3.23 1.177 5.012zM27.322 9.985h-4.837c-0.549-2.806-1.382-4.8-2.091-6.090 2.967 1.154 5.402 3.335 6.928 6.090zM16.063 2.989c1.067 0.047 2.102 0.216 3.092 0.493 0.751 1.263 1.72 3.372 2.331 6.503h-5.423v-6.996zM16.063 10.987h5.587c0.234 1.469 0.392 3.126 0.417 5.012h-6.004v-5.012zM16.063 17.001h5.998c-0.023 1.893-0.187 3.543-0.421 5.012h-5.577v-5.012zM16.063 29.991v-6.977h5.402c-0.617 3.152-1.591 5.271-2.343 6.512-0.978 0.272-2.005 0.418-3.059 0.465zM20.367 29.114c0.714-1.276 1.56-3.266 2.112-6.1h4.835c-1.522 2.766-3.967 4.95-6.947 6.1zM27.795 22.013h-5.152c0.234-1.471 0.398-3.119 0.423-5.012h5.927c-0.067 1.787-0.508 3.468-1.198 5.012z"></path> </g></svg>`;
                         }
                         if (aka.length > 0) {
-                            name = name + `<svg width="20px" height="20px" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="bi bi-people-fill"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1H7zm4-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path> <path fill-rule="evenodd" d="M5.216 14A2.238 2.238 0 0 1 5 13c0-1.355.68-2.75 1.936-3.72A6.325 6.325 0 0 0 5 9c-4 0-5 3-5 4s1 1 1 1h4.216z"></path> <path d="M4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"></path> </g></svg>`;
+                            name = name + `<svg style="cursor:pointer" onclick="OpenAKAByPhone('${data.data[i].phone}','${data.data[i].userid}','${data.data[i].realfbid || ''}')" width="20px" height="20px" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="bi bi-people-fill"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1H7zm4-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path> <path fill-rule="evenodd" d="M5.216 14A2.238 2.238 0 0 1 5 13c0-1.355.68-2.75 1.936-3.72A6.325 6.325 0 0 0 5 9c-4 0-5 3-5 4s1 1 1 1h4.216z"></path> <path d="M4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"></path> </g></svg>`;
                         }
                         var buttonchat = `<a onclick="ChatBox('${data.data[i].threadid}','${idpage}','${data.data[i].userid}','${data.data[i].phone}','${data.data[i].name}', '${data.data[i].commentid}')"><i class="bi bi-envelope-fill"></i></a>`;
                         if (data.data[i].realfbid != null) {
@@ -824,7 +916,7 @@ async function ScanComment(soluong) {
                             name = name + `<svg fill="currentColor" width="20px" height="20px" viewBox="0 0 32 32" version="1.1" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="0.704"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <title>globe1</title> <path d="M15.5 2c-8.008 0-14.5 6.492-14.5 14.5s6.492 14.5 14.5 14.5 14.5-6.492 14.5-14.5-6.492-14.5-14.5-14.5zM10.752 3.854c-0.714 1.289-1.559 3.295-2.113 6.131h-4.983c1.551-2.799 4.062-4.993 7.096-6.131zM3.154 10.987h5.316c-0.234 1.468-0.391 3.128-0.415 5.012h-6.060c0.067-1.781 0.468-3.474 1.159-5.012zM1.988 17.001h6.072c0.023 1.893 0.188 3.541 0.422 5.012h-5.29c-0.694-1.543-1.138-3.224-1.204-5.012zM3.67 23.015h4.977c0.559 2.864 1.416 4.867 2.134 6.142-3.046-1.134-5.557-3.336-7.111-6.142zM15.062 30.009c-1.052-0.033-2.067-0.199-3.045-0.46-0.755-1.236-1.736-3.363-2.356-6.534h5.401v6.994zM15.062 22.013h-5.578c-0.234-1.469-0.396-3.119-0.421-5.012h5.998v5.012zM15.062 15.999h-6.004c0.025-1.886 0.183-3.543 0.417-5.012h5.587v5.012zM15.062 9.985h-5.422c0.615-3.148 1.591-5.266 2.344-6.525 0.987-0.266 2.015-0.435 3.078-0.47v6.995zM29.003 15.999h-5.933c-0.025-1.884-0.182-3.544-0.416-5.012h5.172c0.693 1.541 1.108 3.23 1.177 5.012zM27.322 9.985h-4.837c-0.549-2.806-1.382-4.8-2.091-6.090 2.967 1.154 5.402 3.335 6.928 6.090zM16.063 2.989c1.067 0.047 2.102 0.216 3.092 0.493 0.751 1.263 1.72 3.372 2.331 6.503h-5.423v-6.996zM16.063 10.987h5.587c0.234 1.469 0.392 3.126 0.417 5.012h-6.004v-5.012zM16.063 17.001h5.998c-0.023 1.893-0.187 3.543-0.421 5.012h-5.577v-5.012zM16.063 29.991v-6.977h5.402c-0.617 3.152-1.591 5.271-2.343 6.512-0.978 0.272-2.005 0.418-3.059 0.465zM20.367 29.114c0.714-1.276 1.56-3.266 2.112-6.1h4.835c-1.522 2.766-3.967 4.95-6.947 6.1zM27.795 22.013h-5.152c0.234-1.471 0.398-3.119 0.423-5.012h5.927c-0.067 1.787-0.508 3.468-1.198 5.012z"></path> </g></svg>`;
                         }
                         if (aka.length > 0) {
-                            name = name + `<i class="bi bi-people-fill" data-bs-toggle="tooltip" title="Trùng tên: ${aka}"></i>`;
+                            name = name + `<i style="cursor:pointer" onclick="OpenAKAByPhone('${data.data[i].phone}','${data.data[i].userid}','${data.data[i].realfbid || ''}')" class="bi bi-people-fill" data-bs-toggle="tooltip" title="Trùng tên: ${aka}"></i>`;
                         }
                         if (idpage == '223266991771270') {
                             if (data.data[i].realfbid.length > 0) {
@@ -1029,7 +1121,7 @@ socket.on('new-comment', (data) => {
         name = name + `<svg fill="currentColor" width="20px" height="20px" viewBox="0 0 32 32" version="1.1" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="0.704"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <title>globe1</title> <path d="M15.5 2c-8.008 0-14.5 6.492-14.5 14.5s6.492 14.5 14.5 14.5 14.5-6.492 14.5-14.5-6.492-14.5-14.5-14.5zM10.752 3.854c-0.714 1.289-1.559 3.295-2.113 6.131h-4.983c1.551-2.799 4.062-4.993 7.096-6.131zM3.154 10.987h5.316c-0.234 1.468-0.391 3.128-0.415 5.012h-6.060c0.067-1.781 0.468-3.474 1.159-5.012zM1.988 17.001h6.072c0.023 1.893 0.188 3.541 0.422 5.012h-5.29c-0.694-1.543-1.138-3.224-1.204-5.012zM3.67 23.015h4.977c0.559 2.864 1.416 4.867 2.134 6.142-3.046-1.134-5.557-3.336-7.111-6.142zM15.062 30.009c-1.052-0.033-2.067-0.199-3.045-0.46-0.755-1.236-1.736-3.363-2.356-6.534h5.401v6.994zM15.062 22.013h-5.578c-0.234-1.469-0.396-3.119-0.421-5.012h5.998v5.012zM15.062 15.999h-6.004c0.025-1.886 0.183-3.543 0.417-5.012h5.587v5.012zM15.062 9.985h-5.422c0.615-3.148 1.591-5.266 2.344-6.525 0.987-0.266 2.015-0.435 3.078-0.47v6.995zM29.003 15.999h-5.933c-0.025-1.884-0.182-3.544-0.416-5.012h5.172c0.693 1.541 1.108 3.23 1.177 5.012zM27.322 9.985h-4.837c-0.549-2.806-1.382-4.8-2.091-6.090 2.967 1.154 5.402 3.335 6.928 6.090zM16.063 2.989c1.067 0.047 2.102 0.216 3.092 0.493 0.751 1.263 1.72 3.372 2.331 6.503h-5.423v-6.996zM16.063 10.987h5.587c0.234 1.469 0.392 3.126 0.417 5.012h-6.004v-5.012zM16.063 17.001h5.998c-0.023 1.893-0.187 3.543-0.421 5.012h-5.577v-5.012zM16.063 29.991v-6.977h5.402c-0.617 3.152-1.591 5.271-2.343 6.512-0.978 0.272-2.005 0.418-3.059 0.465zM20.367 29.114c0.714-1.276 1.56-3.266 2.112-6.1h4.835c-1.522 2.766-3.967 4.95-6.947 6.1zM27.795 22.013h-5.152c0.234-1.471 0.398-3.119 0.423-5.012h5.927c-0.067 1.787-0.508 3.468-1.198 5.012z"></path> </g></svg>`;
     }
     if (aka.length > 0) {
-        name = name + `<i class="bi bi-people-fill" data-bs-toggle="tooltip" title="Trùng tên: ${aka}"></i>`;
+        name = name + `<i style="cursor:pointer" onclick="OpenAKAByPhone('${data.customerInfo.phone}','${data.customerInfo.userid}','${data.customerInfo.realfbid || ''}')" class="bi bi-people-fill" data-bs-toggle="tooltip" title="Trùng tên: ${aka}"></i>`;
     }
     if (data.customerInfo.realfbid != null) {
         if (idpage == '223266991771270') {
@@ -1180,7 +1272,7 @@ async function BeginScan() {
                             name = name + `<svg fill="currentColor" width="20px" height="20px" viewBox="0 0 32 32" version="1.1" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="0.704"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <title>globe1</title> <path d="M15.5 2c-8.008 0-14.5 6.492-14.5 14.5s6.492 14.5 14.5 14.5 14.5-6.492 14.5-14.5-6.492-14.5-14.5-14.5zM10.752 3.854c-0.714 1.289-1.559 3.295-2.113 6.131h-4.983c1.551-2.799 4.062-4.993 7.096-6.131zM3.154 10.987h5.316c-0.234 1.468-0.391 3.128-0.415 5.012h-6.060c0.067-1.781 0.468-3.474 1.159-5.012zM1.988 17.001h6.072c0.023 1.893 0.188 3.541 0.422 5.012h-5.29c-0.694-1.543-1.138-3.224-1.204-5.012zM3.67 23.015h4.977c0.559 2.864 1.416 4.867 2.134 6.142-3.046-1.134-5.557-3.336-7.111-6.142zM15.062 30.009c-1.052-0.033-2.067-0.199-3.045-0.46-0.755-1.236-1.736-3.363-2.356-6.534h5.401v6.994zM15.062 22.013h-5.578c-0.234-1.469-0.396-3.119-0.421-5.012h5.998v5.012zM15.062 15.999h-6.004c0.025-1.886 0.183-3.543 0.417-5.012h5.587v5.012zM15.062 9.985h-5.422c0.615-3.148 1.591-5.266 2.344-6.525 0.987-0.266 2.015-0.435 3.078-0.47v6.995zM29.003 15.999h-5.933c-0.025-1.884-0.182-3.544-0.416-5.012h5.172c0.693 1.541 1.108 3.23 1.177 5.012zM27.322 9.985h-4.837c-0.549-2.806-1.382-4.8-2.091-6.090 2.967 1.154 5.402 3.335 6.928 6.090zM16.063 2.989c1.067 0.047 2.102 0.216 3.092 0.493 0.751 1.263 1.72 3.372 2.331 6.503h-5.423v-6.996zM16.063 10.987h5.587c0.234 1.469 0.392 3.126 0.417 5.012h-6.004v-5.012zM16.063 17.001h5.998c-0.023 1.893-0.187 3.543-0.421 5.012h-5.577v-5.012zM16.063 29.991v-6.977h5.402c-0.617 3.152-1.591 5.271-2.343 6.512-0.978 0.272-2.005 0.418-3.059 0.465zM20.367 29.114c0.714-1.276 1.56-3.266 2.112-6.1h4.835c-1.522 2.766-3.967 4.95-6.947 6.1zM27.795 22.013h-5.152c0.234-1.471 0.398-3.119 0.423-5.012h5.927c-0.067 1.787-0.508 3.468-1.198 5.012z"></path> </g></svg>`;
                         }
                         if (aka.length > 0) {
-                            name = name + `<i class="bi bi-people-fill" data-bs-toggle="tooltip" title="Trùng tên: ${aka}"></i>`;
+                            name = name + `<i style="cursor:pointer" onclick="OpenAKAByPhone('${data.data[i].phone}','${data.data[i].userid}','${data.data[i].realfbid || ''}')" class="bi bi-people-fill" data-bs-toggle="tooltip" title="Trùng tên: ${aka}"></i>`;
                         }
                         if (data.data[i].realfbid != null) {
                             if (idpage == '223266991771270') {
@@ -1295,7 +1387,7 @@ function UpdatePhone() {
     if (phone.length > 0) {
         console.log(data[3]);
         if (data[3].length < 9) {
-            SendMessage("Chào chị, để gửi hàng nhanh nhất, em xin địa chỉ để khi chốt hàng em xác nhận đơn và chuyển hàng liền cho chị ạ. Em cám ơn!");
+            SendWelcome();
         }
         table.rows().every(function (rowIdx, tableLoop, rowLoop) {
             if (table.cell(rowIdx, 12).data() == data[12]) {
@@ -1319,9 +1411,9 @@ function UpdatePhone() {
                         } else if (data.data.bom.includes('hàng')) {
                             labelx = ' - <span class="badge bg-danger">' + data.data.bom + '</span>';
                         }
-                        ShowAKA('Trùng SĐT', 'Số điện thoại này được dùng bởi: ', data.data.name + labelx, diachi);
+                        ShowAKA('Trùng SĐT', 'Số điện thoại này được dùng bởi: ', data.data.name + labelx, diachi, data.data.list);
                     } else {
-                        ShowAKA('Trùng SĐT', 'Số điện thoại này được dùng bởi: ', data.data.name, diachi);
+                        ShowAKA('Trùng SĐT', 'Số điện thoại này được dùng bởi: ', data.data.name, diachi, data.data.list);
                     }
                 }
             }
@@ -1465,6 +1557,19 @@ function XaHang() {
         success: function (data) { }
     });
 }
+
+function IsRealCommentId(cid) {
+    return typeof cid === 'string' && (cid.match(/_/g) || []).length === 1;
+}
+
+function SendWelcome() {
+    var d = $('#comment_table').DataTable().row(getRowIdx()).data();
+    if (!d || !IsRealCommentId(String(d[8]))) {
+        return;
+    }
+    SendMessage("Chào chị, để gửi hàng nhanh nhất, em xin địa chỉ để khi chốt hàng em xác nhận đơn và chuyển hàng liền cho chị ạ. Em cám ơn!");
+}
+
 function SendMessage(chat) {
     var data = $('#comment_table').DataTable().row(getRowIdx()).data();
     var commentid = data[8];
@@ -1476,6 +1581,7 @@ function SendMessage(chat) {
         data: { commentid: commentid, pageid: pageid, userid: userid, chat: chat },
         dataType: "JSON",
         success: function (x) {
+            if (x.data.skipped) { return; }
             if (x.data.hasOwnProperty('message_id')) {
                 ShowToast('success', `<img src='${data[1].split('src="').pop().split('"')[0]}' class="rounded me-2" width="30px" height="30px">`, data[1].split('avatar">').pop().split('<br')[0], 'Đã gửi tin nhắn.', 3000);
             } else {

@@ -30,6 +30,34 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
+router.get('/recent', auth, async (req, res) => {
+  try {
+    const userid = String(req.query.userid || '').trim();
+    const realfbid = String(req.query.realfbid || '').trim();
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 3, 1), 10);
+    if (!userid && !realfbid) return res.json({ data: [] });
+
+    const conds = [];
+    const params = [];
+    if (userid) { conds.push('userid = ?'); params.push(userid); }
+    if (realfbid && realfbid !== 'null') { conds.push('realfbid = ?'); params.push(realfbid); }
+    params.push(limit);
+
+    const [rows] = await db.query(
+      `SELECT realorderid, orderid, cod, kg, statuscode, statustext, provider, time, last_update, address
+       FROM lendon
+       WHERE (${conds.join(' OR ')})
+       ORDER BY time DESC, realorderid DESC
+       LIMIT ?`,
+      params
+    );
+    res.json({ data: rows });
+  } catch (err) {
+    console.error('orders/recent:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/stats', auth, async (req, res) => {
   const { fromDate, dateMode = 'created' } = req.query;
   try {
