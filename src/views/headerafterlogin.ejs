@@ -1048,6 +1048,19 @@
     return label ? `<span class="badge bg-secondary">${akaEsc(label)}</span>` : '';
   }
 
+  function akaNoteHtml(c) {
+    var label = c.label || '';
+    var hasNote = c.note && String(c.note).trim() !== '' && c.note != 'null';
+    var isBad = label.includes('Xả') || label.includes('Bom');
+    var isWarn = label.includes('Có');
+    if (isBad || isWarn) {
+      var cls = isBad ? 'alert-danger' : 'alert-warning';
+      var title = isBad ? 'Lý do ' + akaEsc(label) : 'Lý do có vấn đề';
+      return `<div class="alert ${cls} py-2 px-3 mb-2 small" style="white-space:pre-wrap"><div class="fw-bold mb-1"><i class="bi bi-exclamation-triangle-fill"></i> ${title}</div>${hasNote ? akaEsc(c.note) : '<span class="fst-italic opacity-75">Chưa có ghi chú lý do.</span>'}</div>`;
+    }
+    return hasNote ? `<div class="small mb-1" style="white-space:pre-wrap"><i class="bi bi-journal-bookmark-fill"></i> ${akaEsc(c.note)}</div>` : '';
+  }
+
   function akaBorder(label) {
     label = label || '';
     if (label.includes('Xả') || label.includes('Bom')) return 'border-danger border-2';
@@ -1074,7 +1087,7 @@
         </div>
         <div class="small mb-1"><i class="bi bi-phone-fill"></i> ${akaEsc(c.phone)} <a href="tel:${akaEsc(c.phone)}">📱</a></div>
         ${c.diachi ? `<div class="small mb-1"><i class="bi bi-geo-alt-fill"></i> ${akaEsc(c.diachi)}</div>` : ''}
-        ${c.note && c.note != 'null' ? `<div class="small mb-1"><i class="bi bi-journal-bookmark-fill"></i> ${akaEsc(c.note)}</div>` : ''}
+        ${akaNoteHtml(c)}
         <div class="mt-2 d-flex flex-wrap gap-2">
           <button type="button" class="open-message-modal btn btn-outline-primary btn-sm" data-customer-id="${akaEsc(c.userid)}" data-customer-name="${akaEsc(c.fbname)}" data-sender-page-id="${akaEsc(page)}" data-bs-dismiss="modal"><i class="bi bi-chat-square-text-fill"></i> Nhắn tin</button>
           ${real ? `<a class="btn btn-outline-secondary btn-sm" target="_blank" href="${inbox(page)}"><i class="bi bi-messenger"></i> Inbox${pageNo ? ' P' + pageNo : ''}</a>

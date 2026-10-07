@@ -3789,7 +3789,6 @@ ORDER BY t1.id DESC;
         var type = '';
         var baseon = '';
         var id = '';
-        
         if (cmtid && (cmtid.match(/_/g) || []).length !== 1) {
             return res.json({ data: { skipped: true, message: 'Comment ảo, bỏ qua.' } });
         }
@@ -4163,15 +4162,31 @@ ORDER BY t1.id DESC;
             data: cid
         });
     });
-    
+
     function dedupeByPerson(rows) {
-        var seen = {};
-        var out = [];
+        function rank(label) {
+            label = label || '';
+            if (label.indexOf('Xả') !== -1 || label.indexOf('Bom') !== -1) return 3;
+            if (label.indexOf('Có') !== -1) return 2;
+            return label ? 1 : 0;
+        }
+        function hasText(v) { return v !== null && v !== undefined && String(v).trim() !== '' && String(v) !== 'null'; }
+        var groups = {};
+        var order = [];
         (rows || []).forEach(function (r) {
             var key = (r.realfbid && String(r.realfbid).length > 0) ? 'r' + r.realfbid : 'u' + r.userid;
-            if (!seen[key]) { seen[key] = true; out.push(r); }
+            if (!groups[key]) { groups[key] = []; order.push(key); }
+            groups[key].push(r);
         });
-        return out;
+        return order.map(function (key) {
+            var g = groups[key];
+            var best = g.slice().sort(function (x, y) { return rank(y.label) - rank(x.label); })[0];
+            var out = Object.assign({}, g[0]);
+            out.label = best.label;
+            out.note = hasText(best.note) ? best.note : (g.find(function (x) { return hasText(x.note); }) || {}).note || '';
+            out.diachi = hasText(best.diachi) ? best.diachi : (g.find(function (x) { return hasText(x.diachi); }) || {}).diachi || '';
+            return out;
+        });
     }
 
     router.post('/updatephone', jwtAuth, function (request, response, next) {
