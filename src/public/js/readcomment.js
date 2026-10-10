@@ -375,7 +375,12 @@ function InItKeys() {
         } else if (keyCode == 77) {
             OpenMessenger(x[18], x[23]);
         } else if (keyCode == 78) {
-            ShowNote();
+            // N: thêm khách vào danh sách quay thưởng | Shift+N: ghi chú như cũ
+            if (originalEvent && originalEvent.shiftKey) {
+                ShowNote();
+            } else {
+                LuckyAdd(x[12], x[15] || $('<div>').html(x[1]).text(), String(x[3] || '').replace(/<[^>]*>?/gm, '').trim(), x[26], $('<div>').html(x[1]).find('img').attr('src') || '');
+            }
         } else if (keyCode == 85) {
             ShowEdit(x[1], x[12], x[3], x[10], x[19], x[21], x[23], x[24]);
         } else if (keyCode == 86) {

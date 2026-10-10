@@ -371,7 +371,11 @@ function InItKeys() {
             link.click();
             document.body.removeChild(link);
         } else if (keyCode == 78) {
-            ShowNote();
+            if (originalEvent && originalEvent.shiftKey) {
+                ShowNote();
+            } else {
+                LuckyAdd(x[12], x[15] || $('<div>').html(x[1]).text(), String(x[3] || '').replace(/<[^>]*>?/gm, '').trim(), x[25], $('<div>').html(x[1]).find('img').attr('src') || '');
+            }
         } else if (keyCode == 79) {
             clearAllToasts();
         } else if (keyCode == 85) {

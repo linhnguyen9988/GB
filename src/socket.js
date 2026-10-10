@@ -2,6 +2,7 @@ import DBConnection from "./configs/DBConnection";
 import bcrypt from "bcryptjs";
 const { Server } = require("socket.io");
 let io;
+const luckyStates = new Map(); // quay thưởng: chỉ giữ trong RAM, không ghi DB
 
 const initSocket = (server) => {
     io = new Server(server, {
@@ -57,6 +58,36 @@ const initSocket = (server) => {
                     }
                 }
             );
+        });
+
+        const luckyKey = (k) => (typeof k === 'string' && /^[A-Za-z0-9]{8,40}$/.test(k)) ? k : null;
+        const luckyClean = (st) => ({
+            visible: !!(st && st.visible),
+            winnerId: (st && st.winnerId) ? String(st.winnerId).slice(0, 40) : null,
+            players: ((st && Array.isArray(st.players)) ? st.players : []).slice(0, 500)
+                .map(p => ({ id: String((p && p.id) || '').slice(0, 40), name: String((p && p.name) || '').slice(0, 80) }))
+                .filter(p => p.id)
+        });
+        const luckySave = (k, st) => {
+            luckyStates.set(k, st);
+            if (luckyStates.size > 200) luckyStates.delete(luckyStates.keys().next().value);
+        };
+        socket.on('lucky-join', (k) => {
+            k = luckyKey(k); if (!k) return;
+            socket.join('LUCKY_' + k);
+            const st = luckyStates.get(k);
+            if (st) socket.emit('lucky-state', st);
+        });
+        socket.on('lucky-sync', (k, st) => {
+            k = luckyKey(k); if (!k) return;
+            st = luckyClean(st); luckySave(k, st);
+            io.to('LUCKY_' + k).emit('lucky-state', st);
+        });
+        socket.on('lucky-spin', (k, st, dur) => {
+            k = luckyKey(k); if (!k) return;
+            st = luckyClean(st); st.visible = true; luckySave(k, st);
+            dur = Math.min(Math.max(parseInt(dur, 10) || 7000, 3000), 15000);
+            io.to('LUCKY_' + k).emit('lucky-spin', { state: st, dur });
         });
 
         socket.on('disconnect', () => {

@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Quay thưởng</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  html,body{margin:0;height:100%;background:transparent;overflow:hidden;font-family:"Segoe UI",system-ui,sans-serif}
+  #stage{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+         opacity:0;transform:scale(.92);transition:opacity .5s,transform .5s;pointer-events:none}
+  #stage.show{opacity:1;transform:scale(1)}
+  #title{font-size:42px;font-weight:800;color:#fff;text-shadow:0 3px 12px #000,0 0 24px #f59e0b;margin-bottom:18px;letter-spacing:1px}
+  #view{position:relative;width:min(92vw,1100px);height:230px;overflow:hidden;border-radius:18px;
+        background:rgba(10,12,20,.78);border:3px solid #f59e0b;box-shadow:0 0 40px rgba(245,158,11,.5)}
+  #view::before,#view::after{content:"";position:absolute;top:0;bottom:0;width:18%;z-index:2;pointer-events:none}
+  #view::before{left:0;background:linear-gradient(90deg,rgba(10,12,20,.95),transparent)}
+  #view::after{right:0;background:linear-gradient(-90deg,rgba(10,12,20,.95),transparent)}
+  #mark{position:absolute;left:50%;top:0;bottom:0;width:4px;margin-left:-2px;background:#ef4444;z-index:3;box-shadow:0 0 14px #ef4444}
+  #mark::before{content:"▼";position:absolute;top:-4px;left:-9px;color:#ef4444;font-size:22px}
+  #strip{position:absolute;top:0;left:0;height:100%;display:flex;align-items:center;will-change:transform}
+  .c{box-sizing:border-box;flex:0 0 170px;margin:0 5px;height:190px;border-radius:14px;background:linear-gradient(160deg,#2b3042,#171a26);
+     border:2px solid #3b4156;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;transition:transform .5s,opacity .5s,box-shadow .5s}
+  .c img{width:96px;height:96px;border-radius:50%;object-fit:cover;border:3px solid #fbbf24;background:#111}
+  .c span{color:#fff;font-weight:700;font-size:18px;max-width:150px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #stage.done .c{opacity:.28}
+  #stage.done .c.w{opacity:1;transform:scale(1.18);border-color:#fbbf24;box-shadow:0 0 36px #fbbf24,0 0 80px #f59e0b;animation:pulse 1s infinite alternate}
+  @keyframes pulse{to{box-shadow:0 0 56px #fde047,0 0 110px #f59e0b}}
+  #banner{margin-top:22px;min-height:70px;font-size:54px;font-weight:900;color:#fde047;text-align:center;
+          text-shadow:0 4px 14px #000,0 0 30px #f59e0b;opacity:0;transform:translateY(20px) scale(.8);transition:all .6s cubic-bezier(.2,1.6,.4,1)}
+  #banner.on{opacity:1;transform:none}
+  #fx{position:fixed;inset:0;pointer-events:none;z-index:9}
+  .v #title{font-size:64px;margin-bottom:28px}
+  .v #view{width:min(92vw,920px);height:min(62vh,1150px)}
+  .v #view::before{left:0;right:0;top:0;bottom:auto;width:auto;height:18%;background:linear-gradient(180deg,rgba(10,12,20,.95),transparent)}
+  .v #view::after{left:0;right:0;bottom:0;top:auto;width:auto;height:18%;background:linear-gradient(0deg,rgba(10,12,20,.95),transparent)}
+  .v #mark{left:0;right:0;top:50%;bottom:auto;width:auto;height:4px;margin:-2px 0 0}
+  .v #mark::before{content:"▶";top:-15px;left:-4px}
+  .v #strip{height:auto;width:100%;flex-direction:column;align-items:stretch}
+  .v .c{flex:0 0 200px;height:200px;margin:6px 40px;flex-direction:row;justify-content:flex-start;gap:36px;padding:0 36px}
+  .v .c img{width:150px;height:150px;flex:none}
+  .v .c span{max-width:none;flex:1;text-align:left;font-size:38px}
+  .v #stage.done .c.w{transform:scale(1.08)}
+  .v #banner{font-size:68px;max-width:94vw;margin-top:30px;text-align:center}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="title">🎁 QUAY THƯỞNG 🎁</div>
+  <div id="view"><div id="mark"></div><div id="strip"></div></div>
+  <div id="banner"></div>
+</div>
+<canvas id="fx"></canvas>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+(function () {
+  var KEY = new URLSearchParams(location.search).get('k');
+  var stage = document.getElementById('stage'), strip = document.getElementById('strip'),
+      view = document.getElementById('view'), banner = document.getElementById('banner');
+  var CW = 180, V = false, S = null, anim = 0, spinTok = 0;
+  function setMode() { V = innerHeight > innerWidth; document.body.classList.toggle('v', V); CW = V ? 212 : 180; }
+  setMode();
+  addEventListener('resize', function () { var o = V; setMode(); if (V !== o && S) apply(S); });
+
+  function card(p, win) {
+    var d = document.createElement('div'); d.className = 'c' + (win ? ' w' : '');
+    var i = document.createElement('img'); i.src = '/images/ava/' + encodeURIComponent(p.id) + '.jpg';
+    i.onerror = function () { this.onerror = null; this.src = '/images/ava/default.jpg'; };
+    var s = document.createElement('span'); s.textContent = p.name;
+    d.appendChild(i); d.appendChild(s); return d;
+  }
+  function byId(id) { return (S.players || []).filter(function (p) { return p.id === id; })[0]; }
+  function setX(x) { strip.style.transform = (V ? 'translateY(' : 'translateX(') + (-x) + 'px)'; }
+
+  function build(winner, total, target) {
+    strip.innerHTML = '';
+    var ps = S.players.slice(), seq = [];
+    for (var i = 0; i < total; i++) {
+      if (i === target) { seq.push(winner); continue; }
+      var p = ps[Math.floor(Math.random() * ps.length)];
+      if (seq.length && seq[seq.length - 1] === p && ps.length > 1) p = ps[(ps.indexOf(p) + 1) % ps.length];
+      seq.push(p);
+    }
+    seq.forEach(function (p, i) { strip.appendChild(card(p, i === target && winner && S.winnerId === winner.id)); });
+  }
+  
+  function xFor(target, jitter) {
+    var el = strip.children[target];
+    if (V) return el.offsetTop + el.offsetHeight / 2 - view.clientHeight / 2 + (jitter || 0);
+    return el.offsetLeft + el.offsetWidth / 2 - view.clientWidth / 2 + (jitter || 0);
+  }
+  function ease(t) { return 1 - Math.pow(1 - t, 4); }
+
+  function idle() {
+    stage.classList.remove('done'); banner.classList.remove('on');
+    if (!S.players.length) { strip.innerHTML = ''; return; }
+    build(null, Math.max(12, S.players.length * 2), -1); setX(0);
+  }
+  function showWinner(instant) {
+    var w = byId(S.winnerId); if (!w) return idle();
+    if (instant) { build(w, 30, 15); setX(xFor(15)); }
+    stage.classList.add('done');
+    banner.textContent = '🎉 ' + w.name + ' 🎉'; banner.classList.add('on');
+    confetti(instant ? 60 : 220);
+  }
+  function spin(dur) {
+    var w = byId(S.winnerId); if (!w || S.players.length < 2) return;
+    var tok = ++spinTok; cancelAnimationFrame(anim);
+    stage.classList.remove('done'); banner.classList.remove('on');
+    var target = 62, total = 72;
+    build(w, total, target);
+    var end = xFor(target, (Math.random() - .5) * CW * .6), t0 = performance.now();
+    (function f(now) {
+      if (tok !== spinTok) return;
+      var t = Math.min(1, (now - t0) / dur);
+      setX(end * ease(t));
+      if (t < 1) anim = requestAnimationFrame(f); else showWinner(false);
+    })(t0);
+  }
+
+  function apply(st) {
+    S = st || { players: [], visible: false, winnerId: null };
+    stage.classList.toggle('show', !!S.visible);
+    ++spinTok; cancelAnimationFrame(anim);
+    if (S.winnerId && byId(S.winnerId)) showWinner(true); else idle();
+  }
+
+  var cv = document.getElementById('fx'), cx = cv.getContext('2d'), parts = [], run = false;
+  function fit() { cv.width = innerWidth; cv.height = innerHeight; } fit(); onresize = fit;
+  function confetti(n) {
+    var cols = ['#fde047', '#f59e0b', '#ef4444', '#22c55e', '#3b82f6', '#ec4899', '#fff'];
+    for (var i = 0; i < n; i++) parts.push({
+      x: cv.width / 2 + (Math.random() - .5) * 300, y: cv.height * .45,
+      vx: (Math.random() - .5) * 18, vy: -Math.random() * 18 - 4, g: .35 + Math.random() * .2,
+      s: 6 + Math.random() * 8, r: Math.random() * 6, vr: (Math.random() - .5) * .4,
+      c: cols[Math.floor(Math.random() * cols.length)], life: 220 + Math.random() * 100 });
+    if (!run) { run = true; requestAnimationFrame(tick); }
+  }
+  function tick() {
+    cx.clearRect(0, 0, cv.width, cv.height);
+    parts = parts.filter(function (p) { return p.life > 0 && p.y < cv.height + 20; });
+    parts.forEach(function (p) {
+      p.vy += p.g; p.x += p.vx; p.y += p.vy; p.vx *= .99; p.r += p.vr; p.life--;
+      cx.save(); cx.translate(p.x, p.y); cx.rotate(p.r); cx.fillStyle = p.c;
+      cx.globalAlpha = Math.min(1, p.life / 40); cx.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2); cx.restore();
+    });
+    if (parts.length) requestAnimationFrame(tick); else run = false;
+  }
+
+  if (!KEY) { document.getElementById('title').textContent = 'Thiếu mã ?k=...'; stage.classList.add('show'); return; }
+  var sk = io();
+  sk.on('connect', function () { sk.emit('lucky-join', KEY); });
+  sk.on('lucky-state', apply);
+  sk.on('lucky-spin', function (d) {
+    S = d.state; stage.classList.add('show'); spin(d.dur || 7000);
+  });
+})();
+</script>
+</body>
+</html>
