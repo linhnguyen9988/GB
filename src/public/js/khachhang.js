@@ -60,6 +60,19 @@ function LenDonKhachHang() {
     if (!isNumeric(cod) || cod < 0) cod = 0;
     if (!isNumeric(kg) || kg <= 0) kg = 2;
 
+    var fbnameNow = (document.getElementById('fbname').value || '').trim();
+    var useridNow = document.getElementById('userid').value;
+    var khidNow = window.khid;
+    try {
+        var rowNow = $('#tblkhachhang').DataTable().row(getRowIdx()).data();
+        if (rowNow && String(rowNow[0]) === String(useridNow)) khidNow = rowNow[18];
+    } catch (e) { }
+
+    if (!fbnameNow) {
+        ShowAlertModal('Chưa có tên khách');
+        return;
+    }
+
     if (btn) btn.disabled = true;
 
     $.ajax({
@@ -67,13 +80,13 @@ function LenDonKhachHang() {
         method: "POST",
         dataType: "JSON",
         data: {
-            fbname: window.fbnamex || document.getElementById('fbname').value,
+            fbname: fbnameNow,
             phone: phone,
             address: address,
             cod: cod,
             kg: kg,
-            khid: window.khid,
-            userid: window.userid || document.getElementById('userid').value,
+            khid: khidNow,
+            userid: useridNow,
             realfbid: realfbid
         },
         success: function (data) {
@@ -95,7 +108,7 @@ function LenDonKhachHang() {
             else if (kgGoi <= 15000) kgGoi = kgGoi - 4000;
             else kgGoi = kgGoi - 5000;
 
-            var fbnamex = window.fbnamex || document.getElementById('fbname').value;
+            var fbnamex = fbnameNow;
             var html = `<html><head>
                 <style>
                     body { width: 360px; margin: 2mm 0mm 2mm 2mm; line-height: 1.6; }

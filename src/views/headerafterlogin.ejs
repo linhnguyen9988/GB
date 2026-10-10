@@ -1465,13 +1465,19 @@
       kg = 2;
     }
 
+    var fbnameSend = fbnamex, khidSend = khid, useridSend = userid, realidSend = realid;
+    if (!fbnameSend || !useridSend) {
+      ShowAlertModal('Chưa tải xong thông tin khách, quét lại QR.');
+      return;
+    }
+
     document.getElementById("pushviettelorder").disabled = true;
 
     $.ajax({
       url: "/createorderviettel",
       method: "POST",
       dataType: "JSON",
-      data: { fbname: fbnamex, phone: phone, address: address, cod: cod, kg: kg, khid: khid, userid: userid, realfbid: realid },
+      data: { fbname: fbnameSend, phone: phone, address: address, cod: cod, kg: kg, khid: khidSend, userid: useridSend, realfbid: realidSend },
       success: function (data) {
         if (data.hasOwnProperty('error')) {
           document.getElementById("pushviettelorder").disabled = false;
@@ -1512,7 +1518,7 @@
                 <tr><td colspan="2">Phường/Xã: <p style="font-size:13px;display:inline;font-weight: bold;">${data.xa}</p></td></tr>
                 <tr><td colspan="2" align="right"><p style="font-size:10px;display:inline;">${kg / 1000} KG</p></td></tr>
                 <tr><td colspan="2"><center><img src="${IDToBarcode(data.realorderid, 30)}"/><br><p style="font-size:10px;display:inline;vertical-align: top;">${data.realorderid}</p></center></td></tr>
-                <tr><td colspan="2"><h5>${fbnamex} • ${phone}</h5></td></tr>
+                <tr><td colspan="2"><h5>${fbnameSend} • ${phone}</h5></td></tr>
                 <tr><td colspan="2"><p style="font-size:10px;display:inline;vertical-align: top;">${catGonChuoi(address, 60)}</p></td></tr>
                 <tr><td><p style="font-size:10px;display:inline;vertical-align: top;">Cho xem hàng, không nhận thu 30k</p><br>
                 <p style="font-size:10px;display:inline;">1 x Vải</p><br>
@@ -1758,14 +1764,21 @@
     scanner.start().then(function () { _startRot(); });
   };
 
+  var _qrReqSeq = 0;
   function loadCustomerInfoByKhachId(khachId) {
+    var mySeq = ++_qrReqSeq;
     khid = khachId;
+    fbnamex = '';
+    userid = '';
+    realid = '';
+    phonex = '';
     $.ajax({
       url: "/getfullinfo",
       method: "POST",
       data: { id: khachId },
       dataType: "JSON",
       success: function (data) {
+          if (mySeq !== _qrReqSeq) return;
           if (!data || !data.data || data.data.length === 0 || !data.data[0]) {
             handleQRNotFound('Không tìm thấy khách hàng hoặc đơn hàng ứng với mã QR này.');
             return;
