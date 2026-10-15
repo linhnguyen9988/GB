@@ -1,0 +1,14 @@
+/node_modules
+/vendor
+/.idea
+.idea/
+.env
+*.zip
+*.txt
+*.patch
+*.sh
+src/public/images/
+src/public/donhang/
+/.vscode
+/uploads/
+src/routes/firebase-service-account.json

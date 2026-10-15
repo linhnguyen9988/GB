@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Scanner Demo</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #0b0d10; color: #e8eaed; min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  header { padding: 16px; text-align: center; width: 100%; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .engine-badge {
+    display: inline-block; font-size: 12px; padding: 3px 10px; border-radius: 999px;
+    background: #1f2937; color: #9ca3af; margin-top: 6px;
+  }
+  .engine-badge.native { background: #064e3b; color: #6ee7b7; }
+  .stage {
+    position: relative; width: 100%; max-width: 480px; aspect-ratio: 3/4;
+    background: #000; border-radius: 16px; overflow: hidden; margin: 8px 16px;
+  }
+  video { width: 100%; height: 100%; object-fit: cover; }
+  .frame-guide {
+    position: absolute; inset: 12%; border: 2px solid rgba(255,255,255,0.5);
+    border-radius: 12px; pointer-events: none;
+  }
+  .frame-guide.found { border-color: #34d399; box-shadow: 0 0 0 4px rgba(52,211,153,0.25); }
+  .status {
+    padding: 10px 16px; font-size: 14px; color: #9ca3af; text-align: center; min-height: 20px;
+  }
+  .result {
+    width: 100%; max-width: 480px; margin: 8px 16px 24px; padding: 16px;
+    background: #111827; border-radius: 12px; display: none;
+  }
+  .result.show { display: block; }
+  .result-label { font-size: 12px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; }
+  .result-format { display: inline-block; margin-top: 4px; font-size: 12px; padding: 2px 8px; background: #1e293b; border-radius: 999px; color: #93c5fd; }
+  .result-text { font-size: 16px; margin-top: 10px; word-break: break-all; }
+  button {
+    margin-top: 14px; padding: 10px 18px; border: none; border-radius: 8px;
+    background: #2563eb; color: white; font-size: 14px; cursor: pointer;
+  }
+  button:active { background: #1d4ed8; }
+  .fps { font-size: 11px; color: #4b5563; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Quét QR / Code128 trực tiếp</h1>
+  <span id="engineBadge" class="engine-badge">Đang kiểm tra engine...</span>
+</header>
+
+<div class="stage">
+  <video id="video" autoplay playsinline muted></video>
+  <div id="frameGuide" class="frame-guide"></div>
+</div>
+
+<div id="status" class="status">Đang mở camera...</div>
+<div id="fps" class="fps"></div>
+
+<div id="result" class="result">
+  <div class="result-label">Kết quả</div>
+  <span id="resultFormat" class="result-format"></span>
+  <div id="resultText" class="result-text"></div>
+  <button id="scanAgainBtn">Quét tiếp</button>
+</div>
+
+<script type="module">
+const video = document.getElementById('video');
+const statusEl = document.getElementById('status');
+const engineBadge = document.getElementById('engineBadge');
+const frameGuide = document.getElementById('frameGuide');
+const resultBox = document.getElementById('result');
+const resultText = document.getElementById('resultText');
+const resultFormat = document.getElementById('resultFormat');
+const fpsEl = document.getElementById('fps');
+const scanAgainBtn = document.getElementById('scanAgainBtn');
+
+let scanning = true;
+let frameCount = 0;
+let lastFpsTime = performance.now();
+
+scanAgainBtn.addEventListener('click', () => {
+  resultBox.classList.remove('show');
+  frameGuide.classList.remove('found');
+  scanning = true;
+  statusEl.textContent = 'Đang quét...';
+});
+
+function showResult(text, format) {
+  scanning = false;
+  frameGuide.classList.add('found');
+  resultText.textContent = text;
+  resultFormat.textContent = format;
+  resultBox.classList.add('show');
+  statusEl.textContent = 'Đã quét được!';
+  if (navigator.vibrate) navigator.vibrate(80);
+}
+
+function tickFps() {
+  frameCount++;
+  const now = performance.now();
+  if (now - lastFpsTime > 1000) {
+    fpsEl.textContent = `~${frameCount} lần thử/giây`;
+    frameCount = 0;
+    lastFpsTime = now;
+  }
+}
+
+async function startCamera() {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+    audio: false,
+  });
+  video.srcObject = stream;
+  await video.play();
+}
+
+// ----- Engine 1: BarcodeDetector native (ML Kit / Vision framework) -----
+async function runNativeEngine() {
+  engineBadge.textContent = '⚡ Native BarcodeDetector (ML Kit engine)';
+  engineBadge.classList.add('native');
+  const detector = new BarcodeDetector({ formats: ['qr_code', 'code_128'] });
+
+  async function loop() {
+    if (!scanning) { requestAnimationFrame(loop); return; }
+    try {
+      const codes = await detector.detect(video);
+      tickFps();
+      if (codes.length > 0) {
+        showResult(codes[0].rawValue, codes[0].format);
+      }
+    } catch (e) { /* frame chưa sẵn sàng, bỏ qua */ }
+    requestAnimationFrame(loop);
+  }
+  loop();
+}
+
+// ----- Engine 2: zxing-wasm fallback (Safari, Firefox, desktop) -----
+async function runZxingFallback() {
+  engineBadge.textContent = '🔁 zxing-wasm (fallback, quét nhiều lần/giây)';
+  const { readBarcodes } = await import('https://esm.sh/zxing-wasm@2/reader');
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  async function loop() {
+    if (!scanning || video.readyState < 2) {
+      requestAnimationFrame(loop);
+      return;
+    }
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
+
+    try {
+      const results = await readBarcodes(canvas, {
+        formats: ['QRCode', 'Code128'],
+        tryHarder: true,
+        tryRotate: true,
+        tryInvert: true,
+        maxNumberOfSymbols: 1,
+      });
+      tickFps();
+      if (results.length > 0) {
+        showResult(results[0].text, results[0].format);
+      }
+    } catch (e) { /* bỏ qua frame lỗi */ }
+    requestAnimationFrame(loop);
+  }
+  loop();
+}
+
+(async () => {
+  try {
+    await startCamera();
+    statusEl.textContent = 'Đang quét...';
+
+    if ('BarcodeDetector' in window) {
+      const supported = await window.BarcodeDetector.getSupportedFormats();
+      if (supported.includes('qr_code') || supported.includes('code_128')) {
+        await runNativeEngine();
+        return;
+      }
+    }
+    await runZxingFallback();
+  } catch (err) {
+    statusEl.textContent = 'Lỗi: ' + err.message + ' (cần cấp quyền camera, và mở qua HTTPS)';
+  }
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,264 @@
+.label {
+	margin-right: 1px;
+	display: inline-block;
+	padding: 1px .35em;
+	border: 1px solid hsla(0, 0%, 0%, 0);
+	border-radius: 4px;
+	font-size: 80%;
+	line-height: 1.26;
+	text-decoration: none
+}
+
+.label:hover,
+a:hover .label {
+	text-decoration: none
+}
+
+.label.label--fullSize {
+	font-size: 100%
+}
+
+.label.label--small {
+	font-size: 13px
+}
+
+.label.label--smallest {
+	font-size: 11px
+}
+
+.label.label--hidden {
+	padding: inherit;
+	border: none;
+	font-size: inherit;
+	line-height: inherit;
+	text-decoration: inherit
+}
+
+.label.label--hidden:hover {
+	text-decoration: underline
+}
+
+.label.label--subtle {
+	color: hsla(var(--xf-textColorMuted));
+	background: hsla(var(--xf-contentAltBg));
+	border-color: hsla(var(--xf-contentAltBg--h), var(--xf-contentAltBg--s), calc(var(--xf-contentAltBg--l) - (var(--xf-color-adjust, 1) * 10%)), var(--xf-contentAltBg--a))
+}
+
+a.label.label--subtle:hover,
+a:hover .label.label--subtle {
+	background: hsla(var(--xf-contentAltBg--h), var(--xf-contentAltBg--s), calc(var(--xf-contentAltBg--l) - (var(--xf-color-adjust, 1) * 4%)), var(--xf-contentAltBg--a));
+	border-color: hsla(var(--xf-contentAltBg--h), var(--xf-contentAltBg--s), calc(var(--xf-contentAltBg--l) - (var(--xf-color-adjust, 1) * 14%)), var(--xf-contentAltBg--a))
+}
+
+.label.label--primary {
+	color: hsla(var(--xf-linkColor));
+	background: hsla(var(--xf-contentHighlightBg));
+	border-color: hsla(var(--xf-contentHighlightBg--h), var(--xf-contentHighlightBg--s), calc(var(--xf-contentHighlightBg--l) - (var(--xf-color-adjust, 1) * 10%)), var(--xf-contentHighlightBg--a))
+}
+
+a.label.label--primary:hover,
+a:hover .label.label--primary {
+	background: hsla(var(--xf-contentHighlightBg--h), var(--xf-contentHighlightBg--s), calc(var(--xf-contentHighlightBg--l) - (var(--xf-color-adjust, 1) * 4%)), var(--xf-contentHighlightBg--a));
+	border-color: hsla(var(--xf-contentHighlightBg--h), var(--xf-contentHighlightBg--s), calc(var(--xf-contentHighlightBg--l) - (var(--xf-color-adjust, 1) * 14%)), var(--xf-contentHighlightBg--a))
+}
+
+.label.label--accent {
+	color: hsla(var(--xf-textColorAccentContent));
+	background: hsla(var(--xf-contentAccentBg));
+	border-color: hsla(var(--xf-contentAccentBg--h), var(--xf-contentAccentBg--s), calc(var(--xf-contentAccentBg--l) - (var(--xf-color-adjust, 1) * 10%)), var(--xf-contentAccentBg--a))
+}
+
+a.label.label--accent:hover,
+a:hover .label.label--accent {
+	background: hsla(var(--xf-contentAccentBg--h), var(--xf-contentAccentBg--s), calc(var(--xf-contentAccentBg--l) - (var(--xf-color-adjust, 1) * 4%)), var(--xf-contentAccentBg--a));
+	border-color: hsla(var(--xf-contentAccentBg--h), var(--xf-contentAccentBg--s), calc(var(--xf-contentAccentBg--l) - (var(--xf-color-adjust, 1) * 14%)), var(--xf-contentAccentBg--a))
+}
+
+.label.label--red {
+	color: hsl(0, 0%, 100%);
+	background: hsl(0, 100%, 44%);
+	border-color: hsl(0, 100%, calc(44% - (var(--xf-color-adjust, 1) * 10%)))
+}
+
+a.label.label--red:hover,
+a:hover .label.label--red {
+	background: hsl(0, 100%, calc(44% - (var(--xf-color-adjust, 1) * 4%)));
+	border-color: hsl(0, 100%, calc(44% - (var(--xf-color-adjust, 1) * 14%)))
+}
+
+.label.label--green {
+	color: hsl(0, 0%, 100%);
+	background: hsl(120, 100%, 25%);
+	border-color: hsl(120, 100%, calc(25% - (var(--xf-color-adjust, 1) * 10%)))
+}
+
+a.label.label--green:hover,
+a:hover .label.label--green {
+	background: hsl(120, 100%, calc(25% - (var(--xf-color-adjust, 1) * 4%)));
+	border-color: hsl(120, 100%, calc(25% - (var(--xf-color-adjust, 1) * 14%)))
+}
+
+.label.label--olive {
+	color: hsl(0, 0%, 100%);
+	background: hsl(60, 100%, 25%);
+	border-color: hsl(60, 100%, calc(25% - (var(--xf-color-adjust, 1) * 10%)))
+}
+
+a.label.label--olive:hover,
+a:hover .label.label--olive {
+	background: hsl(60, 100%, calc(25% - (var(--xf-color-adjust, 1) * 4%)));
+	border-color: hsl(60, 100%, calc(25% - (var(--xf-color-adjust, 1) * 14%)))
+}
+
+.label.label--lightGreen {
+	color: hsl(0, 0%, 0%);
+	background: hsl(115, 68%, 67%);
+	border-color: hsl(115, 80%, calc(88% - (var(--xf-color-adjust, 1) * 10%)))
+}
+
+a.label.label--lightGreen:hover,
+a:hover .label.label--lightGreen {
+	background: hsl(115, 80%, calc(88% - (var(--xf-color-adjust, 1) * 4%)));
+	border-color: hsl(115, 80%, calc(88% - (var(--xf-color-adjust, 1) * 14%)))
+}
+
+.label.label--blue {
+	color: hsl(0, 0%, 100%);
+	background: hsl(238, 100%, 45%);
+	border-color: hsl(238, 100%, calc(45% - (var(--xf-color-adjust, 1) * 10%)))
+}
+
+a.label.label--blue:hover,
+a:hover .label.label--blue {
+	background: hsl(238, 100%, calc(45% - (var(--xf-color-adjust, 1) * 4%)));
+	border-color: hsl(238, 100%, calc(45% - (var(--xf-color-adjust, 1) * 14%)))
+}
+
+.label.label--royalBlue {
+	color: hsl(0, 0%, 100%);
+	background: hsl(225, 73%, 57%);
+	border-color: hsl(225, 73%, calc(57% - (var(--xf-color-adjust, 1) * 10%)))
+}
+
+a.label.label--royalBlue:hover,
+a:hover .label.label--royalBlue {
+	background: hsl(225, 73%, calc(57% - (var(--xf-color-adjust, 1) * 4%)));
+	border-color: hsl(225, 73%, calc(57% - (var(--xf-color-adjust, 1) * 14%)))
+}
+
+.label.label--skyBlue {
+	color: hsl(0, 0%, 100%);
+	background: hsl(197, 62%, 68%);
+	border-color: hsl(197, 62%, calc(68% - (var(--xf-color-adjust, 1) * 10%)))
+}
+
+a.label.label--skyBlue:hover,
+a:hover .label.label--skyBlue {
+	background: hsl(197, 62%, calc(68% - (var(--xf-color-adjust, 1) * 4%)));
+	border-color: hsl(197, 62%, calc(68% - (var(--xf-color-adjust, 1) * 14%)))
+}
+
+.label.label--gray {
+	color: hsl(0, 0%, 100%);
+	background: hsl(0, 0%, 50%);
+	border-color: hsl(0, 0%, calc(50% - (var(--xf-color-adjust, 1) * 10%)))
+}
+
+a.label.label--gray:hover,
+a:hover .label.label--gray {
+	background: hsl(0, 0%, calc(50% - (var(--xf-color-adjust, 1) * 4%)));
+	border-color: hsl(0, 0%, calc(50% - (var(--xf-color-adjust, 1) * 14%)))
+}
+
+.label.label--silver {
+	color: hsl(0, 0%, 0%);
+	background: hsl(0, 0%, 75%);
+	border-color: hsl(0, 0%, calc(75% - (var(--xf-color-adjust, 1) * 10%)))
+}
+
+a.label.label--silver:hover,
+a:hover .label.label--silver {
+	background: hsl(0, 0%, calc(75% - (var(--xf-color-adjust, 1) * 4%)));
+	border-color: hsl(0, 0%, calc(75% - (var(--xf-color-adjust, 1) * 14%)))
+}
+
+.label.label--yellow {
+	color: hsl(0, 0%, 0%);
+	background: hsl(60, 100%, 78%);
+	border-color: hsl(60, 100%, calc(78% - (var(--xf-color-adjust, 1) * 10%)))
+}
+
+a.label.label--yellow:hover,
+a:hover .label.label--yellow {
+	background: hsl(60, 100%, calc(78% - (var(--xf-color-adjust, 1) * 4%)));
+	border-color: hsl(60, 100%, calc(78% - (var(--xf-color-adjust, 1) * 14%)))
+}
+
+.label.label--orange {
+	color: hsl(0, 0%, 100%);
+	background: hsl(48, 100%, 50%);
+	border-color: hsl(48, 100%, calc(50% - (var(--xf-color-adjust, 1) * 10%)))
+}
+
+a.label.label--orange:hover,
+a:hover .label.label--orange {
+	background: hsl(48, 100%, calc(50% - (var(--xf-color-adjust, 1) * 4%)));
+	border-color: hsl(48, 100%, calc(50% - (var(--xf-color-adjust, 1) * 14%)))
+}
+
+.label.label--error {
+	color: hsl(358, 55%, 53%);
+	background: hsl(0, 83%, 95%);
+	border-color: hsl(0, 83%, calc(95% - (var(--xf-color-adjust, 1) * 10%)))
+}
+
+a.label.label--error:hover,
+a:hover .label.label--error {
+	background: hsl(0, 83%, calc(95% - (var(--xf-color-adjust, 1) * 4%)));
+	border-color: hsl(0, 83%, calc(95% - (var(--xf-color-adjust, 1) * 14%)))
+}
+
+.label.label--pink {
+	color: hsl(0, 0%, 100%);
+	background: hsl(290, 80%, 46%);
+	border-color: hsl(290, 100%, calc(73% - (var(--xf-color-adjust, 1) * 10%)))
+}
+
+a.label.label--pink:hover,
+a:hover .label.label--pink {
+	background: hsl(290, 100%, calc(73% - (var(--xf-color-adjust, 1) * 4%)));
+	border-color: hsl(290, 100%, calc(73% - (var(--xf-color-adjust, 1) * 14%)))
+}
+
+.label.label--lightpink {
+	color: hsl(0, 0%, 100%);
+	background: hsl(310, 82%, 67%);
+	border-color: hsl(290, 100%, calc(73% - (var(--xf-color-adjust, 1) * 10%)))
+}
+
+a.label.label--lightpink:hover,
+a:hover .label.label--lightpink {
+	background: hsl(290, 100%, calc(73% - (var(--xf-color-adjust, 1) * 4%)));
+	border-color: hsl(290, 100%, calc(73% - (var(--xf-color-adjust, 1) * 14%)))
+}
+
+.label.label--black {
+	color: hsl(0, 0%, 100%);
+	background: hsl(0, 0%, 0%);
+	border-color: hsl(0, 0%, calc(0% - (var(--xf-color-adjust, 1) * 10%)))
+}
+
+a.label.label--black:hover,
+a:hover .label.label--black {
+	background: hsl(0, 0%, calc(0% - (var(--xf-color-adjust, 1) * 4%)));
+	border-color: hsl(0, 0%, calc(0% - (var(--xf-color-adjust, 1) * 14%)))
+}
+
+.label-append {
+	display: inline-block
+}
+
+.labelLink,
+.labelLink:hover {
+	text-decoration: none
+}

@@ -1,0 +1,1841 @@
+var e = document.getElementById("liveidcombobox");
+var liveidfrominput = document.getElementById("liveidinput");
+var html = '';
+const toast = new Bs5Utils();
+function OnUpdateLiveNote() {
+    var note = document.getElementById("livenote").value;
+    var id = liveidfrominput.value;
+    $.ajax({
+        url: "/updatelivenote",
+        method: "POST",
+        data: { note: note, liveid: id },
+        dataType: "JSON",
+        success: function (data) {
+            ShowCenterToast('success', 'Đã lưu ghi chú', 3000);
+        }
+    });
+}
+function getRowIdx() {
+    return $('#comment_table').DataTable().cell({
+        focused: true
+    }).index().row;
+}
+$("#gia").on("keydown", function (e) {
+    var keyCode = (e.keyCode ? e.keyCode : e.which);
+    if (keyCode == 13 || keyCode == 67) {
+        Chot();
+    } else if (keyCode == 88) {
+        XaHang();
+    }
+});
+var initkey = 0;
+
+function UpdateUser() {
+    var userid = document.getElementById("fbid").value;
+    var realfbid = document.getElementById("realfbid").value;
+    var phone = document.getElementById("userphone").value;
+    var diachi = document.getElementById("diachi").value;
+    var label = document.getElementById("labelkh").value;
+    var note = document.getElementById("note").value;
+    var nn = document.getElementById("nuocngoai").value;
+    if (label == 'Xóa') {
+        label = '';
+    }
+    var table = $('#comment_table').DataTable();
+    var data = table.row(getRowIdx()).data();
+    var oldphone = data[3];
+    table.rows().every(function (rowIdx, tableLoop, rowLoop) {
+        if (table.cell(rowIdx, 12).data() == userid) {
+            if (oldphone.length > 0) {
+                table.cell(rowIdx, 1).data(table.cell(rowIdx, 1).data().replaceAll(oldphone, phone));
+            } else {
+                table.cell(rowIdx, 1).data(table.cell(rowIdx, 1).data() + `<br><span class="label label--pink">${phone}</span>`);
+            }
+            if (nn == 'Nước ngoài') {
+                if (phone.length > 0) {
+                    table.cell(rowIdx, 1).data(table.cell(rowIdx, 1).data() + `<span class="label label--lightpink">Nước ngoài</span>`);
+                } else {
+                    table.cell(rowIdx, 1).data(table.cell(rowIdx, 1).data() + `<br><span class="label label--lightpink">Nước ngoài</span>`);
+                }
+            } else {
+                table.cell(rowIdx, 1).data(table.cell(rowIdx, 1).data().replace('<span class="label label--lightpink">Nước ngoài</span>', ''));
+            }
+            table.cell(rowIdx, 3).data(phone);
+            table.cell(rowIdx, 10).data(diachi);
+            table.cell(rowIdx, 21).data(label);
+            table.cell(rowIdx, 19).data(note);
+            table.cell(rowIdx, 23).data(nn);
+        }
+    }).draw(false);
+    $.ajax({
+        url: "/updateuser",
+        method: "POST",
+        data: { phone: phone, diachi: diachi, label: label, note: note, userid: userid, realfbid: realfbid, nn: nn },
+        dataType: "JSON",
+        success: function (data) {
+            ShowCenterToast('success', 'Đã sửa thành công', 3000);
+        },
+        error: function () {
+            ShowCenterToast('danger', 'Sửa thất bại, vui lòng thử lại', 3000);
+        }
+    });
+    $('#modaledit').modal('hide');
+}
+
+function EditEsc(v) {
+    return String(v === null || v === undefined || v === 'null' ? '' : v)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function EditPlainName(title, fallback) {
+    var tmp = document.createElement('div');
+    tmp.innerHTML = title || '';
+    tmp.querySelectorAll('span, svg, i, button, small, br').forEach(function (el) { el.remove(); });
+    var t = (tmp.textContent || '').trim();
+    return t || fallback || '';
+}
+
+function EditOrderBadge(code) {
+    var cls = (typeof statusBadgeClass === 'function') ? statusBadgeClass(code) : 'secondary';
+    return cls;
+}
+
+function LoadEditRecentOrders(userid, realfbid, name, phone) {
+    var box = document.getElementById('edit-recent-orders');
+    if (!box) return;
+    $.ajax({
+        url: '/api/orders/recent',
+        method: 'GET',
+        data: { userid: userid, realfbid: realfbid, limit: 3 },
+        dataType: 'JSON',
+        success: function (res) {
+            var box2 = document.getElementById('edit-recent-orders');
+            if (!box2) return;
+            var list = (res && res.data) ? res.data : [];
+            if (list.length === 0) {
+                box2.innerHTML = '<div class="text-muted small text-center py-2">Khách chưa có đơn nào.</div>';
+                return;
+            }
+            box2.innerHTML = list.map(function (o) {
+                var cod = new Intl.NumberFormat('vi-VN').format(o.cod || 0) + ' ₫';
+                var d = o.time ? new Date(o.time) : null;
+                var dateStr = (d && !isNaN(d)) ? d.toLocaleDateString('vi-VN') : '';
+                var st = o.statustext || ('Mã ' + (o.statuscode === null || o.statuscode === undefined ? '?' : o.statuscode));
+                var code = o.realorderid || o.orderid || '';
+                return '<div class="border rounded-3 p-2 px-3 mb-2">'
+                    + '<div class="d-flex justify-content-between align-items-center gap-2">'
+                    + '<span class="fw-bold text-break small">' + EditEsc(code) + '</span>'
+                    + '<span class="badge bg-' + EditOrderBadge(o.statuscode) + '">' + EditEsc(st) + '</span>'
+                    + '</div>'
+                    + '<div class="d-flex justify-content-between align-items-center mt-1">'
+                    + '<div class="small text-muted">'
+                    + '<span class="text-success fw-semibold">COD ' + EditEsc(cod) + '</span>'
+                    + ' · ' + EditEsc(o.kg === null || o.kg === undefined ? '' : o.kg) + ' Kg'
+                    + (dateStr ? ' · ' + EditEsc(dateStr) : '')
+                    + '</div>'
+                    + '<button type="button" class="btn btn-outline-primary btn-sm py-0 edit-order-journey" data-order="' + EditEsc(code) + '"><i class="bi bi-truck"></i> Hành trình</button>'
+                    + '</div></div>';
+            }).join('');
+            box2.querySelectorAll('.edit-order-journey').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    EditOpenJourney(btn.getAttribute('data-order'), name, userid, phone);
+                });
+            });
+        },
+        error: function () {
+            var box2 = document.getElementById('edit-recent-orders');
+            if (box2) box2.innerHTML = '<div class="text-danger small text-center py-2">Không tải được danh sách đơn.</div>';
+        }
+    });
+}
+
+function EditOpenJourney(orderNumber, name, userid, phone) {
+    var tm = document.getElementById('trackingModal');
+    if (!tm) return;
+    tm.style.zIndex = 1075;
+    $(tm).one('shown.bs.modal', function () {
+        var bds = document.querySelectorAll('.modal-backdrop');
+        if (bds.length) bds[bds.length - 1].style.zIndex = 1070;
+    });
+    $(tm).one('hidden.bs.modal', function () {
+        tm.style.zIndex = '';
+        if (document.getElementById('modaledit')) document.body.classList.add('modal-open');
+    });
+    OrderJourney(orderNumber, name, userid, phone);
+}
+
+function ShowEdit(title, id, phone, diachi, note, label, realfbid, nn) {
+    var name = EditPlainName(title, id);
+    var labels = ['Thân thiết', 'Bom hàng', 'Xả hàng', 'Có vấn đề'];
+    var curLabel = (label === null || label === undefined || label === 'null') ? '' : String(label).trim();
+    var labelOpts = '<option value="">— Không nhãn —</option>' + labels.map(function (l) {
+        return '<option value="' + l + '"' + (l === curLabel ? ' selected' : '') + '>' + l + '</option>';
+    }).join('');
+    if (curLabel && labels.indexOf(curLabel) === -1) {
+        labelOpts += '<option value="' + EditEsc(curLabel) + '" selected>' + EditEsc(curLabel) + '</option>';
+    }
+    var nnOpts = '<option value=""' + ((nn !== 'Nước ngoài' && nn !== 'Trong nước') ? ' selected' : '') + '>Chưa chọn</option>'
+        + '<option value="Trong nước"' + (nn === 'Trong nước' ? ' selected' : '') + '>Trong nước</option>'
+        + '<option value="Nước ngoài"' + (nn === 'Nước ngoài' ? ' selected' : '') + '>Nước ngoài</option>';
+    var badge = '';
+    if (curLabel.indexOf('Xả') !== -1 || curLabel.indexOf('Bom') !== -1) badge = '<span class="badge bg-danger">' + EditEsc(curLabel) + '</span>';
+    else if (curLabel.indexOf('Có') !== -1) badge = '<span class="badge bg-warning text-dark">' + EditEsc(curLabel) + '</span>';
+    else if (curLabel.indexOf('Thân') !== -1) badge = '<span class="badge bg-success">' + EditEsc(curLabel) + '</span>';
+
+    document.getElementById("notetoshow").insertAdjacentHTML("afterend",
+        `<div class="modal" tabindex="-1" role="dialog" id="modaledit">
+    <div class="modal-dialog modal-dialog-scrollable" role="document">
+      <div class="modal-content rounded-4 shadow">
+        <div class="modal-header p-4 pb-3 border-bottom-0">
+          <div class="d-flex align-items-center flex-grow-1 me-3" style="min-width:0">
+            <img src="/images/ava/${EditEsc(id)}.jpg" class="rounded-circle me-3" width="48" height="48" onerror="this.src='/images/ava/default.jpg'">
+            <div style="min-width:0">
+              <h3 class="fw-bold mb-0 text-truncate">${EditEsc(name)}</h3>
+              <div class="mt-1">${badge}</div>
+            </div>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+
+        <div class="modal-body p-4 pt-0">
+          <div class="border rounded-3 p-3 mb-3 bg-body-tertiary small">
+            <div class="d-flex justify-content-between"><span class="text-muted">ID</span><span class="text-break">${EditEsc(id)}</span></div>
+            <div class="d-flex justify-content-between mt-1"><span class="text-muted">Real FB ID</span><span class="text-break">${EditEsc(realfbid)}</span></div>
+            <input type="hidden" id="fbid" value="${EditEsc(id)}">
+            <input type="hidden" id="realfbid" value="${EditEsc(realfbid)}">
+          </div>
+
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label small text-muted mb-1" for="userphone"><i class="bi bi-phone-fill"></i> Số điện thoại</label>
+              <input type="text" id="userphone" class="form-control" inputmode="tel" value="${EditEsc(phone)}">
+            </div>
+            <div class="col-6">
+              <label class="form-label small text-muted mb-1" for="labelkh"><i class="bi bi-tag-fill"></i> Nhãn</label>
+              <select id="labelkh" class="form-select">${labelOpts}</select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small text-muted mb-1" for="nuocngoai"><i class="bi bi-globe2"></i> Khu vực</label>
+              <select id="nuocngoai" class="form-select">${nnOpts}</select>
+            </div>
+            <div class="col-12">
+              <label class="form-label small text-muted mb-1" for="diachi"><i class="bi bi-geo-alt-fill"></i> Địa chỉ</label>
+              <textarea class="form-control" id="diachi" rows="2">${EditEsc(diachi)}</textarea>
+            </div>
+            <div class="col-12">
+              <label class="form-label small text-muted mb-1" for="note"><i class="bi bi-journal-bookmark-fill"></i> Ghi chú</label>
+              <textarea class="form-control" id="note" rows="4">${EditEsc(note)}</textarea>
+            </div>
+            <div class="col-12">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <label class="form-label small text-muted mb-0"><i class="bi bi-box-seam-fill"></i> 3 đơn gần nhất</label>
+              </div>
+              <div id="edit-recent-orders"><div class="text-center text-muted small py-2"><span class="spinner-border spinner-border-sm"></span> Đang tải...</div></div>
+            </div>
+          </div>
+
+          <div class="d-flex gap-2 mt-4">
+            <button class="btn btn-outline-secondary flex-grow-1" type="button" data-bs-dismiss="modal">Hủy</button>
+            <button class="btn btn-primary flex-grow-1" type="button" onclick="UpdateUser()"><i class="bi bi-check-lg"></i> Lưu</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`);
+    LoadEditRecentOrders(id, realfbid, name, phone);
+    if (numx == 0) {
+        $('#modaledit').modal('show');
+        numx = 1;
+    }
+
+    $('#modaledit').on('hidden.bs.modal', function () {
+        numx = 0
+        var div = document.getElementById('modaledit');
+        div.remove();
+    });
+}
+function OpenMessenger(pageid, realid) {
+    if (realid != null && realid.length > 0) {
+        window.open("https://business.facebook.com/latest/inbox/messenger?asset_id=" + pageid + "&selected_item_id=" + realid + "&mailbox_id=&thread_type=FB_MESSAGE", '_blank').focus();
+    } else {
+        UpdateComment(1);
+    }
+}
+function UpdateComment(openmess) {
+    var x = $('#comment_table').DataTable().row(getRowIdx()).data();
+    $.ajax({
+        url: "/detailcomment",
+        method: "POST",
+        data: { commentid: x[8], userid: x[12] },
+        dataType: "JSON",
+        success: function (data) {
+            if (data.data.hasOwnProperty('error')) {
+                ShowCenterToast('danger', data.data.error.message, 3000);
+                return;
+            }
+            var table = $('#comment_table').DataTable();
+            var xx = table.row(getRowIdx()).data();
+            table.rows().every(function (rowIdx, tableLoop, rowLoop) {
+                if (table.cell(rowIdx, 8).data() == xx[8]) {
+                    var timecmt = new Date(data.data.live_broadcast_timestamp * 1000).toISOString().substring(11, 19);
+                    table.cell(rowIdx, 23).data(data.data.from.id);//realfbid
+                    table.cell(rowIdx, 14).data(timecmt);
+                    table.cell(rowIdx, 7).data(data.data.live_broadcast_timestamp);
+                }
+            }).draw(false);
+            if (openmess == 1) {
+                OpenMessenger(x[18], data.data.from.id);
+            }
+            ShowCenterToast('success', 'Đã cập nhật bình luận, có thể mở hộp thư hoặc xem live.', 3000);
+        }
+    });
+}
+
+function GetViettelToken() {
+    $.ajax({
+        url: "/getvietteltoken",
+        method: "POST",
+        dataType: "JSON",
+        success: function () {
+            ShowCenterToast('success', 'Đã cập nhật mã đẩy đơn mới nhất.', 3000);
+        }
+    });
+}
+function InItKeys() {
+    var t = $('#comment_table').DataTable();
+    t.on('key', function (e, datatable, keyCode, cell, originalEvent) {
+        var x = datatable.row(cell.index().row).data();
+        if ($('#modalxaconfirm').hasClass('show') || $('#modalalertx').hasClass('show')) {
+            return;
+        }
+        if ($('#viettelnotetext').is(':focus') || $('#message-input').is(':focus') || $('#notescan').is(':focus') || $('#diachiviettel').is(':focus') || $('#diachimodal').is(':focus') || $('#gia').is(':focus') || $('#slchot').is(':focus') || $('#gia_m').is(':focus') || $('#slchot_m').is(':focus') || $('#comment_table_filter input').is(':focus') || $('#livenote').is(':focus') || $('#OrderNote').is(':focus') || $('#MessToSend').is(':focus') || $('#link').is(':focus') || $('#usernote').is(':focus') || $('#userphone').is(':focus') || $('#useraddress').is(':focus') || $('#diachi').is(':focus') || $('#note').is(':focus')) {
+            return;
+        }
+        if (keyCode == 67) {
+            Chot();
+            //0-9 KeyCode
+        } else if (keyCode == 66) { // Phím B
+            var rowNode = datatable.row(cell.index().row).node();
+            handlePrintLabel(rowNode);
+        } else if (keyCode == 48) {//0
+            document.getElementById("slchot").value = 10;
+        } else if (keyCode == 49) {//1
+            document.getElementById("slchot").value = 1;
+        } else if (keyCode == 50) {//2
+            document.getElementById("slchot").value = 2;
+        } else if (keyCode == 51) {//3
+            document.getElementById("slchot").value = 3;
+        } else if (keyCode == 52) {//4
+            document.getElementById("slchot").value = 4;
+        } else if (keyCode == 53) {//5
+            document.getElementById("slchot").value = 5;
+        } else if (keyCode == 54) {//6
+            document.getElementById("slchot").value = 6;
+        } else if (keyCode == 55) {//7
+            document.getElementById("slchot").value = 7;
+        } else if (keyCode == 56) {//8
+            document.getElementById("slchot").value = 8;
+        } else if (keyCode == 57) {//9
+            document.getElementById("slchot").value = 9;
+        } else if (keyCode == 81) {
+            ScanComment(30);
+        } else if (keyCode == 189) {
+            //UpdateToQ(x[22]);
+        } else if (keyCode == 75) {
+            SendMessage("Áo dài Gia Bảo chốt đơn.");
+        } else if (keyCode == 76) {
+            window.open('https://www.facebook.com/watch/?v=' + x[17] + '&t=' + (x[7] - 70), '_blank').focus();
+        } else if (keyCode == 186) {
+            if (x[18] != '102116919355833') {//ko can cai nay, xem chung tren trang chinh la dc
+                const linkToClick = document.querySelector('.open-message-modal');
+                window.open('https://www.facebook.com/watch/?v=' + liveidfrominput.value.replaceAll(x[17], '').replaceAll(',', '') + '&t=' + (x[7] - 70), '_blank').focus();
+            }
+        } else if (keyCode == 80) {
+            $.ajax({
+                url: "/updateuserpsid",
+                method: "POST",
+                data: { psid: x[12], pageid: x[18] },
+                dataType: "JSON",
+                success: function (data) {
+                }
+            });
+        } else if (keyCode == 77) {//nut M
+            const link = document.createElement('a');
+            link.href = 'javascript:void(0);';
+            link.dataset.customerId = x[12];
+            link.dataset.customerName = x[26];
+            link.dataset.senderPageId = x[18] ? x[18].toString() : '';
+            link.className = 'open-message-modal';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } else if (keyCode == 78) {
+            if (originalEvent && originalEvent.shiftKey) {
+                ShowNote();
+            } else {
+                LuckyAdd(x[12], x[15] || $('<div>').html(x[1]).text(), String(x[3] || '').replace(/<[^>]*>?/gm, '').trim(), x[25], $('<div>').html(x[1]).find('img').attr('src') || '');
+            }
+        } else if (keyCode == 79) {
+            clearAllToasts();
+        } else if (keyCode == 85) {
+            ShowEdit(x[1], x[12], x[3], x[10], x[19], x[21], x[22], x[23]);
+        } else if (keyCode == 86) {
+            UpdatePhone();
+        } else if (keyCode == 88) {
+            XaHang();
+        } else if (keyCode == 84) {//Nut T
+            UpdateComment(0);
+        } else if (keyCode == 190) {
+            SendWelcome();
+        } else {
+            //console.log('Key press: ' + keyCode + ' for cell ' + cell.data() + ' on Row ID ' + getRowIdx());
+        }
+    }).on('key-focus', function (e, datatable, cell) {
+    });
+    initkey = 1;
+}
+async function LoadLive() {
+    start();
+    var xxx = document.getElementById(e.value);
+    document.getElementById("btnloadlive").disabled = true;
+    document.getElementById("btnloadlive").innerHTML = '<span class="spinner-grow" style="width: 0.8rem; height: 0.8rem;" role="status"></span>&nbsp;Load';
+
+    var t = $('#comment_table').DataTable();
+
+    if ($.fn.dataTable.isDataTable('#comment_table')) {
+        $('#comment_table').DataTable().destroy();
+    }
+
+    var liveid = e.value;
+    if (document.getElementById("liveidinput").value.length > 0 && document.getElementById("liveidinput").value != liveid) {
+        document.getElementById("liveidinput").value += ',' + liveid;
+    } else {
+        document.getElementById("liveidinput").value = liveid;
+    }
+    document.getElementById("livenote").value = xxx.getAttribute("data-note");
+
+    UpdateLiveStatusBadge(xxx.getAttribute("data-status"));
+    $.ajax({
+        url: "/getlivestatus",
+        method: "POST",
+        data: { liveid: liveid },
+        dataType: "JSON",
+        success: function (statusRes) {
+            xxx.setAttribute("data-status", statusRes.status || '');
+            UpdateLiveStatusBadge(statusRes.status);
+            if (statusRes.status === 'LIVE') {
+                JoinLiveRoom(liveid);
+                ShowCenterToast('primary', `Live đang phát trực tiếp, đang nhận bình luận: ${liveid}`, 3000);
+            } else if (currentPostId === liveid) {
+                LeaveLiveRoom();
+            }
+        }
+    });
+
+    $.ajax({
+        url: "/action",
+        method: "POST",
+        data: { liveid: liveid },
+        dataType: "JSON",
+        success: function (data) {
+            if (data.data.hasOwnProperty('error')) {
+                ShowCenterToast('danger', data.data.error, 3000);
+                document.getElementById("btnloadlive").disabled = false;
+                document.getElementById("btnloadlive").innerHTML = 'Load';
+                return;
+            }
+            if (data.data.length > 0) {
+                for (i = 0; i < data.data.length; i++) {
+                    var cmtidcol = t.column(8).data().toArray();
+                    if (!cmtidcol.includes(data.data[i].commentid)) {
+                        var note = data.data[i].note;
+                        if (note === undefined || note === null || note == 'null') {
+                            note = '';
+                        }
+                        var aka = data.data[i].aka;
+                        var nuocngoai = data.data[i].nuocngoai;
+                        var idpage = data.data[i].pageid;
+                        var buttonpage1;
+                        var buttonpage2;
+                        if (aka == null) {
+                            aka = '';
+                        }
+                        var xbel = '';
+                        var xlabel = data.data[i].label;
+                        if (data.data[i].chot.includes('CHỐT')) {
+                            xbel = 'primary';
+                        } else {
+                            xbel = 'danger';
+                        }
+                        var zzzlabel = ``;
+                        var zlabel = ``;
+                        if (xlabel.includes('Nước')) {
+                            zlabel = `<span class="badge bg-info">${xlabel}</span>`;
+                        } else if (xlabel.includes('Xả') || xlabel.includes('Bom')) {
+                            zlabel = `<span class="tag tag-red tag-pulse">${xlabel}</span>`;
+                        } else if (xlabel.includes('Thân')) {
+                            zlabel = `<span class="badge bg-success">${xlabel}</span>`;
+                        } else if (xlabel.includes('Có')) {
+                            zlabel = `<span class="label label--orange">${xlabel}</span>`;
+                        }
+                        var phone = data.data[i].phone;
+                        var timesort = new Date(data.data[i].datecreate).getTime();
+                        //var name = `<img src="${data.data[i].avalink}" class="avatar">${data.data[i].name}&nbsp;`;
+                        var name = `<img src="/images/ava/${data.data[i].userid}.jpg" class="avatar">${data.data[i].name}`;
+                        if (data.data[i].name.includes('Áo Dài Gia Bảo')) {
+                            name += `<svg xmlns="http://www.w3.org/2000/svg" x="0px" y="0px" width="15" height="15" viewBox="0 0 48 48">
+<linearGradient id="csF85US9HGjIK87qotE6pa_QMxOVe0B9VzG_gr1" x1="24" x2="24" y1="3.999" y2="43.001" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2aa4f4"></stop><stop offset="1" stop-color="#007ad9"></stop></linearGradient><path fill="url(#csF85US9HGjIK87qotE6pa_QMxOVe0B9VzG_gr1)" d="M43.466,25.705l-2.599-4.259l1.293-4.817c0.187-0.694-0.146-1.424-0.793-1.738l-4.488-2.178	l-1.518-4.752c-0.219-0.686-0.888-1.114-1.607-1.033l-4.953,0.594l-3.846-3.178c-0.555-0.459-1.355-0.459-1.91,0l-3.846,3.178	l-4.953-0.594c-0.717-0.081-1.389,0.348-1.607,1.033l-1.518,4.752l-4.488,2.178c-0.646,0.314-0.979,1.044-0.793,1.738l1.293,4.817	l-2.599,4.259c-0.375,0.614-0.261,1.408,0.271,1.892l3.693,3.354l0.116,4.987c0.018,0.719,0.542,1.325,1.252,1.444l4.92,0.825	l2.795,4.133c0.403,0.595,1.172,0.822,1.833,0.538L24,40.913l4.585,1.966C28.776,42.961,28.977,43,29.175,43	c0.486,0,0.957-0.236,1.243-0.659l2.795-4.133l4.92-0.825c0.71-0.119,1.234-0.726,1.252-1.444l0.116-4.987l3.693-3.354	C43.727,27.113,43.841,26.319,43.466,25.705z"></path><path fill="#fff" d="M21.814,31c-0.322,0-0.646-0.104-0.92-0.316l-4.706-3.66c-0.436-0.339-0.514-0.967-0.175-1.403	l0.614-0.789c0.339-0.436,0.967-0.514,1.403-0.175l3.581,2.785l7.086-8.209c0.361-0.418,0.992-0.464,1.41-0.104l0.757,0.653	c0.418,0.361,0.464,0.992,0.104,1.41l-8.017,9.289C22.655,30.822,22.236,31,21.814,31z"></path>
+</svg>`;
+                        }
+                        if (data.data[i].diachi.length > 0) {
+                            name = name + `<svg width="20px" height="20px" viewBox="0 0 512 512" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" fill="currentColor"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"><g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"> <g id="location-outline" fill="currentColor" transform="translate(106.666667, 42.666667)"> <path d="M149.333333,7.10542736e-15 C231.807856,7.10542736e-15 298.666667,66.8588107 298.666667,149.333333 C298.666667,176.537017 291.413333,202.026667 278.683512,224.008666 C270.196964,238.663333 227.080238,313.32711 149.333333,448 C71.5864284,313.32711 28.4697022,238.663333 19.9831547,224.008666 C7.25333333,202.026667 2.84217094e-14,176.537017 2.84217094e-14,149.333333 C2.84217094e-14,66.8588107 66.8588107,7.10542736e-15 149.333333,7.10542736e-15 Z M149.333333,85.3333333 C113.987109,85.3333333 85.3333333,113.987109 85.3333333,149.333333 C85.3333333,184.679557 113.987109,213.333333 149.333333,213.333333 C184.679557,213.333333 213.333333,184.679557 213.333333,149.333333 C213.333333,113.987109 184.679557,85.3333333 149.333333,85.3333333 Z" id="Combined-Shape"> </path> </g> </g> </g></svg>`;
+                        }
+                        if (nuocngoai.includes('Nước ngoài')) {
+                            name = name + `<svg fill="currentColor" width="20px" height="20px" viewBox="0 0 32 32" version="1.1" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="0.704"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"><path d="M15.5 2c-8.008 0-14.5 6.492-14.5 14.5s6.492 14.5 14.5 14.5 14.5-6.492 14.5-14.5-6.492-14.5-14.5-14.5zM10.752 3.854c-0.714 1.289-1.559 3.295-2.113 6.131h-4.983c1.551-2.799 4.062-4.993 7.096-6.131zM3.154 10.987h5.316c-0.234 1.468-0.391 3.128-0.415 5.012h-6.060c0.067-1.781 0.468-3.474 1.159-5.012zM1.988 17.001h6.072c0.023 1.893 0.188 3.541 0.422 5.012h-5.29c-0.694-1.543-1.138-3.224-1.204-5.012zM3.67 23.015h4.977c0.559 2.864 1.416 4.867 2.134 6.142-3.046-1.134-5.557-3.336-7.111-6.142zM15.062 30.009c-1.052-0.033-2.067-0.199-3.045-0.46-0.755-1.236-1.736-3.363-2.356-6.534h5.401v6.994zM15.062 22.013h-5.578c-0.234-1.469-0.396-3.119-0.421-5.012h5.998v5.012zM15.062 15.999h-6.004c0.025-1.886 0.183-3.543 0.417-5.012h5.587v5.012zM15.062 9.985h-5.422c0.615-3.148 1.591-5.266 2.344-6.525 0.987-0.266 2.015-0.435 3.078-0.47v6.995zM29.003 15.999h-5.933c-0.025-1.884-0.182-3.544-0.416-5.012h5.172c0.693 1.541 1.108 3.23 1.177 5.012zM27.322 9.985h-4.837c-0.549-2.806-1.382-4.8-2.091-6.090 2.967 1.154 5.402 3.335 6.928 6.090zM16.063 2.989c1.067 0.047 2.102 0.216 3.092 0.493 0.751 1.263 1.72 3.372 2.331 6.503h-5.423v-6.996zM16.063 10.987h5.587c0.234 1.469 0.392 3.126 0.417 5.012h-6.004v-5.012zM16.063 17.001h5.998c-0.023 1.893-0.187 3.543-0.421 5.012h-5.577v-5.012zM16.063 29.991v-6.977h5.402c-0.617 3.152-1.591 5.271-2.343 6.512-0.978 0.272-2.005 0.418-3.059 0.465zM20.367 29.114c0.714-1.276 1.56-3.266 2.112-6.1h4.835c-1.522 2.766-3.967 4.95-6.947 6.1zM27.795 22.013h-5.152c0.234-1.471 0.398-3.119 0.423-5.012h5.927c-0.067 1.787-0.508 3.468-1.198 5.012z"></path> </g></svg>`;
+                        }
+                        if (aka.length > 0) {
+                            name = name + `<svg style="cursor:pointer" onclick="OpenAKAByPhone('${data.data[i].phone}','${data.data[i].userid}','${data.data[i].realfbid || ''}')" width="20px" height="20px" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="bi bi-people-fill"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <path d="M7 14s-1 0-1-1 1-4 5-4 5 3 5 4-1 1-1 1H7zm4-6a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"></path> <path fill-rule="evenodd" d="M5.216 14A2.238 2.238 0 0 1 5 13c0-1.355.68-2.75 1.936-3.72A6.325 6.325 0 0 0 5 9c-4 0-5 3-5 4s1 1 1 1h4.216z"></path> <path d="M4.5 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z"></path> </g></svg>`;
+                        }
+
+
+                        if (data.data[i].realfbid != null) {
+                            if (idpage == '223266991771270') {
+                                if (data.data[i].realfbid.length > 0) {
+                                    buttonpage1 = `<a href='https://business.facebook.com/latest/inbox/messenger?asset_id=223266991771270&selected_item_id=${data.data[i].realfbid}&mailbox_id=&thread_type=FB_MESSAGE' target="blank"><i class="bi bi-messenger"></i></a>`;
+                                    buttonpage2 = `<a href='https://business.facebook.com/latest/inbox/messenger?asset_id=102116919355833&selected_item_id=${data.data[i].realfbid}&mailbox_id=&thread_type=FB_MESSAGE' target="blank"><i class="bi bi-messenger"></i></a>`;
+                                } else {
+                                    buttonpage1 = `<a onclick="OpenMessenger('223266991771270',${data.data[i].realfbid})"<i class="bi bi-messenger"></i></a>`;
+                                    buttonpage2 = `<a onclick="OpenMessenger('102116919355833',${data.data[i].realfbid})"<i class="bi bi-messenger"></i></a>`;
+                                }
+                            }
+                            if (idpage == '102116919355833') {
+                                if (data.data[i].realfbid.length > 0) {
+                                    buttonpage1 = `<a href='https://business.facebook.com/latest/inbox/messenger?asset_id=102116919355833&selected_item_id=${data.data[i].realfbid}&mailbox_id=&thread_type=FB_MESSAGE' target="blank"><i class="bi bi-messenger"></i></a>`;
+                                    buttonpage2 = `<a href='https://business.facebook.com/latest/inbox/messenger?asset_id=223266991771270&selected_item_id=${data.data[i].realfbid}&mailbox_id=&thread_type=FB_MESSAGE' target="blank"><i class="bi bi-messenger"></i></a>`;
+                                } else {
+                                    buttonpage1 = `<a onclick="OpenMessenger('102116919355833',${data.data[i].realfbid})"<i class="bi bi-messenger"></i></a>`;
+                                    buttonpage2 = `<a onclick="OpenMessenger('223266991771270',${data.data[i].realfbid})"<i class="bi bi-messenger"></i></a>`;
+                                }
+                            }
+                        }
+                        if (phone === null) {
+                            phone = '';
+                        }
+                        if (phone.length > 0) {
+                            name = name + `<br><span class="label label--pink">${phone}<a href="tel:${data.data[i].phone}">📱</a></span>`;
+                        }
+                        if (nuocngoai == 'Nước ngoài') {
+                            if (phone.length > 0) {
+                                name = name + `<span class="label label--lightpink">${nuocngoai}</span>`;
+                            } else {
+                                name = name + `<br><span class="label label--lightpink">${nuocngoai}</span>`;
+                            }
+                        }
+                        if (xlabel.length > 0) {
+                            if (xlabel.includes('Xả') || xlabel.includes('Bom')) {
+                                zzzlabel = 'red';
+                            } else if (xlabel.includes('Thân')) {
+                                zzzlabel = 'green';
+                            } else if (xlabel.includes('Có')) {
+                                zzzlabel = 'orange';
+                            } else if (xlabel.includes('Nước')) {
+                                zzzlabel = 'lightpink';
+                            }
+                            if (phone.length > 0) {
+                                name = name + `<span class="label label--${zzzlabel}">${xlabel}</span>`;
+                            } else {
+                                name = name + `<br><span class="label label--${zzzlabel}">${xlabel}</span>`;
+                            }
+                        }
+                        var buttonchat = `<a href="javascript:void(0);" data-customer-id="${data.data[i].userid}" data-customer-name="${data.data[i].name}" data-sender-page-id="${idpage}" class="open-message-modal"><i class="bi bi-chat-square-text-fill"></i></a>`;
+
+                        var luotin = data.data[i].luotin;
+                        if (luotin == 0) {
+                            luotin = '&nbsp;';
+                        }
+                        var message = data.data[i].message;
+                        if (message == null || message == undefined) {
+                            message = '';
+                        }
+                        var slchot = data.data[i].slchot;
+                        var slchottext = ''; 
+                        var giatext = '';
+                        if(slchot > 1){
+                            slchottext =`<span class='tag tag-purple tag-pulse'>x ${slchot}</span>`;
+                        }
+                        if(data.data[i].gia != ''){
+                            giatext = `<span class='tag tag-green tag-pulse'>💰${data.data[i].gia}</span>`;
+                        }
+                        var xabadge = (data.data[i].gia != '' && data.data[i].gia != null) ? XaBadgeHtml() : '';
+                        html += `
+                                <tr>
+                                    <td>${(i + 1)}</td>
+                                    <td>${name}</td>
+                                    <td>${data.data[i].message}</td>
+                                    <td>${phone}</td>
+                                    <td>${zlabel}</td>
+                                    <td><center><span class="badge bg-${xbel}">${data.data[i].chot}</span></center></td>
+                                    <td><center>${giatext}${slchottext}${xabadge}</center></td>
+                                    <td>${data.data[i].count}</td>
+                                    <td>${data.data[i].commentid}</td>
+                                    <td>${timesort}</td>
+                                    <td>${data.data[i].diachi}</td>
+                                    <td>${buttonchat}${buttonpage1}${buttonpage2}</td>
+                                    <td>${data.data[i].userid}</td>
+                                    <td>${data.data[i].datecreate}</td>
+                                    <td>${data.data[i].timecomment}</td>
+                                    <td>${data.data[i].fbnamex}</td>
+                                    <td>${luotin}</td>
+                                    <td>${data.data[i].liveid}</td>
+                                    <td>${idpage}</td>
+                                    <td>${note}</td>
+                                    <td>${aka}</td>
+                                    <td>${data.data[i].label}</td>
+                                    <td>${data.data[i].realfbid}</td>
+                                    <td>${nuocngoai}</td>
+                                    <td>${data.data[i].threadid}</td>
+                                    <td>${data.data[i].id}</td>
+                                    <td>${data.data[i].name}</td>
+                                    <td>${data.data[i].idx}</td>
+                                </tr>
+                                `;
+                    }
+                }
+                document.getElementById("btnloadlive").disabled = false;
+                document.getElementById("btnloadlive").innerHTML = 'Load';
+                ShowCenterToast('success', 'Load xong trong ' + end() + ' mili giây', 3000);
+            }
+            $('#comment_table tbody').html(html);
+            $('#comment_table').DataTable(
+                {
+                    keys: {
+                        blurable: false
+                    },
+                    language: {
+                        "decimal": "",
+                        "emptyTable": "Chưa có dữ liệu",
+                        "info": "Hiển thị _START_ tới _END_ trong tổng số _TOTAL_ bình luận.",
+                        "infoEmpty": "Không có bình luận nào",
+                        "infoFiltered": "(lọc trong _MAX_ bình luận)",
+                        "infoPostFix": "",
+                        "thousands": ".",
+                        "lengthMenu": "Hiển thị _MENU_ bình luận",
+                        "loadingRecords": "Đang tải...",
+                        "processing": "Đang xử lý",
+                        "search": "Tìm kiếm:",
+                        "zeroRecords": "Không tìm thấy bình luận nào",
+                        "paginate": {
+                            "first": "Đầu tiên",
+                            "last": "Cuối cùng",
+                            "next": "Tới",
+                            "previous": "Lùi"
+                        },
+                        "aria": {
+                            "sortAscending": ": activate to sort column ascending",
+                            "sortDescending": ": activate to sort column descending"
+                        },
+                        "select": {
+                            "rows": {
+                                "1": " - Đang chọn 1 bình luận.",
+                                "_": " - Đang chọn %d dòng."
+                            }
+                        },
+                    },
+                    lengthMenu: [
+                        [20, 25, 35, 50, -1],
+                        [20, 25, 35, 50, 'Tất cả']
+                    ],
+                    pageLength: 20,
+                    columnDefs: [
+                        {
+                            target: 0,
+                            visible: false,
+                            searchable: false,
+                        },
+                        {
+                            target: 1,
+                            createdCell: function (td, cellData, rowData, row, col) {
+                                if (cellData.length > 0) {
+                                    if (rowData[4].includes('Xả') || rowData[4].includes('Bom')) {
+                                        $(td).css('color', 'red')
+                                    } else if (rowData[4].includes('Có')) {
+                                        $(td).css('color', '#F47803')
+                                    }
+                                    $(td).css('font-weight', 'bold');
+                                }
+                            }
+                        },
+                        {
+                            target: 2,
+                            searchable: true,
+                        },
+                        {
+                            target: 3,
+                            createdCell: function (td, cellData, rowData, row, col) {
+                                if (cellData.length > 0) {
+                                    if (rowData[3].length > 0) {
+                                        $(td).css('color', '#8E03F4')
+                                    }
+                                }
+                            },
+                            visible: false,
+                        },
+                        {
+                            target: 4,
+                            visible: false,
+                            searchable: false,
+                        },
+                        {
+                            target: 5,
+                            visible: false,
+                            searchable: false,
+                            createdCell: function (td, cellData, rowData, row, col) {
+                                if (cellData.length > 0) {
+                                    if (rowData[5].includes('CHỐT')) {
+                                        $(td).css('color', 'blue');
+                                    }
+                                    else if (rowData[5].includes('XẢ')) {
+                                        $(td).css('color', 'red');
+                                    }
+                                    $(td).css('font-weight', 'bold');
+                                }
+                            }
+                        },
+                        {
+                            target: 6,
+                            searchable: false,
+                            createdCell: function (td, cellData, rowData, row, col) {
+                                if (cellData.length > 0) {
+                                    $(td).css('color', '#3BCB00')
+                                    $(td).css('font-weight', 'bold');
+                                }
+                            }
+                        },
+                        {
+                            target: 7,
+                            visible: false,
+                            searchable: false,
+                        },
+                        {
+                            target: 8,
+                            visible: false,
+                            searchable: false,
+                        },
+                        {
+                            target: 9,
+                            visible: false,
+                            searchable: false,
+                        },
+                        {
+                            target: 10,
+                            visible: false,
+                            searchable: false,
+                        },
+                        {
+                            target: 11,
+                            searchable: false,
+                        },
+                        {
+                            target: 12,
+                            visible: false,
+                            searchable: false,
+                        },
+                        {
+                            target: 13,
+                            visible: false,
+                            searchable: false,
+                        },
+                        {
+                            target: 14,
+                            visible: false,
+                            searchable: false,
+                        },
+                        {
+                            target: 15,
+                            visible: false,
+                        },
+                        {
+                            target: 16,
+                            searchable: false,
+                            visible: false,
+                        },
+                        {
+                            target: 17,
+                            searchable: false,
+                            visible: false,
+                        },
+                        {
+                            target: 18,
+                            searchable: false,
+                            visible: false,
+                        },
+                        {
+                            target: 19,
+                            searchable: false,
+                            visible: false,
+                        },
+                        {
+                            target: 20,
+                            searchable: false,
+                            visible: false,
+                        },
+                        {
+                            target: 21,
+                            searchable: false,
+                            visible: false,
+                        },
+                        {
+                            target: 22,
+                            searchable: false,
+                            visible: false,
+                        },
+                        {
+                            target: 23,
+                            searchable: false,
+                            visible: false,
+                        },
+                        {
+                            target: 24,
+                            searchable: false,
+                            visible: false,
+                        },
+                        {
+                            target: 25,
+                            searchable: false,
+                            visible: false,
+                        },
+                        {
+                            target: 26,
+                            searchable: false,
+                            visible: false,
+                        },
+                        {
+                            target: 27,
+                            searchable: false,
+                            visible: false,
+                        },
+                    ],
+                    order: [27, 'desc'],//sort theo ID increment
+                }
+            );
+            $('a.toggle-vis').on('click', function (e) {
+                e.preventDefault();
+                var column = t.column($(this).attr('data-column'));
+                column.visible(!column.visible());
+            });
+            if (initkey === 0) {
+                InItKeys();
+            }
+        }
+    });
+};
+async function CreateLive() {
+    var xxxx = document.getElementById("liveidinput").value;
+    if (xxxx.length == 0) {
+        return;
+    }
+    $.ajax({
+        url: "/createlive",
+        method: "POST",
+        data: { liveid: xxxx },
+        dataType: "JSON",
+        success: function (data) { }
+    });
+}
+var scancount = 0;
+async function ScanComment(soluong) {
+    var note = document.getElementById("livenote").value;
+    var xxxx = document.getElementById("liveidinput").value;
+    if (xxxx.length == 0) {
+        return;
+    }
+    start();
+    var t = $('#comment_table').DataTable();
+    $.ajax({
+        url: "/scancomment",
+        method: "POST",
+        data: { liveid: xxxx, note: note, soluong: soluong },
+        dataType: "JSON",
+        success: function (data) {
+            if (data.data.hasOwnProperty('error')) {
+                ShowCenterToast('danger', data.data.error, 3000);
+                document.getElementById("scancomment").disabled = false;
+                document.getElementById("scancomment").innerHTML = 'Quét';
+                return;
+            }
+            if (data.data.length > 0) {
+                for (i = 0; i < data.data.length; i++) {
+                    var cmtidcol = t.column(8).data().toArray();
+                    if (!cmtidcol.includes(data.data[i].commentid)) {
+                        var note = data.data[i].note;
+                        if (note === undefined || note === null || note == 'null') {
+                            note = '';
+                        }
+                        var aka = data.data[i].aka;
+                        var nuocngoai = data.data[i].nuocngoai;
+                        var idpage = data.data[i].pageid;
+                        var buttonpage1;
+                        var buttonpage2;
+                        if (aka == null) {
+                            aka = '';
+                        }
+                        var xbel = '';
+                        var xlabel = data.data[i].label;
+                        if (data.data[i].chot.includes('CHỐT')) {
+                            xbel = 'primary';
+                        } else {
+                            xbel = 'danger';
+                        }
+                        var zzzlabel = ``;
+                        var zlabel = ``;
+                        if (xlabel.includes('Nước')) {
+                            zlabel = `<span class="badge bg-info">${xlabel}</span>`;
+                        } else if (xlabel.includes('Xả') || xlabel.includes('Bom')) {
+                            zlabel = `<span class="badge bg-danger">${xlabel}</span>`;
+                        } else if (xlabel.includes('Thân')) {
+                            zlabel = `<span class="badge bg-success">${xlabel}</span>`;
+                        } else if (xlabel.includes('Có')) {
+                            zlabel = `<span class="badge bg-warning">${xlabel}</span>`;
+                        }
+                        var phone = data.data[i].phone;
+                        if (phone === null) {
+                            phone = '';
+                        }
+                        var timesort = new Date(data.data[i].datecreate).getTime();
+                        var name = `<img src="/images/ava/${data.data[i].userid}.jpg" class="avatar" onerror="tryAgain(this)">${data.data[i].name}`;
+                        if (data.data[i].diachi.length > 0) {
+                            name = name + `<svg width="20px" height="20px" viewBox="0 0 512 512" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" fill="currentColor"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"><g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"> <g id="location-outline" fill="currentColor" transform="translate(106.666667, 42.666667)"> <path d="M149.333333,7.10542736e-15 C231.807856,7.10542736e-15 298.666667,66.8588107 298.666667,149.333333 C298.666667,176.537017 291.413333,202.026667 278.683512,224.008666 C270.196964,238.663333 227.080238,313.32711 149.333333,448 C71.5864284,313.32711 28.4697022,238.663333 19.9831547,224.008666 C7.25333333,202.026667 2.84217094e-14,176.537017 2.84217094e-14,149.333333 C2.84217094e-14,66.8588107 66.8588107,7.10542736e-15 149.333333,7.10542736e-15 Z M149.333333,85.3333333 C113.987109,85.3333333 85.3333333,113.987109 85.3333333,149.333333 C85.3333333,184.679557 113.987109,213.333333 149.333333,213.333333 C184.679557,213.333333 213.333333,184.679557 213.333333,149.333333 C213.333333,113.987109 184.679557,85.3333333 149.333333,85.3333333 Z" id="Combined-Shape"> </path> </g> </g> </g></svg>`;
+                        }
+                        if (nuocngoai.includes('Nước ngoài')) {
+                            name = name + `<svg fill="currentColor" width="20px" height="20px" viewBox="0 0 32 32" version="1.1" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="0.704"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"><path d="M15.5 2c-8.008 0-14.5 6.492-14.5 14.5s6.492 14.5 14.5 14.5 14.5-6.492 14.5-14.5-6.492-14.5-14.5-14.5zM10.752 3.854c-0.714 1.289-1.559 3.295-2.113 6.131h-4.983c1.551-2.799 4.062-4.993 7.096-6.131zM3.154 10.987h5.316c-0.234 1.468-0.391 3.128-0.415 5.012h-6.060c0.067-1.781 0.468-3.474 1.159-5.012zM1.988 17.001h6.072c0.023 1.893 0.188 3.541 0.422 5.012h-5.29c-0.694-1.543-1.138-3.224-1.204-5.012zM3.67 23.015h4.977c0.559 2.864 1.416 4.867 2.134 6.142-3.046-1.134-5.557-3.336-7.111-6.142zM15.062 30.009c-1.052-0.033-2.067-0.199-3.045-0.46-0.755-1.236-1.736-3.363-2.356-6.534h5.401v6.994zM15.062 22.013h-5.578c-0.234-1.469-0.396-3.119-0.421-5.012h5.998v5.012zM15.062 15.999h-6.004c0.025-1.886 0.183-3.543 0.417-5.012h5.587v5.012zM15.062 9.985h-5.422c0.615-3.148 1.591-5.266 2.344-6.525 0.987-0.266 2.015-0.435 3.078-0.47v6.995zM29.003 15.999h-5.933c-0.025-1.884-0.182-3.544-0.416-5.012h5.172c0.693 1.541 1.108 3.23 1.177 5.012zM27.322 9.985h-4.837c-0.549-2.806-1.382-4.8-2.091-6.090 2.967 1.154 5.402 3.335 6.928 6.090zM16.063 2.989c1.067 0.047 2.102 0.216 3.092 0.493 0.751 1.263 1.72 3.372 2.331 6.503h-5.423v-6.996zM16.063 10.987h5.587c0.234 1.469 0.392 3.126 0.417 5.012h-6.004v-5.012zM16.063 17.001h5.998c-0.023 1.893-0.187 3.543-0.421 5.012h-5.577v-5.012zM16.063 29.991v-6.977h5.402c-0.617 3.152-1.591 5.271-2.343 6.512-0.978 0.272-2.005 0.418-3.059 0.465zM20.367 29.114c0.714-1.276 1.56-3.266 2.112-6.1h4.835c-1.522 2.766-3.967 4.95-6.947 6.1zM27.795 22.013h-5.152c0.234-1.471 0.398-3.119 0.423-5.012h5.927c-0.067 1.787-0.508 3.468-1.198 5.012z"></path> </g></svg>`;
+                        }
+                        if (aka.length > 0) {
+                            name = name + `<i style="cursor:pointer" onclick="OpenAKAByPhone('${data.data[i].phone}','${data.data[i].userid}','${data.data[i].realfbid || ''}')" class="bi bi-people-fill" data-bs-toggle="tooltip" title="Trùng tên: ${aka}"></i>`;
+                        }
+
+                        if (data.data[i].realfbid != null) {
+                            if (idpage == '223266991771270') {
+                                if (data.data[i].realfbid.length > 0) {
+                                    buttonpage1 = `<a href='https://business.facebook.com/latest/inbox/messenger?asset_id=223266991771270&selected_item_id=${data.data[i].realfbid}&mailbox_id=&thread_type=FB_MESSAGE' target="blank"><i class="bi bi-messenger"></i></a>`;
+                                    buttonpage2 = `<a href='https://business.facebook.com/latest/inbox/messenger?asset_id=102116919355833&selected_item_id=${data.data[i].realfbid}&mailbox_id=&thread_type=FB_MESSAGE' target="blank"><i class="bi bi-messenger"></i></a>`;
+                                } else {
+                                    buttonpage1 = `<a onclick="OpenMessenger('223266991771270',${data.data[i].realfbid})"<i class="bi bi-messenger"></i></a>`;
+                                    buttonpage2 = `<a onclick="OpenMessenger('102116919355833',${data.data[i].realfbid})"<i class="bi bi-messenger"></i></a>`;
+                                }
+                            }
+                            if (idpage == '102116919355833') {
+                                if (data.data[i].realfbid.length > 0) {
+                                    buttonpage1 = `<a href='https://business.facebook.com/latest/inbox/messenger?asset_id=102116919355833&selected_item_id=${data.data[i].realfbid}&mailbox_id=&thread_type=FB_MESSAGE' target="blank"><i class="bi bi-messenger"></i></a>`;
+                                    buttonpage2 = `<a href='https://business.facebook.com/latest/inbox/messenger?asset_id=223266991771270&selected_item_id=${data.data[i].realfbid}&mailbox_id=&thread_type=FB_MESSAGE' target="blank"><i class="bi bi-messenger"></i></a>`;
+                                } else {
+                                    buttonpage1 = `<a onclick="OpenMessenger('102116919355833',${data.data[i].realfbid})"<i class="bi bi-messenger"></i></a>`;
+                                    buttonpage2 = `<a onclick="OpenMessenger('223266991771270',${data.data[i].realfbid})"<i class="bi bi-messenger"></i></a>`;
+                                }
+                            }
+                        }
+                        var buttonchat = `<a href="javascript:void(0);" data-customer-id="${data.data[i].userid}" data-customer-name="${data.data[i].name}" data-sender-page-id="${idpage}" class="open-message-modal"><i class="bi bi-chat-square-text-fill"></i></a>`;
+                        if (phone.length > 0) {
+                            name = name + `<br><span class="label label--pink">${phone}<a href="tel:${phone}">📱</a></span>`;
+                        }
+                        if (nuocngoai == 'Nước ngoài') {
+                            if (phone.length > 0) {
+                                name = name + `<span class="label label--lightpink">${nuocngoai}</span>`;
+                            } else {
+                                name = name + `<br><span class="label label--lightpink">${nuocngoai}</span>`;
+                            }
+                        }
+                        if (xlabel.length > 0) {
+                            if (xlabel.includes('Xả') || xlabel.includes('Bom')) {
+                                zzzlabel = 'red';
+                            } else if (xlabel.includes('Thân')) {
+                                zzzlabel = 'green';
+                            } else if (xlabel.includes('Có')) {
+                                zzzlabel = 'orange';
+                            } else if (xlabel.includes('Nước')) {
+                                zzzlabel = 'lightpink';
+                            }
+                            if (phone.length > 0) {
+                                name = name + `<span class="label label--${zzzlabel}">${xlabel}</span>`;
+                            } else {
+                                name = name + `<br><span class="label label--${zzzlabel}">${xlabel}</span>`;
+                            }
+                        }
+                        var luotin = data.data[i].luotin;
+                        if (luotin == 0) {
+                            luotin = '&nbsp;';
+                        }
+                        t.row.add([
+                            "",//0
+                            name,//1
+                            data.data[i].message,//2
+                            phone,//3
+                            zlabel,//4
+                            `<center><span class="badge bg-${xbel}">${data.data[i].chot}</span></center>`,//5
+                            `<center><span class="badge bg-success">${data.data[i].gia}</span>${(data.data[i].slchot > 1 ? `<span class='tag tag-purple tag-pulse'>x ${data.data[i].slchot}</span>` : '')}${(data.data[i].gia != '' && data.data[i].gia != null) ? XaBadgeHtml() : ''}</center>`,//6
+                            data.data[i].count,//7
+                            data.data[i].commentid,//8
+                            timesort,//9
+                            data.data[i].diachi,//10
+                            buttonchat + buttonpage1 + buttonpage2,//11
+                            data.data[i].userid,//12
+                            data.data[i].datecreate,//13
+                            data.data[i].timecomment,//14
+                            data.data[i].fbnamex,//15
+                            luotin,//16
+                            data.data[i].liveid,//17
+                            idpage,//18
+                            note,//19
+                            aka,//20
+                            data.data[i].label,//21
+                            data.data[i].realfbid,//22
+                            nuocngoai,//23
+                            data.data[i].threadid,//24
+                            data.data[i].id,//25
+                            data.data[i].name,//26
+                            data.data[i].idx//27
+                        ]).draw(false);
+                    }
+                }
+            }
+            ShowCenterToast('success', 'Quét xong trong ' + end() + ' mili giây', 3000);
+            scancount++;
+            if (scancount > 50) {
+                RC();
+                scancount = 0;
+            }
+        }
+    });
+};
+
+socket.on('live-status', (data) => {
+    var opt = document.getElementById(data.liveid);
+    if (opt) {
+        opt.setAttribute('data-status', data.status || '');
+    }
+    var selectedOpt = document.getElementById(e.value);
+    var selectedLiveId = selectedOpt ? selectedOpt.id : null;
+    if (data.liveid === selectedLiveId || data.liveid === currentPostId) {
+        UpdateLiveStatusBadge(data.status);
+        if (data.status === 'LIVE') {
+            JoinLiveRoom(data.liveid);
+        } else if (currentPostId === data.liveid) {
+            LeaveLiveRoom();
+        }
+    }
+});
+
+socket.on('new-comment', (data) => {
+    var t = $('#comment_table').DataTable();
+    var cmtidcol = t.column(8).data().toArray();
+    if (cmtidcol.includes(data.cmtid)) return;
+
+    var note = data.customerInfo.note;
+    if (note === undefined || note === null) {
+        note = '';
+    }
+    var message = data.message;
+    if (message === null || message === undefined) {
+        message = '';
+    }
+    var aka = data.customerInfo.aka;
+    var nuocngoai = data.customerInfo.nuocngoai;
+    var idpage = data.customerInfo.pageid;
+    var buttonpage1;
+    var buttonpage2;
+    if (aka == null) {
+        aka = '';
+    }
+    var xlabel = data.customerInfo.label;
+    var zzzlabel = ``;
+    var zlabel = ``;
+    if (xlabel.includes('Nước')) {
+        zlabel = `<span class="badge bg-info">${xlabel}</span>`;
+    } else if (xlabel.includes('Xả') || xlabel.includes('Bom')) {
+        zlabel = `<span class="label label--error">${xlabel}</span>`;
+    } else if (xlabel.includes('Thân')) {
+        zlabel = `<span class="badge bg-success">${xlabel}</span>`;
+    } else if (xlabel.includes('Có')) {
+        zlabel = `<span class="label label--orange">${xlabel}</span>`;
+    }
+    var phone = data.customerInfo.phone;
+    var timesort = new Date(data.timelocal).getTime();
+    var ava = `<img src="/images/ava/${data.customerInfo.userid}.jpg" class="avatar" onerror="tryAgain(this)">`;
+    /*if (data.picture != undefined || data.picture != null) {
+        ava = `<img src="${data.picture}" class="avatar" onerror="tryAgain(this)">`;
+    }*/
+    var name = ava + data.customerInfo.fbname;
+    if (data.customerInfo.fbname.includes('Áo Dài Gia Bảo')) {
+        name += `<svg xmlns="http://www.w3.org/2000/svg" x="0px" y="0px" width="15" height="15" viewBox="0 0 48 48">
+<linearGradient id="csF85US9HGjIK87qotE6pa_QMxOVe0B9VzG_gr1" x1="24" x2="24" y1="3.999" y2="43.001" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#2aa4f4"></stop><stop offset="1" stop-color="#007ad9"></stop></linearGradient><path fill="url(#csF85US9HGjIK87qotE6pa_QMxOVe0B9VzG_gr1)" d="M43.466,25.705l-2.599-4.259l1.293-4.817c0.187-0.694-0.146-1.424-0.793-1.738l-4.488-2.178	l-1.518-4.752c-0.219-0.686-0.888-1.114-1.607-1.033l-4.953,0.594l-3.846-3.178c-0.555-0.459-1.355-0.459-1.91,0l-3.846,3.178	l-4.953-0.594c-0.717-0.081-1.389,0.348-1.607,1.033l-1.518,4.752l-4.488,2.178c-0.646,0.314-0.979,1.044-0.793,1.738l1.293,4.817	l-2.599,4.259c-0.375,0.614-0.261,1.408,0.271,1.892l3.693,3.354l0.116,4.987c0.018,0.719,0.542,1.325,1.252,1.444l4.92,0.825	l2.795,4.133c0.403,0.595,1.172,0.822,1.833,0.538L24,40.913l4.585,1.966C28.776,42.961,28.977,43,29.175,43	c0.486,0,0.957-0.236,1.243-0.659l2.795-4.133l4.92-0.825c0.71-0.119,1.234-0.726,1.252-1.444l0.116-4.987l3.693-3.354	C43.727,27.113,43.841,26.319,43.466,25.705z"></path><path fill="#fff" d="M21.814,31c-0.322,0-0.646-0.104-0.92-0.316l-4.706-3.66c-0.436-0.339-0.514-0.967-0.175-1.403	l0.614-0.789c0.339-0.436,0.967-0.514,1.403-0.175l3.581,2.785l7.086-8.209c0.361-0.418,0.992-0.464,1.41-0.104l0.757,0.653	c0.418,0.361,0.464,0.992,0.104,1.41l-8.017,9.289C22.655,30.822,22.236,31,21.814,31z"></path>
+</svg>`;
+    }
+    if (data.customerInfo.diachi.length > 0) {
+        name = name + `<svg width="20px" height="20px" viewBox="0 0 512 512" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" fill="currentColor"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"><g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd"> <g id="location-outline" fill="currentColor" transform="translate(106.666667, 42.666667)"> <path d="M149.333333,7.10542736e-15 C231.807856,7.10542736e-15 298.666667,66.8588107 298.666667,149.333333 C298.666667,176.537017 291.413333,202.026667 278.683512,224.008666 C270.196964,238.663333 227.080238,313.32711 149.333333,448 C71.5864284,313.32711 28.4697022,238.663333 19.9831547,224.008666 C7.25333333,202.026667 2.84217094e-14,176.537017 2.84217094e-14,149.333333 C2.84217094e-14,66.8588107 66.8588107,7.10542736e-15 149.333333,7.10542736e-15 Z M149.333333,85.3333333 C113.987109,85.3333333 85.3333333,113.987109 85.3333333,149.333333 C85.3333333,184.679557 113.987109,213.333333 149.333333,213.333333 C184.679557,213.333333 213.333333,184.679557 213.333333,149.333333 C213.333333,113.987109 184.679557,85.3333333 149.333333,85.3333333 Z" id="Combined-Shape"> </path> </g> </g> </g></svg>`;
+    }
+    if (nuocngoai.includes('Nước ngoài')) {
+        name = name + `<svg fill="currentColor" width="20px" height="20px" viewBox="0 0 32 32" version="1.1" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="0.704"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"><path d="M15.5 2c-8.008 0-14.5 6.492-14.5 14.5s6.492 14.5 14.5 14.5 14.5-6.492 14.5-14.5-6.492-14.5-14.5-14.5zM10.752 3.854c-0.714 1.289-1.559 3.295-2.113 6.131h-4.983c1.551-2.799 4.062-4.993 7.096-6.131zM3.154 10.987h5.316c-0.234 1.468-0.391 3.128-0.415 5.012h-6.060c0.067-1.781 0.468-3.474 1.159-5.012zM1.988 17.001h6.072c0.023 1.893 0.188 3.541 0.422 5.012h-5.29c-0.694-1.543-1.138-3.224-1.204-5.012zM3.67 23.015h4.977c0.559 2.864 1.416 4.867 2.134 6.142-3.046-1.134-5.557-3.336-7.111-6.142zM15.062 30.009c-1.052-0.033-2.067-0.199-3.045-0.46-0.755-1.236-1.736-3.363-2.356-6.534h5.401v6.994zM15.062 22.013h-5.578c-0.234-1.469-0.396-3.119-0.421-5.012h5.998v5.012zM15.062 15.999h-6.004c0.025-1.886 0.183-3.543 0.417-5.012h5.587v5.012zM15.062 9.985h-5.422c0.615-3.148 1.591-5.266 2.344-6.525 0.987-0.266 2.015-0.435 3.078-0.47v6.995zM29.003 15.999h-5.933c-0.025-1.884-0.182-3.544-0.416-5.012h5.172c0.693 1.541 1.108 3.23 1.177 5.012zM27.322 9.985h-4.837c-0.549-2.806-1.382-4.8-2.091-6.090 2.967 1.154 5.402 3.335 6.928 6.090zM16.063 2.989c1.067 0.047 2.102 0.216 3.092 0.493 0.751 1.263 1.72 3.372 2.331 6.503h-5.423v-6.996zM16.063 10.987h5.587c0.234 1.469 0.392 3.126 0.417 5.012h-6.004v-5.012zM16.063 17.001h5.998c-0.023 1.893-0.187 3.543-0.421 5.012h-5.577v-5.012zM16.063 29.991v-6.977h5.402c-0.617 3.152-1.591 5.271-2.343 6.512-0.978 0.272-2.005 0.418-3.059 0.465zM20.367 29.114c0.714-1.276 1.56-3.266 2.112-6.1h4.835c-1.522 2.766-3.967 4.95-6.947 6.1zM27.795 22.013h-5.152c0.234-1.471 0.398-3.119 0.423-5.012h5.927c-0.067 1.787-0.508 3.468-1.198 5.012z"></path> </g></svg>`;
+    }
+    if (aka.length > 0) {
+        name = name + `<i style="cursor:pointer" onclick="OpenAKAByPhone('${data.customerInfo.phone}','${data.customerInfo.userid}','${data.customerInfo.realfbid || ''}')" class="bi bi-people-fill" data-bs-toggle="tooltip" title="Trùng tên: ${aka}"></i>`;
+    }
+    if (data.customerInfo.realfbid != null) {
+        if (idpage == '223266991771270') {
+            if (data.customerInfo.realfbid.length > 0) {
+                buttonpage1 = `<a href='https://business.facebook.com/latest/inbox/messenger?asset_id=223266991771270&selected_item_id=${data.customerInfo.realfbid}&mailbox_id=&thread_type=FB_MESSAGE' target="blank"><i class="bi bi-messenger"></i></a>`;
+                buttonpage2 = `<a href='https://business.facebook.com/latest/inbox/messenger?asset_id=102116919355833&selected_item_id=${data.customerInfo.realfbid}&mailbox_id=&thread_type=FB_MESSAGE' target="blank"><i class="bi bi-messenger"></i></a>`;
+            } else {
+                buttonpage1 = `<a onclick="OpenMessenger('223266991771270',${data.customerInfo.realfbid})"<i class="bi bi-messenger"></i></a>`;
+                buttonpage2 = `<a onclick="OpenMessenger('102116919355833',${data.customerInfo.realfbid})"<i class="bi bi-messenger"></i></a>`;
+            }
+        }
+        if (idpage == '102116919355833') {
+            if (data.customerInfo.realfbid.length > 0) {
+                buttonpage1 = `<a href='https://business.facebook.com/latest/inbox/messenger?asset_id=102116919355833&selected_item_id=${data.customerInfo.realfbid}&mailbox_id=&thread_type=FB_MESSAGE' target="blank"><i class="bi bi-messenger"></i></a>`;
+                buttonpage2 = `<a href='https://business.facebook.com/latest/inbox/messenger?asset_id=223266991771270&selected_item_id=${data.customerInfo.realfbid}&mailbox_id=&thread_type=FB_MESSAGE' target="blank"><i class="bi bi-messenger"></i></a>`;
+            } else {
+                buttonpage1 = `<a onclick="OpenMessenger('102116919355833',${data.customerInfo.realfbid})"<i class="bi bi-messenger"></i></a>`;
+                buttonpage2 = `<a onclick="OpenMessenger('223266991771270',${data.customerInfo.realfbid})"<i class="bi bi-messenger"></i></a>`;
+            }
+        }
+    }
+    var buttonchat = `<a href="javascript:void(0);" data-customer-id="${data.customerInfo.userid}" data-customer-name="${data.customerInfo.fbname}" data-sender-page-id="${idpage}" class="open-message-modal"><i class="bi bi-chat-square-text-fill"></i></a>`;
+    if (phone.length > 0) {
+        name = name + `<br><span class="label label--pink">${phone}<a href="tel:${phone}">📱</a></span>`;
+    }
+    if (nuocngoai == 'Nước ngoài') {
+        if (phone.length > 0) {
+            name = name + `<span class="label label--lightpink">${nuocngoai}</span>`;
+        } else {
+            name = name + `<br><span class="label label--lightpink">${nuocngoai}</span>`;
+        }
+    }
+    if (xlabel.length > 0) {
+        if (xlabel.includes('Xả') || xlabel.includes('Bom')) {
+            zzzlabel = 'red';
+        } else if (xlabel.includes('Thân')) {
+            zzzlabel = 'green';
+        } else if (xlabel.includes('Có')) {
+            zzzlabel = 'orange';
+        } else if (xlabel.includes('Nước')) {
+            zzzlabel = 'lightpink';
+        }
+        if (phone.length > 0) {
+            name = name + `<span class="label label--${zzzlabel}">${xlabel}</span>`;
+        } else {
+            name = name + `<br><span class="label label--${zzzlabel}">${xlabel}</span>`;
+        }
+    }
+    var t = $('#comment_table').DataTable();
+    const oldinfo = t.page.info();
+    const oldTotalRowFilter = oldinfo.recordsDisplay;
+
+    t.row.add([
+        "",
+        name,
+        message,
+        phone,
+        zlabel,
+        "",
+        "",
+        0,
+        data.cmtid,
+        timesort,
+        data.customerInfo.diachi,
+        buttonchat + buttonpage1 + buttonpage2,
+        data.customerInfo.userid,
+        data.timelocal,
+        0,
+        data.customerInfo.fbnamex,
+        0,
+        data.liveid,
+        idpage,
+        note,
+        aka,
+        data.customerInfo.label,
+        data.customerInfo.realfbid,
+        nuocngoai,
+        data.customerInfo.threadid,
+        data.customerInfo.id,
+        data.customerInfo.fbname,
+        data.idx
+    ]).draw(false);
+    const newinfo = t.page.info();
+    const newTotalRowFilter = newinfo.recordsDisplay;
+    const focusedCell = t.cell({ focused: true });
+    const filtertext = $('#comment_table_filter input').val();
+    if (focusedCell.any() && filtertext == '') {
+        t.keys.move('down');
+    } else {
+        if (filtertext != '' && oldTotalRowFilter < newTotalRowFilter) {
+            t.keys.move('down');
+        }
+    }
+});
+
+let currentPostId = null;
+
+function UpdateLiveStatusBadge(status) {
+    var badge = document.getElementById("liveStatusBadge");
+    if (!badge) return;
+    if (status === 'LIVE') {
+        badge.className = 'badge bg-danger live-badge-pulse';
+        badge.innerHTML = 'Live';
+    } else if (status) {
+        badge.className = 'badge bg-secondary';
+        badge.innerHTML = 'Kết thúc';
+    } else {
+        badge.className = 'badge bg-light text-dark border';
+        badge.innerHTML = 'Chưa rõ trạng thái';
+    }
+}
+
+function JoinLiveRoom(liveid) {
+    if (!liveid || currentPostId === liveid) return;
+    if (currentPostId) {
+        socket.emit('leave-live-stream', currentPostId);
+    }
+    socket.emit('join-live-stream', liveid);
+    currentPostId = liveid;
+    console.log(`Đã kết nối realtime cho live ID: ${liveid}`);
+}
+
+function LeaveLiveRoom() {
+    if (currentPostId) {
+        socket.emit('leave-live-stream', currentPostId);
+        console.log(`Đã ngắt kết nối realtime cho live ID: ${currentPostId}`);
+        currentPostId = null;
+    }
+}
+
+async function UpdatePhone() {
+    var table = $('#comment_table').DataTable();
+    var data = table.row(getRowIdx()).data();
+    var phone = '';
+    var oldphone = data[3];
+    var userid = data[12];
+    var diachi = data[10];
+    var realfbid = data[22];
+    var liveid = data[17];
+
+    var regexp = "0[98735]([0-9]|\s|-|\.){8,12}";
+    let phone_numbers = [];
+    phone_numbers = [...data[2].matchAll(regexp)];
+    for (const match of phone_numbers) {
+        phone = match[0].replaceAll(' ', '').replace(/\D/g, '');
+    }
+    if (phone.length < 10 || (oldphone.length > 1 && phone.includes(oldphone.slice(2, -2)))) {
+        return;
+    }
+
+    if (phone.length > 0) {
+        if (oldphone.length < 9) {
+            SendWelcome();
+        }
+        await sendPhoneUpdate(userid, phone, realfbid, diachi, liveid);
+    }
+}
+
+async function sendPhoneUpdate(userid, phone, realfbid, diachi, liveid) {
+    try {
+        const response = await fetch("/updatephone", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ userid: userid, phone: phone, realfbid: realfbid, liveid: liveid, socketid: socket.id }),
+        });
+
+        const data = await response.json();
+
+        if (data.data && data.data.hasOwnProperty('name')) {
+            let labelx = '';
+            if (data.data.bom != 'none') {
+                if (data.data.bom.includes('Có')) {
+                    labelx = ' - <span class="badge bg-warning">' + data.data.bom + '</span>';
+                } else if (data.data.bom.includes('hàng')) {
+                    labelx = ' - <span class="badge bg-danger">' + data.data.bom + '</span>';
+                }
+                ShowAKA('Trùng SĐT', 'Số điện thoại này được dùng bởi: ', data.data.name + labelx, diachi, data.data.list);
+            } else {
+                ShowAKA('Trùng SĐT', 'Số điện thoại này được dùng bởi: ', data.data.name, diachi, data.data.list);
+            }
+        }
+    } catch (error) {
+        console.error('Error:', error);
+    }
+}
+
+socket.on('new-phone', (data) => {
+    var table = $('#comment_table').DataTable();
+    var updated = false;
+    table.rows().every(function (rowIdx) {
+        if (table.cell(rowIdx, 12).data() == data.userid) {
+            updated = true;
+            table.cell(rowIdx, 3).data(data.phone);
+            if (!table.cell(rowIdx, 1).data().includes(data.phone)) {
+                table.cell(rowIdx, 1).data(table.cell(rowIdx, 1).data() + `<br><span class="label label--pink">` + data.phone + `<a href="tel:${data.phone}">📱</a></span>`);
+            }
+        }
+    }).draw(false);
+    if (updated) {
+        ShowCenterToast('success', 'Đã cập nhật số điện thoại: ' + data.phone, 3000);
+    }
+});
+
+
+function highAndLow(numbers) {
+    var arr = numbers.split(",").map(Number);
+    var largest = arr[0];
+    for (var i = 1; i < arr.length; i++) {
+        if (arr[i] > largest) {
+            largest = arr[i];
+        }
+    }
+    return largest;
+}
+async function Chotxxx(buttongia) {
+    var table = $('#comment_table').DataTable();
+    if (table.rows().count() === 0) {
+        return;
+    }
+    var gia = 0;
+    var zz = table.column(16).data().toArray();
+    var luotincuoi = highAndLow(zz.toString().replaceAll('&nbsp;', '0'));
+    var luotcuoi = 0;
+    var luotcuoilive = 0;
+    var data = table.row(getRowIdx()).data();
+    var xx = data[16];
+    var realid = data[22];
+    var id = data[25];
+    var slchot = document.getElementById("slchot").value;
+    if (slchot > 20) {
+        ShowCenterToast('danger', 'Số lượng chốt quá lớn! ', 3000);
+        return;
+    }
+    if (xx == '&nbsp;') {
+        xx = 0;
+    }
+    if (xx === 0) {
+        luotcuoi = luotincuoi + 1;
+        luotcuoilive = luotcuoi;
+    } else {
+        luotcuoi = parseInt(data[16]);
+        luotcuoilive = luotincuoi;
+    }
+    let str = document.getElementById(data[17]).innerHTML;
+    document.getElementById(data[17]).innerHTML = str.split('-')[0] + '- ' + luotcuoilive;
+    UpdatePhone();
+    if (realid.length < 1) {
+        UpdateComment(0);
+    }
+    if (buttongia > 0) {
+        gia = buttongia;
+        document.getElementById("gia").value = buttongia;
+    } else {
+        gia = document.getElementById("gia").value;
+    }
+    var name = data[1];
+    var avabase64 = '';
+    toDataUrl(`/images/ava/${data[12]}.jpg`, function (myBase64) {
+        avabase64 = myBase64;
+    });
+    await WaitUntil(_ => avabase64 != '');
+    name = name.replace(`/images/ava/${data[12]}.jpg`, avabase64);
+    var message = data[2];
+    var phone = data[3];
+    var diachi = data[10];
+    var commentid = data[8];
+    var note = document.getElementById("livenote").value;
+    $phone = ``;
+    $diachi = ``;
+    $note = ``;
+    var xgia = ``;
+    if (gia.toString().length > 0) {
+        xgia = `<tr>
+                    <td><p style="font-size:17px;"><svg width="20px" height="20px" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="bi bi-cash"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <path d="M8 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"></path> <path d="M0 4a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V4zm3 0a2 2 0 0 1-2 2v4a2 2 0 0 1 2 2h10a2 2 0 0 1 2-2V6a2 2 0 0 1-2-2H3z"></path> </g></svg> • ${gia.toString().replace(/^0+/, '').replaceAll("c", "")}.000đ</p></td>
+                </tr>`;
+    }
+    if (phone.length > 0) {
+        $phone = `<tr>
+                    <td><p style="font-size:17px; font-weight: bold;"><svg width="20px" height="20px" viewBox="0 0 24.00 24.00" fill="none" xmlns="http://www.w3.org/2000/svg"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <rect x="5.75" y="1.75" width="12.5" height="20.5" rx="1.75" stroke="currentColor" stroke-width="1.512"></rect> <path d="M12 19.25C12.6904 19.25 13.25 18.6904 13.25 18C13.25 17.3096 12.6904 16.75 12 16.75C11.3096 16.75 10.75 17.3096 10.75 18C10.75 18.6904 11.3096 19.25 12 19.25Z" fill="currentColor" stroke="currentColor" stroke-width="1.512"></path> </g></svg>• ${phone}</p></td>
+                </tr>`;
+    }
+    if (note.length > 0) {
+        $note = `<tr>
+                    <td><b><font size='1.5'><center>${note}</center></font></b></td>
+                </tr>`;
+    }
+    if (diachi.length > 0) {
+        $diachi = `<tr>
+                    <td><p style="font-size:15px"><i class="fas fa-comment"></i> • ${diachi}</p></td>
+                </tr>`;
+    }
+
+    $html = `<table>
+                <tr>
+                    <td><p class="lead"><b>Áo Dài Gia Bảo </b>• ${ToDay()}<b> • ${luotcuoi}</b></p></td>
+                </tr>
+                <tr>
+                    <td style="display: flex; align-items: center; justify-content: space-between;">
+                        <p style="font-size:22px; font-weight: bold;">${name.replace('<img ', '<img class="top"').replace('class="avatar"', '').split('<br>')[0]}</p>
+                        <!--<img src="https://api.qrserver.com/v1/create-qr-code/?size=50x50&data=${id}" style="width: 50px; height: 50px;">-->
+                    </td>
+                </tr>
+
+                `+ $phone + ` 
+                <tr>
+                    <td><p style="font-size:17px;"><svg width="16px" height="16px" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <g clip-path="url(#clip0_901_991)"> <path d="M9 17.0001H15M9 9.0001H23M9 13.0001H23M22 23.004C22 23.004 28 29.006 29 30.006C30.609 31.616 31 31.008 31 30.008V2.008C31 1.456 30.553 1 30 1H2C1.447 1 1 1.456 1 2.008V24.008C1 24.561 1.447 25 2 25H20" stroke="currentColor" stroke-width="1.6640000000000001" stroke-linecap="round" stroke-linejoin="round"></path> </g> <defs> <clipPath id="clip0_901_991"> <rect width="32" height="32" fill="white"></rect> </clipPath> </defs> </g></svg> • ${message}</p></td>
+                </tr>
+                ${xgia}
+                <tr><td><center><img src="${IDToBarcode(id, 20)}"/></center></td></tr>
+                `+ $note + `
+                </table>
+                `;
+    //<img src="${IDToBarcode(id)}"/>
+    //${MakeQRCode(id,'Numeric')}
+    for (var k = 0; k < slchot; k++) {
+        PrintLabelx($html);
+    }
+    table.rows().every(function (rowIdx, tableLoop, rowLoop) {
+        if (table.cell(rowIdx, 8).data() == data[8]) {
+            table.cell(rowIdx, 5).data("<center><span class='badge bg-primary'>CHỐT</span></center>");
+            table.cell(rowIdx, 6).data("<center><span class='badge bg-success'>" + gia + "</span></center>");
+            table.cell(rowIdx, 16).data(luotcuoi);
+        }
+    }).draw(false);
+    document.getElementById("slchot").value = 1;
+    $.ajax({
+        url: "/updatechot",
+        method: "POST",
+        data: { commentid: commentid, chot: "CHỐT", gia: gia, luotincuoi: luotcuoi, liveid: data[17], luotcuoilive: luotcuoilive, slchot: slchot },
+        dataType: "JSON",
+        success: function (data) { }
+    });
+};
+
+var pendingChot = {};
+
+async function Chot(buttongia) {
+    var table = $('#comment_table').DataTable();
+    if (table.rows().count() === 0) return;
+
+    var data = table.row(getRowIdx()).data();
+    if (!data) return;
+
+    var commentid = data[8];
+    var liveid = data[17];
+    if (pendingChot[commentid]) {
+        return;
+    }
+
+    var id = data[25];
+    var realid = data[22];
+    var rawNameHtml = data[1];
+    var avatarUrl = $('<div>').html(rawNameHtml).find('img').attr('src') || "";
+
+    if (avatarUrl && avatarUrl.startsWith('/')) {
+        avatarUrl = window.location.origin + avatarUrl;
+    }
+
+    var slchot = parseInt(document.getElementById("slchot").value) || 1;
+    document.getElementById("slchot").value = 1;
+    var gia = buttongia > 0 ? buttongia : document.getElementById("gia").value;
+    var cleanPrice = gia.toString().replace(/[^0-9]/g, "");
+    UpdatePhone();
+    if (realid.length < 1) {
+        UpdateComment(0);
+    }
+
+    table.rows().every(function (rowIdx) {
+        if (table.cell(rowIdx, 8).data() == commentid) {
+            table.cell(rowIdx, 5).data("<center><span class='badge bg-secondary'>Đang chốt...</span></center>");
+        }
+    }).draw(false);
+
+    pendingChot[commentid] = {
+        liveid: liveid,
+        id: id,
+        rawNameHtml: rawNameHtml,
+        avatarUrl: avatarUrl,
+        phone: data[3],
+        comment: data[2],
+        note: document.getElementById("livenote").value,
+        address: data[10],
+        region: data[23],
+        gia: cleanPrice,
+        slchot: slchot,
+        timeoutId: setTimeout(function () {
+            FailChot(commentid, 'Không nhận được phản hồi từ máy chủ, vui lòng thử lại.');
+        }, 10000)
+    };
+
+    $.ajax({
+        url: "/updatechot",
+        method: "POST",
+        data: { commentid: commentid, chot: "CHỐT", gia: gia, liveid: liveid, slchot: slchot, socketid: socket.id },
+        dataType: "JSON",
+        error: function () {
+            FailChot(commentid, 'Gửi yêu cầu chốt đơn thất bại.');
+        }
+    });
+}
+
+function FailChot(commentid, message) {
+    if (!pendingChot[commentid]) return;
+    clearTimeout(pendingChot[commentid].timeoutId);
+    delete pendingChot[commentid];
+    var table = $('#comment_table').DataTable();
+    table.rows().every(function (rowIdx) {
+        if (table.cell(rowIdx, 8).data() == commentid) {
+            table.cell(rowIdx, 5).data("<center><span class='badge bg-danger'>Lỗi, thử lại</span></center>");
+        }
+    }).draw(false);
+    ShowToast('danger', `<i class="bi bi-x-octagon"></i>`, 'Chốt đơn', message, 4000);
+}
+
+socket.on('new-chot', async (data) => {
+    var table = $('#comment_table').DataTable();
+    var luotcuoilive = data.luotcuoilive;
+
+    let slchottext = '';
+    if (data.slchot > 1) {
+        slchottext = `<span class='tag tag-purple tag-pulse'>x ${data.slchot}</span>`;
+    }
+
+    table.rows().every(function (rowIdx) {
+        if (table.cell(rowIdx, 8).data() == data.cid) {
+            table.cell(rowIdx, 5).data("<center><span class='badge bg-primary'>CHỐT</span></center>");
+            table.cell(rowIdx, 6).data(`<center><span class='tag tag-green tag-pulse'>💰${data.gia}</span>${slchottext}${XaBadgeHtml()}</center>`);
+            table.cell(rowIdx, 16).data(luotcuoilive);
+        }
+    }).draw(false);
+
+    let liveElement = document.getElementById(data.liveid);
+    if (liveElement) {
+        liveElement.innerHTML = liveElement.innerHTML.split('-')[0] + '- ' + luotcuoilive;
+    }
+
+    var pending = pendingChot[data.cid];
+    if (!pending) return;
+    clearTimeout(pending.timeoutId);
+    delete pendingChot[data.cid];
+
+    var printData = {
+        date: ToDay(),
+        luotcuoi: luotcuoilive,
+        name: pending.rawNameHtml.split('<br>')[0].replace(/<[^>]*>?/gm, '').trim(),
+        phone: pending.phone ? pending.phone.replace(/<[^>]*>?/gm, '').trim() : "",
+        comment: pending.comment ? pending.comment.replace(/<[^>]*>?/gm, '').trim() : "",
+        gia: pending.gia,
+        id: pending.id,
+        avabase64: pending.avatarUrl,
+        note: pending.note,
+        address: pending.address,
+        region: pending.region
+    };
+
+    const resPdf = await fetch('/api/generate-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(printData)
+    }).then(r => r.json());
+
+    if (resPdf.success) {
+        for (var k = 0; k < pending.slchot; k++) {
+            fetch('/print-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId: window.CURRENT_USER_ID,
+                    type: 'pdf',
+                    content: resPdf.pdfBase64,
+                    config: { printerName: "XP-80C", widthMm: 80, heightMm: 297, marginTopPx: -5 }
+                })
+            });
+        }
+    }
+});
+
+
+function XaBadgeHtml() {
+    return `<span class='tag tag-red tag-pulse badge-xa-gia' role='button' style='cursor:pointer;margin-left:4px;' title='Xả hàng đơn này'>Xả</span>`;
+}
+
+var xaPending = null;
+
+function EnsureXaConfirmModal() {
+    if (document.getElementById('modalxaconfirm')) return;
+    document.body.insertAdjacentHTML('beforeend',
+        `<div class="modal fade" tabindex="-1" id="modalxaconfirm" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+      <div class="modal-content rounded-4 shadow">
+        <div class="modal-body text-center p-4">
+          <h5 class="fw-bold mb-2">Xác nhận xả hàng?</h5>
+          <div id="xaconfirmtext" class="mb-3 text-muted"></div>
+          <div class="d-flex justify-content-center gap-2">
+            <button type="button" class="btn btn-light" data-bs-dismiss="modal">Hủy</button>
+            <button type="button" class="btn btn-danger" id="xaconfirmbtn">Xả</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>`);
+    document.getElementById('xaconfirmbtn').addEventListener('click', function () {
+        if (xaPending) {
+            var p = xaPending;
+            xaPending = null;
+            XaHang(p.commentid, p.liveid);
+        }
+        $('#modalxaconfirm').modal('hide');
+    });
+    $('#modalxaconfirm').on('shown.bs.modal', function () {
+        document.getElementById('xaconfirmbtn').focus();
+    });
+    $('#modalxaconfirm').on('hidden.bs.modal', function () {
+        xaPending = null;
+    });
+}
+
+document.addEventListener('click', function (e) {
+    var badge = e.target.closest('#comment_table tbody .badge-xa-gia');
+    if (!badge) return;
+    e.stopPropagation();
+    var tr = badge.closest('tr');
+    var row = $('#comment_table').DataTable().row(tr);
+    var data = row.data();
+    if (!data) return;
+    var name = $('<div>').html(data[1]).contents().filter(function () { return this.nodeType === 3; }).first().text().trim();
+    var gia = $('<div>').html(data[6]).find('.tag-green').text().trim();
+    var sl = $('<div>').html(data[6]).find('.tag-purple').text().trim();
+    xaPending = { commentid: data[8], liveid: data[17] };
+    EnsureXaConfirmModal();
+    document.getElementById('xaconfirmtext').textContent = [name, gia, sl].filter(Boolean).join(' ');
+    $('#modalxaconfirm').modal('show');
+}, true);
+
+function XaHang(cid, lid) {
+    var table = $('#comment_table').DataTable();
+    var commentid = cid;
+    var liveid = lid;
+    if (!commentid) {
+        var data = table.row(getRowIdx()).data();
+        commentid = data[8];
+        liveid = data[17];
+    }
+    table.rows().every(function (rowIdx, tableLoop, rowLoop) {
+        if (table.cell(rowIdx, 8).data() == commentid) {
+            table.cell(rowIdx, 5).data("<center><span class='badge bg-secondary'>Đang xả...</span></center>");
+        }
+    }).draw(false);
+    $.ajax({
+        url: "/updatexa",
+        method: "POST",
+        data: { commentid: commentid, chot: "XẢ", liveid: liveid, socketid: socket.id },
+        dataType: "JSON",
+        error: function () {
+            ShowToast('danger', `<i class="bi bi-x-octagon"></i>`, 'Xả hàng', 'Gửi yêu cầu xả hàng thất bại, vui lòng thử lại.', 4000);
+        }
+    });
+}
+
+socket.on('new-xa', (data) => {
+    var table = $('#comment_table').DataTable();
+    table.rows().every(function (rowIdx) {
+        if (table.cell(rowIdx, 8).data() == data.cid) {
+            table.cell(rowIdx, 5).data("<center><span class='badge bg-danger'>XẢ</span></center>");
+            table.cell(rowIdx, 6).data("");
+        }
+    }).draw(false);
+});
+
+function IsRealCommentId(cid) {
+    return typeof cid === 'string' && (cid.match(/_/g) || []).length === 1;
+}
+
+function SendWelcome() {
+    var d = $('#comment_table').DataTable().row(getRowIdx()).data();
+    if (!d || !IsRealCommentId(String(d[8]))) {
+        return;
+    }
+    SendMessage("Chào chị, để gửi hàng nhanh nhất, em xin địa chỉ để khi chốt hàng em xác nhận đơn và chuyển hàng liền cho chị ạ. Em cám ơn!");
+}
+
+function SendMessage(chat) {
+    var data = $('#comment_table').DataTable().row(getRowIdx()).data();
+    var commentid = data[8];
+    var userid = data[12];//neu ko co thi dung streamlabs id
+    var pageid = data[18];
+    $.ajax({
+        url: "/replycomment",
+        method: "POST",
+        data: { commentid: commentid, pageid: pageid, userid: userid, chat: chat },
+        dataType: "JSON",
+        success: function (x) {
+            if (x.data.skipped) { return; }
+            if (x.data.hasOwnProperty('message_id')) {
+                ShowCenterToast('success', 'Đã gửi tin nhắn cho: ' + data[1].split('avatar">').pop().split('<br')[0], 3000);
+            } else {
+                var mess = x.data.error.message;
+                if (mess.includes('Activity already replied to')) {
+                    ShowCenterToast('danger', data[1].split('avatar">').pop().split('<br')[0] + ': Bình luận này đã trả lời rồi.', 3000);
+                } else if (mess.includes('This user cant reply to this activity')) {
+                    ShowCenterToast('danger', data[1].split('avatar">').pop().split('<br')[0] + ': Người này đã chặn bạn nhắn tin.', 3000);
+                } else if (mess.includes('Invalid comment_id parameter') || mess.includes('Thông số comment_id không hợp lệ')) {
+                    ShowCenterToast('danger', data[1].split('avatar">').pop().split('<br')[0] + ': Bình luận đã bị xóa, không thể nhắn tin.', 3000);
+                } else if (mess.includes('Activity replying time expired')) {
+                    ShowCenterToast('danger', data[1].split('avatar">').pop().split('<br')[0] + ': Bình luận này đã quá 7 ngày, không thể nhắn tin', 3000);
+                } else if (mess.includes('The session is invalid because the user logged out')) {
+                    ShowCenterToast('danger', data[1].split('avatar">').pop().split('<br')[0] + ': Lỗi kết nối tài khoản nhắn tin. Vui lòng làm mới kết nối/', 3000);
+                } else {
+                    ShowCenterToast('danger', data[1].split('avatar">').pop().split('<br')[0] + ': ' + mess, 3000);
+                }
+            }
+        }
+    });
+};
+var startTime, endTime;
+
+function start() {
+    startTime = performance.now();
+};
+
+function end() {
+    endTime = performance.now();
+    var timeDiff = endTime - startTime;
+    return timeDiff.toFixed(0);
+}
+document.addEventListener('DOMContentLoaded', (event) => {
+    const holdToastCheckbox = document.getElementById('holdToast');
+    if (holdToastCheckbox && lockToast === 1) {
+        holdToastCheckbox.checked = true;
+    }
+});
+
+var holdToastEl = document.getElementById('holdToast');
+if (holdToastEl) {
+    holdToastEl.addEventListener('change', function () {
+        if (this.checked) {
+            lockToast = 1;
+        } else {
+            lockToast = 0;
+        }
+    });
+}
+
+async function handlePrintLabel(rowElement) {
+    var data = $('#comment_table').DataTable().row(rowElement).data();
+    if (!data) return;
+
+    var rawNameHtml = data[1];
+    var avatarUrl = $('<div>').html(rawNameHtml).find('img').attr('src') || "";
+
+    if (avatarUrl && avatarUrl.startsWith('/')) {
+        avatarUrl = window.location.origin + avatarUrl;
+    }
+
+    var printData = {
+        date: ToDay(),
+        name: rawNameHtml.split('<br>')[0].replace(/<[^>]*>?/gm, '').trim(),
+        phone: data[3] ? data[3].replace(/<[^>]*>?/gm, '').trim() : "",
+        comment: data[2] ? data[2].replace(/<[^>]*>?/gm, '').trim() : "",
+        gia: data[6] ? data[6].replace(/[^0-9]/g, "") : "0",
+        id: data[25],
+        avabase64: avatarUrl,
+        address: data[10],
+        region: data[23]
+    };
+
+    const resPdf = await fetch('/api/generate-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(printData)
+    }).then(r => r.json());
+
+    if (resPdf.success) {
+        fetch('/print-order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                userId: window.CURRENT_USER_ID,
+                type: 'pdf',
+                content: resPdf.pdfBase64,
+                config: { printerName: "XP-80C", widthMm: 80, heightMm: 297, marginTopPx: -5 }
+            })
+        }).then(r => r.json()).then(res => {
+            //if (res.success) console.log("In thành công!");
+        });
+    }
+}
+
+(function () {
+    document.addEventListener('dblclick', function (e) {
+        var tr = e.target.closest('#comment_table tbody tr');
+        if (tr) handlePrintLabel(tr);
+    }, true);
+    /*
+    var lastTapComment = 0;
+    document.addEventListener('touchend', function (e) {
+        var tr = e.target.closest('#comment_table tbody tr');
+        if (!tr) return;
+        var currentTime = new Date().getTime();
+        var tapLength = currentTime - lastTapComment;
+        if (tapLength < 300 && tapLength > 0) {
+            e.preventDefault();
+            handlePrintLabel(tr);
+        }
+        lastTapComment = currentTime;
+    }, true);*/
+})();
+
+function ChotMobile() {
+    var giaM = document.getElementById('gia_m');
+    var slM = document.getElementById('slchot_m');
+    var gia = (giaM.value || '').trim();
+    var sl = parseInt(slM.value) || 1;
+    if (gia.length === 0) {
+        ShowCenterToast('danger', 'Vui lòng nhập giá', 2000);
+        giaM.focus();
+        return;
+    }
+    try {
+        getRowIdx();
+    } catch (err) {
+        ShowCenterToast('danger', 'Vui lòng chọn dòng cần chốt', 2000);
+        return;
+    }
+    document.getElementById('gia').value = gia;
+    document.getElementById('slchot').value = sl;
+    Chot();
+    slM.value = 1;
+}
+
+function InitMobileChot() {
+    if (document.getElementById('chot_mobile_box')) return;
+    var anchor = document.getElementById('liveStatusBadge');
+    if (!anchor) return;
+    anchor.insertAdjacentHTML('afterend',
+        `<div id="chot_mobile_box" class="d-md-none ms-2 align-middle" style="display:inline-block;">
+            <div class="d-flex align-items-center gap-1">
+                <input type="text" inputmode="numeric" id="slchot_m" class="form-control form-control-sm text-center" style="width:52px;" placeholder="SL" value="1">
+                <input type="text" inputmode="numeric" id="gia_m" class="form-control form-control-sm text-center" style="width:74px;" placeholder="Giá">
+                <button type="button" id="chot_m_btn" class="btn btn-primary btn-sm">OK</button>
+            </div>
+        </div>`);
+    document.getElementById('chot_m_btn').addEventListener('click', ChotMobile);
+    document.getElementById('gia_m').addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter') {
+            ev.preventDefault();
+            ChotMobile();
+        }
+        ev.stopPropagation();
+    });
+    document.getElementById('slchot_m').addEventListener('keydown', function (ev) {
+        ev.stopPropagation();
+    });
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', InitMobileChot);
+} else {
+    InitMobileChot();
+}

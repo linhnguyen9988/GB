@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+<title>Tra cứu đơn hàng - Áo Dài Gia Bảo</title>
+<meta name="description" content="Tra cứu thông tin đơn hàng và hành trình vận chuyển bằng mã đơn hàng.">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" type="image/png" href="/images/icon/favicon.png" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+
+<style>
+  :root{
+    --gb-primary:#b8860b;
+    --gb-primary-dark:#8a640a;
+    --gb-bg:#f6f4ef;
+  }
+  body{
+    font-family:'Bai Jamjuree', system-ui, -apple-system, sans-serif;
+    background:var(--gb-bg);
+    min-height:100vh;
+  }
+  .gb-topbar{
+    background:linear-gradient(135deg,#1c1c1c,#3a3a3a);
+    color:#fff;
+    padding:18px 0;
+  }
+  .gb-topbar .brand{
+    font-weight:700;
+    letter-spacing:.5px;
+    font-size:1.15rem;
+  }
+  .gb-topbar .brand i{ color:var(--gb-primary); }
+
+  .gb-wrap{
+    max-width:640px;
+    margin:0 auto;
+    padding:20px 14px 60px;
+  }
+
+  .search-card{
+    background:#fff;
+    border-radius:16px;
+    padding:26px 20px;
+    box-shadow:0 6px 24px rgba(0,0,0,.06);
+    border:1px solid #eee;
+  }
+  .search-card h1{
+    font-size:1.25rem;
+    font-weight:700;
+    margin-bottom:6px;
+  }
+  .search-card p.sub{ color:#777; font-size:.9rem; margin-bottom:20px; }
+
+  .code-input{
+    border-radius:12px 0 0 12px !important;
+    text-transform:uppercase;
+    font-weight:600;
+    letter-spacing:.5px;
+  }
+  .btn-gb{
+    background:var(--gb-primary);
+    border-color:var(--gb-primary);
+    color:#fff;
+    font-weight:600;
+  }
+  .btn-gb:hover{ background:var(--gb-primary-dark); border-color:var(--gb-primary-dark); color:#fff; }
+
+  .order-card{
+    background:#fff;
+    border-radius:16px;
+    box-shadow:0 6px 24px rgba(0,0,0,.06);
+    border:1px solid #eee;
+    overflow:hidden;
+    margin-bottom:18px;
+  }
+  .order-card-head{
+    background:linear-gradient(135deg,#1c1c1c,#3a3a3a);
+    color:#fff;
+    padding:16px 18px;
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  .order-code{
+    font-weight:700;
+    font-size:1.05rem;
+    letter-spacing:.5px;
+    cursor:pointer;
+  }
+  .order-code i{ margin-right:4px; }
+  .order-card-body{ padding:18px; }
+
+  .info-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:12px;
+    margin-bottom:6px;
+  }
+  .info-item{
+    background:#faf9f6;
+    border:1px solid #f0ede4;
+    border-radius:10px;
+    padding:10px 12px;
+  }
+  .info-item.full{ grid-column:1 / -1; }
+  .info-item .lbl{ font-size:.7rem; color:#999; text-transform:uppercase; letter-spacing:.4px; margin-bottom:2px; }
+  .info-item .val{ font-weight:600; font-size:.92rem; color:#222; word-break:break-word; }
+  .info-item .val.cod{ color:#1a7a3c; }
+  .info-item a.val{ text-decoration:none; color:#222; }
+
+  .section-title{
+    font-weight:700;
+    font-size:1rem;
+    margin:26px 0 12px;
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .section-title i{ color:var(--gb-primary); }
+
+  /* Timeline */
+  .timeline{ position:relative; padding-left:26px; }
+  .timeline::before{
+    content:'';
+    position:absolute;
+    left:8px; top:6px; bottom:6px;
+    width:2px;
+    background:#e6e1d4;
+  }
+  .tl-item{ position:relative; padding-bottom:22px; }
+  .tl-item:last-child{ padding-bottom:0; }
+  .tl-dot{
+    position:absolute;
+    left:-26px; top:2px;
+    width:18px; height:18px;
+    border-radius:50%;
+    background:#fff;
+    border:3px solid var(--gb-primary);
+  }
+  .tl-item.is-first .tl-dot{ background:var(--gb-primary); }
+  .tl-card{
+    background:#fff;
+    border:1px solid #eee;
+    border-radius:12px;
+    padding:12px 14px;
+    box-shadow:0 2px 8px rgba(0,0,0,.03);
+  }
+  .tl-status{ font-weight:700; font-size:.92rem; color:#222; }
+  .tl-time{ font-size:.78rem; color:#999; margin-top:2px; }
+  .tl-location{ font-size:.85rem; color:#555; margin-top:6px; }
+  .tl-shipper{
+    display:inline-flex; align-items:center; gap:4px;
+    font-size:.78rem; margin-top:6px; color:var(--gb-primary-dark);
+    text-decoration:none; font-weight:600;
+  }
+  .tl-cod{ font-size:.78rem; color:#1a7a3c; margin-top:4px; font-weight:600; }
+  .tl-note{ font-size:.78rem; color:#888; margin-top:4px; }
+
+  .empty-state{ text-align:center; padding:40px 10px; color:#999; }
+  .empty-state i{ font-size:2.4rem; color:#ddd; margin-bottom:10px; display:block; }
+
+  .contact-bar{
+    display:flex; gap:10px; margin-top:22px;
+  }
+  .contact-bar .btn{ flex:1; border-radius:10px; font-weight:600; }
+
+  .other-search{ margin-top:22px; text-align:center; }
+  .other-search a{ color:#777; font-size:.85rem; text-decoration:underline; }
+
+  .toast-copy{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+    background:#222; color:#fff; padding:8px 18px; border-radius:20px;
+    font-size:.85rem; opacity:0; pointer-events:none; transition:opacity .25s;
+    z-index:1050;
+  }
+  .toast-copy.show{ opacity:1; }
+
+  @media (max-width:420px){
+    .info-grid{ grid-template-columns:1fr 1fr; }
+    .order-card-head{ padding:14px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="gb-topbar">
+  <div class="gb-wrap py-0">
+    <div class="brand"><i class="bi bi-shop"></i> Áo Dài Gia Bảo</div>
+  </div>
+</div>
+
+<div class="gb-wrap">
+
+  <% if (mode === 'search' || mode === 'not_found' || mode === 'error') { %>
+    <div class="search-card">
+      <h1><i class="bi bi-truck text-warning"></i> Tra cứu đơn hàng</h1>
+      <p class="sub">Nhập mã đơn hàng để xem thông tin và hành trình vận chuyển. Không cần đăng nhập.</p>
+
+      <% if (errorMessage) { %>
+        <div class="alert alert-danger py-2 small"><i class="bi bi-exclamation-triangle-fill me-1"></i> <%= errorMessage %></div>
+      <% } %>
+
+      <form action="/journey" method="GET">
+        <div class="input-group input-group-lg">
+          <input type="text" name="madonhang" class="form-control code-input" placeholder="VD: DH1234567890"
+                 value="<%= locals.searchedCode || '' %>" autofocus required>
+          <button type="submit" class="btn btn-gb"><i class="bi bi-search"></i></button>
+        </div>
+      </form>
+    </div>
+  <% } %>
+
+  <% if (mode === 'detail' && order) { %>
+
+    <div class="order-card">
+      <div class="order-card-head">
+        <div>
+          <div class="order-code" id="orderCodeText" onclick="copyOrderCode()">
+            <i class="bi bi-upc-scan"></i><%= order.realorderid %>
+            <i class="bi bi-clipboard ms-1" style="font-size:.8rem;opacity:.7"></i>
+          </div>
+          <div style="font-size:.78rem;opacity:.75;margin-top:4px;">
+            <i class="bi bi-calendar-event"></i> <%= order.dateDisplay %>
+          </div>
+        </div>
+        <div class="text-end">
+          <span class="badge bg-<%= order.statusColor %> px-3 py-2" style="font-size:.82rem;">
+            <%= order.statustext || 'Đang xử lý' %>
+          </span>
+          <% if (order.partial) { %>
+            <div class="mt-1"><span class="badge bg-secondary">Hoàn 1 phần</span></div>
+          <% } %>
+        </div>
+      </div>
+
+      <div class="order-card-body">
+        <div class="info-grid">
+          <div class="info-item full">
+            <div class="lbl"><i class="bi bi-person-fill"></i> Người nhận</div>
+            <div class="val"><%= order.name %></div>
+          </div>
+          <div class="info-item full">
+            <div class="lbl"><i class="bi bi-telephone-fill"></i> Điện thoại</div>
+            <a href="tel:<%= order.phone %>" class="val"><%= order.phone %></a>
+          </div>
+          <div class="info-item full">
+            <div class="lbl"><i class="bi bi-geo-alt-fill"></i> Địa chỉ giao hàng</div>
+            <div class="val"><%= order.address || 'Đang cập nhật' %></div>
+          </div>
+          <div class="info-item">
+            <div class="lbl"><i class="bi bi-box-seam"></i> Khối lượng</div>
+            <div class="val"><%= order.kg || 0 %> kg</div>
+          </div>
+          <div class="info-item">
+            <div class="lbl"><i class="bi bi-cash-coin"></i> Thu hộ (COD)</div>
+            <div class="val cod"><%= Number(order.cod || 0).toLocaleString('vi-VN') %> đ</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title"><i class="bi bi-signpost-split-fill"></i> Chi tiết hành trình</div>
+
+    <% if (logs && logs.length > 0) { %>
+      <div class="timeline">
+        <% logs.forEach((log, idx) => { %>
+          <div class="tl-item <%= idx === 0 ? 'is-first' : '' %>">
+            <div class="tl-dot"></div>
+            <div class="tl-card">
+              <div class="tl-status"><%= log.status_name %></div>
+              <div class="tl-time"><i class="bi bi-clock-history"></i> <%= log.timeDisplay %></div>
+              <div class="tl-location"><i class="bi bi-geo-alt"></i> <%= log.location || 'Đang cập nhật...' %></div>
+              <% if (log.employee_name) { %>
+                <a href="tel:<%= log.employee_phone %>" class="tl-shipper">
+                  <i class="bi bi-person-badge"></i> <%= log.employee_name %><% if (log.employee_phone) { %> - <%= log.employee_phone %><% } %>
+                </a>
+              <% } %>
+              <% if (Number(log.money_collection) > 0) { %>
+                <div class="tl-cod"><i class="bi bi-cash"></i> COD: <%= log.codDisplay %> đ</div>
+              <% } %>
+              <% if (log.note) { %>
+                <div class="tl-note"><i class="bi bi-sticky"></i> <%= log.note %></div>
+              <% } %>
+            </div>
+          </div>
+        <% }) %>
+      </div>
+    <% } else { %>
+      <div class="empty-state">
+        <i class="bi bi-hourglass-split"></i>
+        Đơn hàng chưa có cập nhật hành trình chi tiết.<br>
+        Vui lòng quay lại kiểm tra sau.
+      </div>
+    <% } %>
+
+    <div class="contact-bar">
+      <a href="tel:0888118855" class="btn btn-outline-dark"><i class="bi bi-telephone-fill"></i> Gọi shop</a>
+      <button type="button" class="btn btn-gb" onclick="location.reload()"><i class="bi bi-arrow-clockwise"></i> Cập nhật</button>
+    </div>
+
+    <div class="other-search">
+      <a href="/journey"><i class="bi bi-search"></i> Tra cứu đơn hàng khác</a>
+    </div>
+
+  <% } %>
+
+</div>
+
+<div class="toast-copy" id="copyToast">Đã sao chép mã đơn hàng</div>
+
+<script>
+  function copyOrderCode() {
+    const text = "<%= locals.order ? order.realorderid : '' %>";
+    if (!text) return;
+    const showToast = () => {
+      const t = document.getElementById('copyToast');
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 1500);
+    };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(showToast);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); showToast(); } catch (e) {}
+      document.body.removeChild(ta);
+    }
+  }
+</script>
+
+</body>
+</html>
