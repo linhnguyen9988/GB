@@ -24,6 +24,7 @@
   <link rel="stylesheet" href="/css/label.css">
   <link rel="stylesheet" href="/css/pane.css">
   <script src="/js/bs5utils.js"></script>
+  <script src="/js/editorderviettel.js"></script>
   <script src="/js/theme-toggle.js"></script>
 
   <link rel="icon" type="image/png" href="/images/icon/favicon.png" />
@@ -741,6 +742,11 @@
 
         if (status < 105) {
           button += `<button type="button" class="btn btn-outline-danger" onclick="CancelViettelOrder('${realorderid}')" data-bs-dismiss="modal"><i class="bi bi-x-circle"></i> Hủy đơn</button>`;
+        }
+
+        var noEditStatuses = [101, 107, 201, 503, 510, 501, 504, 502, 515, 551];
+        if (d.provider === 'Viettel' && !motphan && !noEditStatuses.includes(Number(status))) {
+          button += `<button type="button" class="btn btn-outline-secondary" onclick="OpenEditViettelOrder('${realorderid}')" data-bs-dismiss="modal"><i class="bi bi-pencil-square"></i> Sửa đơn</button>`;
         }
 
         var partialApproveStatuses = [202, 500, 505, 506, 507, 508, 509, 550];

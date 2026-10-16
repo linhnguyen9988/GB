@@ -16,6 +16,7 @@ import profileController from "../controllers/profileController";
 import registerController from "../controllers/registerController";
 import loginController from "../controllers/loginController";
 const jwtAuth = require('../middleware/jwtAuth');
+const viettelOrderEdit = require('../services/viettelOrderEdit');
 const { webAuth } = jwtAuth;
 import auth from "../validation/authValidation";
 import DBConnection from "../configs/DBConnection";
@@ -235,7 +236,7 @@ async function gracefulShutdown(signal) {
         if (cachedBrowser) {
             await Promise.race([cachedBrowser.close(), new Promise(r => setTimeout(r, 8000))]);
         }
-    } catch (e) { /* bỏ qua */ }
+    } catch (e) {}
     process.exit(0);
 }
 if (!chromeCfg.isWin) {
@@ -996,7 +997,6 @@ let initWebRoutes = (app) => {
     k.fbname AS ten_khach, k.label AS label, k.note AS note, k.id AS khid
 FROM messaging t1
 INNER JOIN (
-    -- Bước này cực quan trọng: Chỉ lấy 100 ID lớn nhất thỏa mãn điều kiện
     SELECT MAX(id) AS max_id
     FROM (
         (SELECT id, recipient AS khach_id
@@ -2652,6 +2652,43 @@ ORDER BY t1.id DESC;
                 error: error.message
             });
         }
+    });
+
+    async function runViettelEdit(res, label, fn) {
+        try {
+            const r = await fn();
+            res.status(r.status).json(r.json);
+        } catch (error) {
+            console.error(label + ':', error.message);
+            res.status(500).json({ success: false, message: 'Lỗi hệ thống, thử lại sau' });
+        }
+    }
+
+    router.post('/getvieteleditinfo', jwtAuth, function (req, res) {
+        runViettelEdit(res, 'Lỗi getvieteleditinfo', () => viettelOrderEdit.getEditInfo({
+            db: DBConnection.promise(),
+            realorderid: req.body.realorderid
+        }));
+    });
+
+    router.post('/checkaddressviettel', jwtAuth, function (req, res) {
+        runViettelEdit(res, 'Lỗi checkaddressviettel', () => viettelOrderEdit.checkAddress({
+            db: DBConnection.promise(),
+            axios,
+            address: req.body.address,
+            preprocess: preprocessForViettel
+        }));
+    });
+
+    router.post('/editorderviettel', jwtAuth, function (req, res) {
+        const b = req.body || {};
+        runViettelEdit(res, 'Lỗi editorderviettel', () => viettelOrderEdit.editOrder({
+            db: DBConnection.promise(),
+            axios,
+            realorderid: b.realorderid,
+            input: { name: b.name, phone: b.phone, address: b.address, cod: b.cod, kg: b.kg, note: b.note },
+            preprocess: preprocessForViettel
+        }));
     });
 
     router.post('/printviettelmanual', function (req, res) {
