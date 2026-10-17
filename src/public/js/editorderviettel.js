@@ -21,6 +21,14 @@
     function errMsg(xhr, fallback) {
         return (xhr && xhr.responseJSON && xhr.responseJSON.message) || fallback;
     }
+    // Cho biết lỗi đến từ đâu: Viettel từ chối / không kết nối được Viettel / lỗi của app mình.
+    function errSource(xhr) {
+        var j = (xhr && xhr.responseJSON) || {};
+        if (j.source === 'viettel') return 'Viettel từ chối: ';
+        if (j.source === 'network') return 'Lỗi kết nối tới Viettel: ';
+        if (j.source === 'app') return 'Lỗi của app' + (j.ref ? ' (mã tra log: ' + j.ref + ')' : '') + ': ';
+        return '';
+    }
 
     var SKELETON =
         '<div class="modal fade" id="modalEditViettel" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">' +
@@ -229,7 +237,7 @@
                     bootstrap.Modal.getInstance(el).hide();
                 },
                 error: function (xhr) {
-                    var m = errMsg(xhr, 'Không thể lưu, thử lại sau.');
+                    var m = errSource(xhr) + errMsg(xhr, 'Không thể lưu, thử lại sau.');
                     showError(m);
                     st.busy = false; btn.innerHTML = html; refresh();
                 }

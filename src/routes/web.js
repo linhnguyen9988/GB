@@ -2547,12 +2547,12 @@ ORDER BY t1.id DESC;
         res.sendStatus(200);
     });
     //end FB webhooks
-    router.post('/getvietteltoken', function (req, res) {
+    router.post('/getvietteltoken', jwtAuth, function (req, res) {
         GetViettelToken();
         res.sendStatus(200);
     });
 
-    router.post('/huydonviettel', async function (req, res) {
+    router.post('/huydonviettel', jwtAuth, async function (req, res) {
         const id = req.body.realorderid;
         const xoa = req.body.xoa;
         let type = (xoa > 0) ? 11 : 4; // 4 là hủy, 11 là xóa
@@ -2599,7 +2599,7 @@ ORDER BY t1.id DESC;
         }
     });
 
-    router.post('/capnhatdonviettel', async function (req, res) {
+    router.post('/capnhatdonviettel', jwtAuth, async function (req, res) {
         const id = req.body.realorderid;
         const type = parseInt(req.body.type, 10);
         const note = (req.body.note || '').toString().substring(0, 150);
@@ -2659,8 +2659,9 @@ ORDER BY t1.id DESC;
             const r = await fn();
             res.status(r.status).json(r.json);
         } catch (error) {
-            console.error(label + ':', error.message);
-            res.status(500).json({ success: false, message: 'Lỗi hệ thống, thử lại sau' });
+            const ref = Date.now().toString(36);
+            console.error(label + ' [' + ref + ']:', error && error.stack ? error.stack : error);
+            res.status(500).json({ success: false, source: 'app', ref, message: 'Lỗi hệ thống của app, thử lại sau' });
         }
     }
 
@@ -2697,7 +2698,7 @@ ORDER BY t1.id DESC;
         res.sendStatus(200);
     });
 
-    router.post('/detaildonhang', function (req, res) {
+    router.post('/detaildonhang', jwtAuth, function (req, res) {
         var realorderid = req.body.realorderid;
         DBConnection.query(
             `SELECT lendon.*, khachhang.pageid AS pageid
@@ -2894,7 +2895,8 @@ ORDER BY t1.id DESC;
     });
 
     router.post('/createorderviettel', jwtAuth, async function (req, res) {
-        let { edit, realorderid, fbname, address, phone, cod, kg, khid, userid, realfbid } = req.body;
+        let { edit, fbname, address, phone, cod, kg, khid, userid, realfbid } = req.body;
+        if (edit == 1) return res.json({ error: 'Chức năng sửa đơn đã chuyển sang /editorderviettel' });
         let kgreal = kg;
         if (address.length < 10) return res.json({ error: 'Chưa có địa chỉ' });
 
@@ -2920,10 +2922,8 @@ ORDER BY t1.id DESC;
             if (!tokenData || tokenData.length === 0) return res.json({ error: 'Lỗi: Không có token' });
 
             const { token, userid: cusid, senderphone } = tokenData[0];
-            let matuquan = (edit == 1) ? realorderid : CreateOrderID();
-            let apiUrl = (edit == 1)
-                ? 'https://partner.viettelpost.vn/v2/order/edit'
-                : 'https://partner.viettelpost.vn/v2/order/createOrder';
+            const matuquan = CreateOrderID();
+            const apiUrl = 'https://partner.viettelpost.vn/v2/order/createOrder';
 
             const response = await axios.post(apiUrl, {
                 "ORDER_NUMBER": matuquan,
@@ -2988,14 +2988,8 @@ ORDER BY t1.id DESC;
             const timenow = new Date().toLocaleString("vi-VN", { timeZone: "Asia/Saigon" });
             const now = new Date();
             const userId = req.user.id;
-            let sql = "";
-            if (edit != 1) {
-                sql = SqlString.format('INSERT INTO lendon (name,phone,address,cod,kg,status,date,orderid,realorderid,khid,userid,realfbid,time,provider,useraccountid,sortcode) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);',
-                    [fbname, phone, address, cod, kgreal, 1, timenow, matuquan, finalRealOrderId, khid, userid, realfbid, now, 'Viettel', userId, sortCode]);//dung userid
-            } else {
-                sql = SqlString.format(`UPDATE lendon SET name=?,phone=?,address=?,cod=?,kg=?,status=?,date=?,orderid=?,realorderid=?,khid=?,provider='Viettel',sortcode=? WHERE realorderid=?;`,
-                    [fbname, phone, address, cod, kgreal, 1, timenow, matuquan, finalRealOrderId, khid, sortCode, finalRealOrderId]);
-            }
+            const sql = SqlString.format('INSERT INTO lendon (name,phone,address,cod,kg,status,date,orderid,realorderid,khid,userid,realfbid,time,provider,useraccountid,sortcode) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);',
+                [fbname, phone, address, cod, kgreal, 1, timenow, matuquan, finalRealOrderId, khid, userid, realfbid, now, 'Viettel', userId, sortCode]);//dung userid
 
             await new Promise((resolve) => DBConnection.query(sql, resolve));
 

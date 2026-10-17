@@ -225,6 +225,21 @@ function buildEditPayload(p) {
     };
 }
 
+function redactPayload(p) {
+    const o = Object.assign({}, p);
+    ['RECEIVER_FULLNAME', 'RECEIVER_ADDRESS', 'RECEIVER_PHONE', 'SENDER_PHONE'].forEach(k => {
+        if (o[k] !== undefined) o[k] = '***(' + String(o[k]).length + ' ký tự)';
+    });
+    return o;
+}
+
+function logViettelFailure(orderId, kind, info, payload, ctx) {
+    let txt;
+    try { txt = JSON.stringify(info); } catch (e) { txt = String(info); }
+    console.error('[editOrder] ' + orderId + ' Viettel lỗi (' + kind + ')' + (ctx ? ' [' + ctx + ']' : '') + ': ' + String(txt).slice(0, 2000));
+    console.error('[editOrder] ' + orderId + ' payload đã gửi (đã che PII): ' + JSON.stringify(redactPayload(payload)));
+}
+
 async function getViettelAuth(db) {
     const [rows] = await db.query('SELECT * FROM vietteltoken');
     if (!rows || rows.length === 0) return null;
@@ -371,9 +386,11 @@ async function editOrder({ db, axios, realorderid, input, preprocess }) {
     }
 
     const payload = buildEditPayload({
-        orderNumber: ctx.order.realorderid, cusid: auth.cusid, senderphone: auth.senderphone,
+        orderNumber: String(ctx.order.realorderid), cusid: auth.cusid, senderphone: auth.senderphone,
         values: v.values, receiverAddress
     });
+    const failCtx = 'giai đoạn=' + policy.level + ', statuscode=' + (ctx.order.statuscode === null || ctx.order.statuscode === undefined ? 'NULL' : ctx.order.statuscode) +
+        ', trường đổi=' + v.changed.join('+');
 
     let body;
     try {
@@ -381,11 +398,17 @@ async function editOrder({ db, axios, realorderid, input, preprocess }) {
             { headers: { 'Content-Type': 'application/json', token: auth.token }, timeout: 20000 });
         body = resp.data;
     } catch (e) {
-        const msg = (e.response && e.response.data && e.response.data.message) || 'Lỗi kết nối Viettel';
-        return fail(502, msg);
+        const httpStatus = e.response ? e.response.status : null;
+        const data = e.response ? e.response.data : null;
+        logViettelFailure(id, 'HTTP ' + (httpStatus || e.code || 'không phản hồi'), { httpStatus, code: e.code || null, message: e.message, data }, payload, failCtx);
+        if (data && data.message) return fail(502, String(data.message), { source: 'viettel', httpStatus });
+        const timedOut = e.code === 'ECONNABORTED' || e.code === 'ETIMEDOUT';
+        return fail(502, timedOut ? 'Viettel không phản hồi (quá thời gian chờ)' : 'Không kết nối được tới Viettel', { source: 'network', code: e.code || null, httpStatus });
     }
     if (!body || body.error === true || body.status !== 200) {
-        return fail(422, (body && body.message) || 'Viettel từ chối chỉnh sửa đơn');
+        logViettelFailure(id, 'BODY', body, payload, failCtx);
+        return fail(422, (body && body.message) || 'Viettel từ chối chỉnh sửa đơn',
+            { source: 'viettel', viettelStatus: body && body.status !== undefined ? body.status : null });
     }
 
     const dbSet = {};
@@ -420,5 +443,6 @@ async function editOrder({ db, axios, realorderid, input, preprocess }) {
 module.exports = {
     DEFAULT_ORDER_NOTE, FIELD_LABELS, PHASES,
     resolveEditPolicy, validateEditInput, normalizeOriginal, toViettelWeight, buildEditPayload,
-    resolveAddress, getEditInfo, checkAddress, editOrder
+    resolveAddress, getEditInfo, checkAddress, editOrder,
+    redactPayload, getViettelAuth, loadOrder, hasNoteColumn, VIETTEL_BASE
 };
