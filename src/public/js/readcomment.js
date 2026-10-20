@@ -280,14 +280,23 @@ function OpenMessenger(pageid, realid) {
         UpdateComment(1);
     }
 }
+function isFakeCommentId(id) {
+    return !!id && (String(id).match(/_/g) || []).length !== 1;
+}
 function UpdateComment(openmess) {
     var x = $('#comment_table').DataTable().row(getRowIdx()).data();
+    if (x && isFakeCommentId(x[8])) {
+        if (openmess == 1) ShowToast('warning', `<i class="bi bi-info-circle"></i>&nbsp;`, 'Cập nhật bình luận', 'Bình luận này đến từ tin nhắn nên chưa có ID Facebook để mở hộp thư.', 3500);
+        return;
+    }
     $.ajax({
         url: "/detailcomment",
         method: "POST",
         data: { commentid: x[8], streamlabid: x[22] },
         dataType: "JSON",
         success: function (data) {
+            if (!data.data) { ShowToast('danger', `<i class="bi bi-list-check"></i>&nbsp;`, 'Cập nhật bình luận', data.error || 'Không cập nhật được bình luận', 3000); return; }
+            if (data.data.skipped) { return; }
             if (data.data.hasOwnProperty('error')) {
                 ShowToast('danger', `<i class="bi bi-list-check"></i>&nbsp;`, 'Cập nhật bình luận', data.data.error.message, 3000);
                 return;

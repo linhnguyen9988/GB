@@ -17,6 +17,7 @@ import registerController from "../controllers/registerController";
 import loginController from "../controllers/loginController";
 const jwtAuth = require('../middleware/jwtAuth');
 const viettelOrderEdit = require('../services/viettelOrderEdit');
+const { isFakeCommentId, makeFakeCommentId, REAL_COMMENT_ID_SQL_REGEXP } = require('../services/fakeComment');
 const { webAuth } = jwtAuth;
 import auth from "../validation/authValidation";
 import DBConnection from "../configs/DBConnection";
@@ -566,8 +567,8 @@ const getRecentCommentIdsFromDB = (userId) => {
             console.warn('userId không được cung cấp, không thể truy vấn database.');
             return resolve([]);
         }
-        const sql = `SELECT commentid FROM livecomment WHERE userid = ? ORDER BY idx DESC LIMIT 10`;
-        DBConnection.query(sql, [userId], (err, rows) => {
+        const sql = `SELECT commentid FROM livecomment WHERE userid = ? AND commentid REGEXP ? ORDER BY idx DESC LIMIT 10`;
+        DBConnection.query(sql, [userId, REAL_COMMENT_ID_SQL_REGEXP], (err, rows) => {
             if (err) {
                 console.error('Lỗi khi truy vấn database để lấy comment ID:', err);
                 return reject(err);
@@ -648,7 +649,7 @@ async function tryInsertMessageAsComment(khachhang, sender, text, timemess, page
         const cus = cusRows.length > 0 ? cusRows[0] : null;
         const fbname = cus ? (cus.fbname || 'Khách hàng') : 'Khách hàng';
 
-        const fakeCommentId = `${liveid}_${Date.now()}_${khachhang}`;
+        const fakeCommentId = makeFakeCommentId(liveid, khachhang);
 
         const dateCreate = new Date().toLocaleString("en-US", { timeZone: "Asia/Saigon" });
 
@@ -3835,6 +3836,9 @@ ORDER BY t1.id DESC;
     router.post('/detailcomment', jwtAuth, function (req, res) {
         var cmtid = req.body.commentid;
         var userid = req.body.userid;
+        if (isFakeCommentId(cmtid)) {
+            return res.json({ data: { skipped: true, message: 'Comment ảo, bỏ qua.' } });
+        }
         DBConnection.query(" SELECT token FROM usertoken WHERE id=1",
             async function (error, data) {
                 if (error) {
@@ -3921,7 +3925,7 @@ ORDER BY t1.id DESC;
         var type = '';
         var baseon = '';
         var id = '';
-        if (cmtid && (cmtid.match(/_/g) || []).length !== 1) {
+        if (isFakeCommentId(cmtid)) {
             return res.json({ data: { skipped: true, message: 'Comment ảo, bỏ qua.' } });
         }
         if (cmtid === '' || chat.includes('..')) {

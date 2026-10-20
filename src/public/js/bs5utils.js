@@ -74,6 +74,8 @@ function ShowToast(type,icon,title,content,delay) {
     });
 }
 
+  const MAX_CENTER_TOASTS = 5;
+
   function ShowCenterToast(type, message, delay) {
     delay = delay || 2800;
     const icons = {
@@ -90,8 +92,6 @@ function ShowToast(type,icon,title,content,delay) {
       overlay.className = 'center-toast-overlay';
       document.body.appendChild(overlay);
     }
-    overlay.innerHTML = '';
-
     const el = document.createElement('div');
     el.className = 'center-toast center-toast-' + (icons[type] ? type : 'info');
     el.setAttribute('role', 'alert');
@@ -100,10 +100,11 @@ function ShowToast(type,icon,title,content,delay) {
     el.innerHTML = `<i class="bi ${icon} center-toast-icon"></i><div class="center-toast-body">${message}</div>`;
     overlay.appendChild(el);
 
+    while (overlay.children.length > MAX_CENTER_TOASTS) overlay.firstElementChild.remove();
+
     requestAnimationFrame(() => el.classList.add('show'));
 
-    clearTimeout(overlay._hideTimer);
-    overlay._hideTimer = setTimeout(() => {
+    setTimeout(() => {
       el.classList.remove('show');
       setTimeout(() => el.remove(), 200);
     }, delay);
