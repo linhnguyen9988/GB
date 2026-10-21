@@ -1,5 +1,3 @@
-// Modal sửa đơn Viettel.
-// Quyền sửa từng trường do SERVER quyết định (POST /getvieteleditinfo); file này chỉ hiển thị lại và chặn thao tác sai sớm.
 (function (w) {
     'use strict';
 
@@ -21,7 +19,6 @@
     function errMsg(xhr, fallback) {
         return (xhr && xhr.responseJSON && xhr.responseJSON.message) || fallback;
     }
-    // Cho biết lỗi đến từ đâu: Viettel từ chối / không kết nối được Viettel / lỗi của app mình.
     function errSource(xhr) {
         var j = (xhr && xhr.responseJSON) || {};
         if (j.source === 'viettel') return 'Viettel từ chối: ';
@@ -96,7 +93,6 @@
         var input = {};
         FIELDS.forEach(function (f) { input[f] = q('ev-' + f); });
 
-        // --- giá trị hiện tại ---
         q('ev-realorderid').value = order.realorderid;
         q('ev-orderid').value = order.orderid || '';
         input.name.value = order.name || '';
@@ -106,7 +102,6 @@
         input.kg.value = order.kg === 0 ? '' : String(order.kg);
         input.note.value = order.note || '';
 
-        // --- quyền sửa (do server quyết định) ---
         var box = q('evStatus');
         var statusText = order.statustext || (order.statuscode === null || order.statuscode === undefined ? 'Mới tạo' : 'Mã ' + order.statuscode);
         var editable = FIELDS.filter(function (f) { return policy.fields.indexOf(f) !== -1; });
@@ -130,7 +125,6 @@
         });
         if (policy.fields.indexOf('address') === -1) q('ev-checkaddr').classList.add('d-none');
 
-        // --- helpers trạng thái ---
         function current() {
             return {
                 name: input.name.value.trim(),
@@ -156,7 +150,7 @@
                 return c[f] !== origOf(f);
             });
         }
-        function addressState() { // 'same' | 'verified' | 'pending'
+        function addressState() {
             var a = current().address;
             if (a === origAddr) return 'same';
             return st.checkedAddr === a ? 'verified' : 'pending';
@@ -179,7 +173,6 @@
             if (msg) { e.textContent = msg; e.classList.remove('d-none'); } else { e.classList.add('d-none'); }
         }
 
-        // --- sự kiện ---
         input.cod.addEventListener('input', function () {
             var d = digits(input.cod.value);
             input.cod.value = d ? Number(d).toLocaleString('vi-VN') : '';
@@ -247,7 +240,6 @@
         el.addEventListener('hidden.bs.modal', function () {
             var done = st.done;
             el.remove();
-            // sau khi lưu: mở lại chi tiết đơn để thấy dữ liệu mới
             if (done && typeof w.DetailDonHang === 'function') w.DetailDonHang(order.realorderid);
         });
 

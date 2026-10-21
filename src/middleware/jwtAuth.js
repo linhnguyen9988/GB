@@ -1,10 +1,3 @@
-// middleware/jwtAuth.js
-// Nơi DUY NHẤT xử lý xác thực JWT cho cả web (trình duyệt) và API (app Flutter).
-// - apiAuth: dùng cho API (app Flutter, AJAX) -> không hợp lệ thì trả JSON 401
-// - webAuth: dùng cho trang web (EJS render) -> không hợp lệ thì chuyển hướng /login
-// Cả 2 dùng chung 1 cách đọc token (extractToken) và 1 secret (configs/jwtConfig)
-// để tránh tình trạng token ký ở nơi này không xác thực được ở nơi khác.
-
 const jwt = require('jsonwebtoken');
 const { JWT_SECRET, COOKIE_NAME } = require('../configs/jwtConfig');
 
@@ -46,8 +39,6 @@ function webAuth(req, res, next) {
     }
 }
 
-// Giữ tương thích ngược: các file cũ dùng `const auth = require('.../jwtAuth')`
-// rồi gọi thẳng `auth(req,res,next)` (chính là apiAuth) vẫn hoạt động y hệt như trước.
 module.exports = apiAuth;
 module.exports.apiAuth = apiAuth;
 module.exports.webAuth = webAuth;
