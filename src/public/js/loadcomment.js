@@ -280,7 +280,7 @@ function UpdateComment(openmess) {
             if (!data.data) { ShowCenterToast('danger', data.error || 'Không cập nhật được bình luận', 3000); return; }
             if (data.data.skipped) { return; }
             if (data.data.hasOwnProperty('error')) {
-                ShowCenterToast('danger', data.data.error.message, 3000);
+                ShowCenterToast('danger', IsDeletedCommentError(data.data.error) ? 'Bình luận đã bị xóa.' : data.data.error.message, 3000);
                 return;
             }
             var table = $('#comment_table').DataTable();
@@ -1280,7 +1280,9 @@ socket.on('new-phone', (data) => {
     var updated = false;
     table.rows().every(function (rowIdx) {
         if (table.cell(rowIdx, 12).data() == data.userid) {
-            updated = true;
+            if (table.cell(rowIdx, 3).data() != data.phone) {
+                updated = true;
+            }
             table.cell(rowIdx, 3).data(data.phone);
             if (!table.cell(rowIdx, 1).data().includes(data.phone)) {
                 table.cell(rowIdx, 1).data(table.cell(rowIdx, 1).data() + `<br><span class="label label--pink">` + data.phone + `<a href="tel:${data.phone}">📱</a></span>`);
@@ -1690,8 +1692,8 @@ function SendMessage(chat) {
                     ShowCenterToast('danger', data[1].split('avatar">').pop().split('<br')[0] + ': Bình luận này đã trả lời rồi.', 3000);
                 } else if (mess.includes('This user cant reply to this activity')) {
                     ShowCenterToast('danger', data[1].split('avatar">').pop().split('<br')[0] + ': Người này đã chặn bạn nhắn tin.', 3000);
-                } else if (mess.includes('Invalid comment_id parameter') || mess.includes('Thông số comment_id không hợp lệ')) {
-                    ShowCenterToast('danger', data[1].split('avatar">').pop().split('<br')[0] + ': Bình luận đã bị xóa, không thể nhắn tin.', 3000);
+                } else if (IsDeletedCommentError(x.data.error)) {
+                    ShowCenterToast('danger', data[1].split('avatar">').pop().split('<br')[0] + ': Bình luận đã bị xóa.', 3000);
                 } else if (mess.includes('Activity replying time expired')) {
                     ShowCenterToast('danger', data[1].split('avatar">').pop().split('<br')[0] + ': Bình luận này đã quá 7 ngày, không thể nhắn tin', 3000);
                 } else if (mess.includes('The session is invalid because the user logged out')) {

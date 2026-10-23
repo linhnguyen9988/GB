@@ -298,7 +298,7 @@ function UpdateComment(openmess) {
             if (!data.data) { ShowToast('danger', `<i class="bi bi-list-check"></i>&nbsp;`, 'Cập nhật bình luận', data.error || 'Không cập nhật được bình luận', 3000); return; }
             if (data.data.skipped) { return; }
             if (data.data.hasOwnProperty('error')) {
-                ShowToast('danger', `<i class="bi bi-list-check"></i>&nbsp;`, 'Cập nhật bình luận', data.data.error.message, 3000);
+                ShowToast('danger', `<i class="bi bi-list-check"></i>&nbsp;`, 'Cập nhật bình luận', IsDeletedCommentError(data.data.error) ? 'Bình luận đã bị xóa.' : data.data.error.message, 3000);
                 return;
             }
             var table = $('#comment_table').DataTable();
@@ -1604,8 +1604,8 @@ function SendMessage(chat) {
                     ShowToast('danger', `<img src='${data[1].split('src="').pop().split('"')[0]}' class="rounded me-2" width="30px" height="30px">`, data[1].split('avatar">').pop().split('<br')[0], 'Bình luận này đã trả lời rồi.', 3000);
                 } else if (mess.includes('This user cant reply to this activity')) {
                     ShowToast('danger', `<img src='${data[1].split('src="').pop().split('"')[0]}' class="rounded me-2" width="30px" height="30px">`, data[1].split('avatar">').pop().split('<br')[0], 'Người này đã chặn bạn nhắn tin.', 3000);
-                } else if (mess.includes('Invalid comment_id parameter') || mess.includes('Thông số comment_id không hợp lệ')) {
-                    ShowToast('danger', `<img src='${data[1].split('src="').pop().split('"')[0]}' class="rounded me-2" width="30px" height="30px">`, data[1].split('avatar">').pop().split('<br')[0], 'Bình luận đã bị xóa, không thể nhắn tin.', 3000);
+                } else if (IsDeletedCommentError(x.data.error)) {
+                    ShowToast('danger', `<img src='${data[1].split('src="').pop().split('"')[0]}' class="rounded me-2" width="30px" height="30px">`, data[1].split('avatar">').pop().split('<br')[0], 'Bình luận đã bị xóa.', 3000);
                 } else if (mess.includes('Activity replying time expired')) {
                     ShowToast('danger', `<img src='${data[1].split('src="').pop().split('"')[0]}' class="rounded me-2" width="30px" height="30px">`, data[1].split('avatar">').pop().split('<br')[0], 'Bình luận này đã quá 7 ngày, không thể nhắn tin', 3000);
                 } else if (mess.includes('The session is invalid because the user logged out')) {

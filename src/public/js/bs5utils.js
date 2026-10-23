@@ -109,3 +109,11 @@ function ShowToast(type,icon,title,content,delay) {
       setTimeout(() => el.remove(), 200);
     }, delay);
   }
+
+  // Nhận diện lỗi Graph API khi bình luận đã bị xóa (không tồn tại / không còn truy cập được)
+  function IsDeletedCommentError(err) {
+    if (!err) return false;
+    var msg = (typeof err === 'object') ? String(err.message || '') : String(err);
+    if (typeof err === 'object' && err.error_subcode === 33) return true;
+    return /Invalid comment_id parameter|Thông số comment_id không hợp lệ|Unsupported get request|does not exist, cannot be loaded/i.test(msg);
+  }

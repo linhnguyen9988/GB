@@ -236,15 +236,7 @@ $('#nuocngoaix').change(function () {
 $('#checknote').change(function () {
     OnUpdateUser()
 });
-$('#labelkh').on('change', function () {
-    OnUpdateUser();
-});
-$('#diachi').on('blur', function () {
-    OnUpdateUser();
-});
-$('#note').on('blur', function () {
-    OnUpdateUser();
-});
+
 function GetLabelColor(label) {
     if (!label || label.length === 0) return '';
     if (label.includes('Xả') || label.includes('Bom')) return 'red';
@@ -301,7 +293,8 @@ function OnUpdateUser() {
     if (!isNumeric(kg)) kg = 0;
     if (label == 'Xóa') label = '';
 
-    if ((phone == data[2]) && (diachi == data[3]) && (label == data[4]) && (note == data[6]) && nuocx == 0 && cn == 0) {
+    var oldCheck = (parseInt(data[15]) || 0) ? 1 : 0;
+    if ((phone == data[2]) && (diachi == data[3]) && (label == data[4]) && (note == data[6]) && nn == data[10] && checknote == oldCheck) {
         return;
     }
 
@@ -336,9 +329,9 @@ function OnUpdateUser() {
             this.cell(rowIdx, 4).data(label);
             this.cell(rowIdx, 6).data(note);
             this.cell(rowIdx, 10).data(nn);
-            this.cell(rowIdx, 16).data(checknote);
-            this.cell(rowIdx, 17).data(cod);
-            this.cell(rowIdx, 18).data(kg);
+            this.cell(rowIdx, 15).data(checknote);
+            this.cell(rowIdx, 16).data(cod);
+            this.cell(rowIdx, 17).data(kg);
         }
     });
     table.draw(false);

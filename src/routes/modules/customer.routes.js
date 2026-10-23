@@ -208,11 +208,11 @@ module.exports = function registerCustomerRoutes(router) {
         var socketid = request.body.socketid;
         DBConnection.query(SqlString.format('UPDATE khachhang SET phone=? WHERE userid=?', [phone, userid]));
         const newPhoneData = { userid: userid, phone: phone, liveid: liveid };
-        if (liveid) {
-            io.to(liveid).emit('new-phone', newPhoneData);
-        }
-        if (socketid) {
-            io.to(socketid).emit('new-phone', newPhoneData);
+        if (liveid || socketid) {
+            let target = io;
+            if (liveid) target = target.to(liveid);
+            if (socketid) target = target.to(socketid);
+            target.emit('new-phone', newPhoneData);
         }
         
         DBConnection.query(
