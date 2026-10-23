@@ -465,8 +465,22 @@ module.exports = function registerFacebookWebhook(router) {
                         var sql = SqlString.format('INSERT INTO postreaction (name,userid,time,postid,type) VALUES(?,?,?,?,?);', [value.from.name, value.from.id, value.created_time, value.post_id.split('_')[1], value.reaction_type]);
                         DBConnection.query(sql);
                     } else if (value.item == 'share') {
-                        //var sql = SqlString.format('INSERT INTO postshare (name,userid,time,postid,newpostid) VALUES(?,?,?,?,?);', [value.from.name, value.from.id, value.created_time, value.link.match(/(\d+)\/$/)[1], value.post_id.split('_')[1]]);
-                        //DBConnection.query(sql);
+                        console.log('[fb-share]', JSON.stringify(value).slice(0, 1500));
+                        const shareFrom = value.from || {};
+                        const shareLink = String(value.link || '');
+                        const linkMatch = shareLink.match(/(\d+)\/?(?:\?.*)?$/);
+                        const sharedLiveId = linkMatch ? linkMatch[1] : '';
+                        if (sharedLiveId) {
+                            io.to(sharedLiveId).emit('new-share', {
+                                liveid: sharedLiveId,
+                                userid: shareFrom.id || '',
+                                fbname: shareFrom.name || '',
+                                postid: value.post_id || '',
+                                created_time: value.created_time || ''
+                            });
+                        } else {
+                            console.log('[fb-share] không tách được ID bài gốc từ link:', shareLink);
+                        }
                     }
                     //value.item - status - photo - video - dang tim them
                     //console.log(req.body.entry[0]);

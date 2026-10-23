@@ -14,11 +14,16 @@ module.exports = function registerStreamlabsWebhook(router) {
             const pageid = req.body.pageid;
             const io = socket.getIo();
 
+            if (!payload || !payload.from || !payload.message) {
+                console.log('[streamlabs] bỏ qua event không phải comment:', JSON.stringify(req.body.obj).slice(0, 1500));
+                return res.json({ success: false, message: "Không phải comment" });
+            }
+
             const userid = payload.from?.id;
             const fbname = payload.from?.name;
             const message = payload.message;
             const cmtid = payload.id;
-            const picture = payload.from.picture.data.url;
+            const picture = payload.from?.picture?.data?.url;
             if (picture) download(picture, userid, AVA_DIR).catch(() => { });
             const timelocal = new Date(payload.created_time)
                 .toLocaleString("en-US", { timeZone: "Asia/Saigon" });
@@ -80,6 +85,9 @@ module.exports = function registerStreamlabsWebhook(router) {
             const now2 = new Date().getTime() - now;
             console.log(`STR:(${now2})${fbname}: ${message}`)
             res.json({ success: true, message: "Đã nhan", customerInfo: customerInfo });
+        } else {
+            //console.log('[streamlabs] request không có obj.payload:', JSON.stringify(req.body).slice(0, 1000));
+            res.json({ success: false, message: "Không có payload" });
         }
     });
 };

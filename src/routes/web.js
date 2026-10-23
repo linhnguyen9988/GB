@@ -20,6 +20,7 @@ const registerJtexWebhook = require('./webhooks/jtex.webhook');
 const registerViettelWebhook = require('./webhooks/viettel.webhook');
 const registerFacebookWebhook = require('./webhooks/facebook.webhook');
 const registerStreamlabsWebhook = require('./webhooks/streamlabs.webhook');
+const registerStreamlabsAlertWebhook = require('./webhooks/streamlabsAlert.webhook');
 
 let router = express.Router();
 
@@ -29,6 +30,7 @@ let initWebRoutes = (app) => {
     registerViettelWebhook(router);
     registerFacebookWebhook(router);
     registerStreamlabsWebhook(router);
+    registerStreamlabsAlertWebhook(router);
 
     // --- Chức năng nghiệp vụ ---
     registerMessagesRoutes(router);

@@ -1275,6 +1275,10 @@ async function sendPhoneUpdate(userid, phone, realfbid, diachi, liveid) {
     }
 }
 
+socket.on('new-share', (data) => {
+    ShowCenterToast('success', (data.fbname || 'Một khách hàng') + ' vừa chia sẻ livestream', 4000);
+});
+
 socket.on('new-phone', (data) => {
     var table = $('#comment_table').DataTable();
     var updated = false;
