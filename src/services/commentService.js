@@ -71,7 +71,6 @@ async function tryInsertMessageAsComment(khachhang, sender, text, timemess, page
         };
 
         io.to(liveid).emit('new-comment', newCommentData);
-        console.log(`[Messenger→Live] ${fbname}: "${text}" → live ${liveid}`);
 
     } catch (err) {
         console.error('[Messenger→Live] Lỗi:', err.message);

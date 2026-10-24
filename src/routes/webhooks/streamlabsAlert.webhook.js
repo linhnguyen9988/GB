@@ -11,8 +11,20 @@ function parseDetail(body) {
     return body.obj || null;
 }
 
+function allowCors(res) {
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type');
+}
+
 module.exports = function registerStreamlabsAlertWebhook(router) {
+    router.options('/streamlabs/alert', function (req, res) {
+        allowCors(res);
+        res.sendStatus(204);
+    });
+
     router.post('/streamlabs/alert', function (req, res) {
+        allowCors(res);
         const kind = String(req.body.kind || '').toLowerCase().slice(0, 20);
         const pageid = String(req.body.pageid || '').slice(0, 30);
         const detail = parseDetail(req.body);

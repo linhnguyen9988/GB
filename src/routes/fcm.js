@@ -80,7 +80,7 @@ const sendFcmToUser = async (db, userId, title, body, data = {}) => {
             if (result.stale) {
                 staleTokens.push(row.token);
             } else if (result.ok) {
-                console.log('[FCM] → ' + userId + ' (' + row.token.slice(-6) + '): ' + title);
+                //console.log('[FCM] → ' + userId + ' (' + row.token.slice(-6) + '): ' + title);
             }
         }));
 

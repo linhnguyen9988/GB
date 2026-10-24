@@ -46,7 +46,7 @@ async function SendCanhBao(orderNumber, shipper_name, shipper_phone, cod, issue)
                 payload: shipperPhoneE164
             });
         }
-        console.log(`[SendCanhBao] ${orderNumber} - shipper_phone gốc: "${shipper_phone}" -> chuẩn hoá: ${shipperPhoneE164 || '(không hợp lệ, bỏ qua nút gọi)'}`);
+        //console.log(`[SendCanhBao] ${orderNumber} - shipper_phone gốc: "${shipper_phone}" -> chuẩn hoá: ${shipperPhoneE164 || '(không hợp lệ, bỏ qua nút gọi)'}`);
 
         const tryingSend = async (messaging_type, tag = null) => {
             const payload = {
@@ -82,7 +82,7 @@ async function SendCanhBao(orderNumber, shipper_name, shipper_phone, cod, issue)
             }
         }
     } catch (error) {
-        console.error("Lỗi gửi tin nhắn:", error.response?.data?.error || error.message);
+        //console.error("Lỗi gửi tin nhắn:", error.response?.data?.error || error.message);
     }
 }
 

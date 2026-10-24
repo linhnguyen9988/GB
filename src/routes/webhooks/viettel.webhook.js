@@ -181,7 +181,7 @@ module.exports = function registerViettelWebhook(router) {
                     );
                     console.log(`[Reason/POD Only] Đơn ${orderNumber} đã final (status=${currentStatus}), bổ sung reason_code=${reasonCode || '(không đổi)'}, pod_images=${podImagesJson ? 'có' : '(không đổi)'}`);
                 } else {
-                    console.log(`[Skip Update] Đơn ${orderNumber}: currentStatus=${currentStatus}${isCurrentFinal ? ' (đã chốt)' : ''}, status nhận được=${status} không phải bước tiến hợp lệ`);
+                    //console.log(`[Skip Update] Đơn ${orderNumber}: currentStatus=${currentStatus}${isCurrentFinal ? ' (đã chốt)' : ''}, status nhận được=${status} không phải bước tiến hợp lệ`);
                 }
             }
 

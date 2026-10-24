@@ -107,7 +107,7 @@ module.exports = function registerMessagesRoutes(router) {
 
                     for (const commentId of recentCommentIds) {
                         if (imageSent && textSent) break;
-                        console.log(`Private Reply: ${commentId}`);
+                        //console.log(`Private Reply: ${commentId}`);
                         if (imageContent && !imageSent) {
                             const imagePayload = {
                                 messaging_type: 'RESPONSE',
@@ -116,7 +116,7 @@ module.exports = function registerMessagesRoutes(router) {
                             };
                             const imageResult = await sendMessageWithPayload(imagePayload);
                             if (imageResult.success) {
-                                console.log(`Thành công (P): ${commentId}`);
+                                //console.log(`Thành công (P): ${commentId}`);
                                 imageSent = true;
                             } else {
                                 finalError = imageResult.error;
@@ -130,7 +130,7 @@ module.exports = function registerMessagesRoutes(router) {
                             };
                             const textResult = await sendMessageWithPayload(textPayload);
                             if (textResult.success) {
-                                console.log(`Thành công (T): ${commentId}`);
+                                //console.log(`Thành công (T): ${commentId}`);
                                 textSent = true;
                             } else {
                                 finalError = textResult.error;

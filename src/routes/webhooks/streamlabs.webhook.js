@@ -8,7 +8,6 @@ const { download } = require('../../utils/download');
 
 module.exports = function registerStreamlabsWebhook(router) {
     router.post('/streamlabs', async function (req, res) {
-        const now = new Date().getTime();
         if (req.body.obj && req.body.obj.hasOwnProperty('payload')) {
             const payload = req.body.obj.payload;
             const pageid = req.body.pageid;
@@ -82,8 +81,6 @@ module.exports = function registerStreamlabsWebhook(router) {
                 timelocal: timelocal,
                 customerInfo: customerInfo
             });
-            const now2 = new Date().getTime() - now;
-            console.log(`STR:(${now2})${fbname}: ${message}`)
             res.json({ success: true, message: "Đã nhan", customerInfo: customerInfo });
         } else {
             //console.log('[streamlabs] request không có obj.payload:', JSON.stringify(req.body).slice(0, 1000));

@@ -37,7 +37,7 @@ module.exports = function registerCustomerRoutes(router) {
                     DBConnection.query(updateSql, (err, res) => err ? reject(err) : resolve(res));
                 });
 
-                console.log('Updated: ' + fbName);
+                //console.log('Updated: ' + fbName);
                 download(avatarUrl, data.id, AVA_DIR);
 
                 response.json({
@@ -290,7 +290,6 @@ module.exports = function registerCustomerRoutes(router) {
         response.json({
             data: userid
         });
-        console.log('Updated: ' + userid + ' - ' + nuocngoai);
     });
 
     router.post('/getnewuser', jwtAuth, function (req, resx) {
