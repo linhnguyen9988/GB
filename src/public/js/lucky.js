@@ -1,7 +1,10 @@
 (function () {
   var LS_P = 'lucky_players_v1', LS_K = 'lucky_key_v1', LS_V = 'lucky_visible_v1', LS_PR = 'lucky_print_v1';
   var SPIN_MS = 45000;
+  var MIN_RETARGET_MS = 6000;
   var players = [], visible = false, winnerId = null, spinning = false, key;
+  var spinEnd = 0, spinTimer = null, pressTok = 0;
+  var blocked = {}, blockedKh = {}, blockedLoaded = false;
 
   try { players = JSON.parse(localStorage.getItem(LS_P) || '[]') || []; } catch (e) { players = []; }
   visible = localStorage.getItem(LS_V) === '1';
@@ -46,7 +49,11 @@
     '#lucky-w .lk{display:flex;gap:6px;padding:0 8px 8px}' +
     '#lucky-w .lk input{flex:1;min-width:0;background:#11131a;border:1px solid #3a3f4c;color:#9ca3af;border-radius:6px;padding:4px 6px;font-size:12px}' +
     '#lucky-w .lk button{background:#374151;border:0;color:#fff;border-radius:6px;padding:0 8px;cursor:pointer}' +
-    '#lucky-w .lm{padding:0 10px 10px;min-height:20px;font-size:13px;color:#fbbf24}';
+    '#lucky-w .lm{padding:0 10px 10px;min-height:20px;font-size:13px;color:#fbbf24}' +
+    '#lucky-w .lw{padding:0 10px 8px;font-size:12px;color:#f87171}' +
+    '#lucky-w .lr{cursor:pointer}' +
+    '#lucky-w .lr.blk{opacity:.55}' +
+    '#lucky-w .lr small{color:#fbbf24;font-size:11px;white-space:nowrap}';
   document.head.appendChild(css);
 
   var w = document.createElement('div');
@@ -59,7 +66,8 @@
     '<button id="lucky-clr" style="background:#dc2626">🗑 Xóa hết</button></div>' +
     '<div class="lk"><input id="lucky-link" readonly><button id="lucky-copy">Copy link OBS</button></div>' +
     '<label style="display:block;padding:0 10px 6px;font-size:13px;cursor:pointer"><input type="checkbox" id="lucky-pr"> 🖨 In tem khi có người trúng</label>' +
-    '<div class="lm" id="lucky-msg"></div>';
+    '<div class="lm" id="lucky-msg"></div>' +
+    '<div class="lw" id="lucky-warn"></div>';
   document.body.appendChild(w);
   var $ = function (id) { return document.getElementById(id); };
   $('lucky-link').value = link;
@@ -67,6 +75,37 @@
   $('lucky-pr').onchange = function () { printOn = this.checked; localStorage.setItem(LS_PR, printOn ? '1' : '0'); };
 
   function msg(t) { $('lucky-msg').textContent = t || ''; }
+  function warn(t) { $('lucky-warn').textContent = t || ''; }
+  function fmtDate(ts) { return new Date(ts * 1000).toLocaleDateString('vi-VN'); }
+
+  function isBlocked(p) {
+    return blocked[p.id] || (p.khid && blockedKh[p.khid]) || 0;
+  }
+  function loadBlocked() {
+    return fetch('/api/lucky/blocked', { credentials: 'same-origin' })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (d) {
+        blocked = {}; blockedKh = {};
+        (d.winners || []).forEach(function (x) {
+          if (x.userid) blocked[x.userid] = Math.max(blocked[x.userid] || 0, x.ts);
+          if (x.khid) blockedKh[x.khid] = Math.max(blockedKh[x.khid] || 0, x.ts);
+        });
+        blockedLoaded = true; warn(''); render();
+        return true;
+      })
+      .catch(function (e) { console.error('[lucky] không tải được danh sách đã trúng:', e); return false; });
+  }
+  function recordWinner(win) {
+    fetch('/api/lucky/winner', {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userid: win.id, khid: win.khid || '', name: win.name, phone: win.phone || '' })
+    }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function () { return loadBlocked(); })
+      .catch(function (e) {
+        console.error('[lucky] không lưu được lịch sử trúng thưởng:', e);
+        warn('⚠️ Chưa lưu được lịch sử trúng của ' + win.name + ' (' + e.message + ')');
+      });
+  }
   function printTem(win) {
     msg('🏆 ' + win.name + ' — đang in tem...');
     var ava = win.ava || ('/images/ava/' + encodeURIComponent(win.id) + '.jpg');
@@ -101,16 +140,26 @@
     $('lucky-n').textContent = players.length;
     var list = $('lucky-list'); list.innerHTML = '';
     players.forEach(function (p, i) {
-      var r = document.createElement('div'); r.className = 'lr' + (p.id === winnerId ? ' win' : '');
+      var ts = isBlocked(p);
+      var r = document.createElement('div'); r.className = 'lr' + (p.id === winnerId ? ' win' : '') + (ts ? ' blk' : '');
+      r.title = ts ? 'Đã trúng ngày ' + fmtDate(ts) + ' — bấm đúp để vẫn quay ra người này' : 'Bấm đúp để quay ra người này';
       var im = document.createElement('img'); im.src = '/images/ava/' + encodeURIComponent(p.id) + '.jpg';
       im.onerror = function () { this.onerror = null; this.src = '/images/ava/default.jpg'; };
       var sp = document.createElement('span'); sp.textContent = p.name;
       var x = document.createElement('b'); x.textContent = '✕'; x.title = 'Xóa khách này';
-      x.onclick = function () { players.splice(i, 1); if (winnerId === p.id) winnerId = null; save(); render(); sync(); };
-      r.appendChild(im); r.appendChild(sp); r.appendChild(x); list.appendChild(r);
+      x.onclick = function (e) {
+        e.stopPropagation();
+        players.splice(i, 1);
+        if (winnerId === p.id) { winnerId = null; if (spinning) { cancelSpin(); msg('⚠️ Đã hủy lượt quay vì xóa người đang trúng'); } }
+        save(); render(); sync();
+      };
+      r.ondblclick = function (e) { if (e.target === x) return; forcePick(p); };
+      r.appendChild(im); r.appendChild(sp);
+      if (ts) { var bd = document.createElement('small'); bd.textContent = 'đã trúng ' + fmtDate(ts).replace(/\/\d{4}$/, ''); r.appendChild(bd); }
+      r.appendChild(x); list.appendChild(r);
     });
     $('lucky-vis').textContent = visible ? '🙈 Ẩn' : '👁 Hiện';
-    $('lucky-spin').disabled = spinning || players.length < 2;
+    $('lucky-spin').disabled = players.length < 2;
   }
 
   window.LuckyAdd = function (id, name, phone, khid, ava) {
@@ -140,9 +189,10 @@
       msg('✅ Đã thêm: ' + name);
     }
 
-    winnerId = null; save(); render(); sync();
+    if (!spinning) winnerId = null;
+    save(); render(); sync();
   };
-  
+
   window.LuckyToggle = function () { w.style.display = (w.style.display === 'block') ? 'none' : 'block'; };
 
   $('lucky-x').onclick = function () { w.style.display = 'none'; };
@@ -154,18 +204,58 @@
   $('lucky-vis').onclick = function () { visible = !visible; save(); render(); sync(); };
   $('lucky-clr').onclick = function () {
     if (!players.length || !confirm('Xóa tất cả khách trong danh sách quay thưởng?')) return;
+    cancelSpin();
     players = []; winnerId = null; save(); render(); sync(); msg('');
   };
+
+  function cancelSpin() {
+    clearTimeout(spinTimer); spinTimer = null; spinning = false; ++pressTok;
+  }
+  function finishSpin(win) {
+    spinTimer = null; spinning = false; render();
+    msg('🏆 Trúng thưởng: ' + win.name);
+    recordWinner(win);
+    if (printOn) printTem(win);
+  }
+  function startSpin(win) {
+    var now = Date.now(), was = spinning;
+    winnerId = win.id; visible = true; spinning = true;
+    spinEnd = was ? Math.max(spinEnd, now + MIN_RETARGET_MS) : now + SPIN_MS;
+    var dur = spinEnd - now;
+    save(); render();
+    msg(was ? '🔀 Đã đổi người trúng — vòng vẫn đang quay...' : '🎰 Đang quay...');
+    var s = sock(); if (s) s.emit('lucky-spin', key, state(), dur);
+    clearTimeout(spinTimer);
+    spinTimer = setTimeout(function () { finishSpin(win); }, dur + 500);
+  }
+
   $('lucky-spin').onclick = function () {
-    if (spinning || players.length < 2) return;
-    var win = players[rnd(players.length)];
-    winnerId = win.id; visible = true; spinning = true; save(); render(); msg('🎰 Đang quay...');
-    var s = sock(); if (s) s.emit('lucky-spin', key, state(), SPIN_MS);
-    setTimeout(function () {
-      spinning = false; render(); msg('🏆 Trúng thưởng: ' + win.name);
-      if (printOn) printTem(win);
-    }, SPIN_MS + 500);
+    if (players.length < 2) return;
+    var tok = ++pressTok;
+    loadBlocked().then(function (ok) {
+      if (tok !== pressTok) return;
+      if (!ok && !blockedLoaded) { warn('⚠️ Không kiểm tra được danh sách đã trúng, thử lại sau'); return; }
+      var pool = players.filter(function (p) { return !isBlocked(p); });
+      if (spinning && winnerId) {
+        pool = pool.filter(function (p) { return p.id !== winnerId; });
+        if (!pool.length) { msg('ℹ️ Không còn ai khác đủ điều kiện để đổi'); return; }
+      }
+      if (!pool.length) { msg('⚠️ Tất cả khách trong danh sách đều đã trúng trong 2 tháng gần đây'); return; }
+      startSpin(pool[rnd(pool.length)]);
+    });
   };
+  
+  function forcePick(p) {
+    if (players.length < 2) return;
+    var tok = ++pressTok;
+    loadBlocked().then(function () {
+      if (tok !== pressTok) return;
+      var ts = isBlocked(p);
+      if (ts && !confirm(p.name + ' đã trúng thưởng ngày ' + fmtDate(ts) + ' (chưa đủ 2 tháng).\nVẫn quay ra người này?')) return;
+      if (spinning && winnerId === p.id) { msg('ℹ️ Đang quay ra ' + p.name + ' rồi'); return; }
+      startSpin(p);
+    });
+  }
 
   (function drag(el, handle) {
     var x = 0, y = 0;
@@ -184,4 +274,5 @@
   var s0 = sock();
   if (s0) s0.on('connect', function () { if (players.length || visible) sync(); });
   render();
+  loadBlocked();
 })();

@@ -105,7 +105,7 @@ module.exports = function registerViettelWebhook(router) {
                             status, statustext, reasonCode, podImagesJson
                         ]
                     );
-                    console.log(`[1P1] Tạo đơn hoàn 1 phần mới: ${orderNumber} từ đơn gốc ${baseOrderNumber}`);
+                    //console.log(`[1P1] Tạo đơn hoàn 1 phần mới: ${orderNumber} từ đơn gốc ${baseOrderNumber}`);
                 } else {
                     console.warn(`[1P1] Không tìm thấy đơn gốc ${baseOrderNumber} để tạo đơn ${orderNumber}`);
                 }
@@ -201,50 +201,4 @@ module.exports = function registerViettelWebhook(router) {
             res.status(500).send('Internal Server Error');
         }
     });
-
-    /* xai chung voi flutter, ko can cai nay nua
-    router.get('/api/order-tracking/:order_number', async (req, res) => {
-        try {
-            const { order_number } = req.params;
-            const db = DBConnection.promise();
-
-            // Lấy provider từ bảng lendon
-            const [orderInfo] = await db.query(
-                'SELECT provider FROM lendon WHERE realorderid = ? LIMIT 1',
-                [order_number]
-            );
-
-            const provider = orderInfo.length > 0 ? (orderInfo[0].provider || 'Viettel') : 'Viettel';
-
-            let logs = [];
-
-            if (provider === 'J&T') {
-                const [jtLogs] = await db.query(
-                    `SELECT 
-                    scantime        AS status_date_raw,
-                    scantypename    AS status_name,
-                    CONCAT(scanward, ', ', scancity, ', ', scanprov) AS location,
-                    scanbyname      AS employee_name,
-                    scanbycontact   AS employee_phone,
-                    issuename       AS note,
-                    0               AS money_collection
-                FROM jtwaybill 
-                WHERE billcode = ? 
-                ORDER BY scantime DESC`,
-                    [order_number]
-                );
-                logs = jtLogs;
-            } else {
-                const [vtLogs] = await db.query(
-                    'SELECT * FROM order_logs WHERE order_number = ? ORDER BY status_date_raw DESC',
-                    [order_number]
-                );
-                logs = vtLogs;
-            }
-
-            res.json({ success: true, data: logs, provider });
-        } catch (error) {
-            res.status(500).json({ success: false, error: error.message });
-        }
-    });*/
 };

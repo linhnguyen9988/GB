@@ -60,6 +60,7 @@
   var stage = document.getElementById('stage'), strip = document.getElementById('strip'),
       view = document.getElementById('view'), banner = document.getElementById('banner');
   var CW = 180, V = false, S = null, anim = 0, spinTok = 0;
+  var spinning = false, curve = null; // curve(now) -> vị trí dải thẻ của lượt quay đang chạy
   var DBG = /[?&]debug=1/.test(location.search), dbgEl = document.getElementById('dbg');
   function dbg(note) {
     if (!DBG) return; dbgEl.style.display = 'block';
@@ -68,7 +69,7 @@
   dbg('đã tải');
   function setMode() { V = innerHeight > innerWidth; document.body.classList.toggle('v', V); CW = V ? 212 : 180; }
   setMode();
-  addEventListener('resize', function () { var o = V; setMode(); if (V !== o && S) apply(S); });
+  addEventListener('resize', function () { var o = V; setMode(); if (V !== o && S) apply(S, true); });
 
   function card(p, win) {
     var d = document.createElement('div'); d.className = 'c' + (win ? ' w' : '');
@@ -123,26 +124,64 @@
     banner.classList.add('on');
     confetti(instant ? 60 : 220);
   }
+  function animate(tok, t0, dur) {
+    spinning = true;
+    (function f(now) {
+      if (tok !== spinTok) return;
+      setX(curve(now));
+      if (now - t0 < dur) anim = requestAnimationFrame(f);
+      else { spinning = false; curve = null; showWinner(false); }
+    })(performance.now());
+  }
+
   function spin(dur) {
     var w = byId(S.winnerId); if (!w || S.players.length < 2) return;
+    if (spinning && curve) return retarget(dur, w);   // đang quay -> đổi đích, không dựng lại
     var tok = ++spinTok; cancelAnimationFrame(anim);
     stage.classList.remove('done'); banner.classList.remove('on');
     var target = Math.round(62 * dur / 7000), total = target + 10;
     build(w, total, target);
     var end = xFor(target, (Math.random() - .5) * CW * .6), t0 = performance.now();
-    (function f(now) {
-      if (tok !== spinTok) return;
-      var t = Math.min(1, (now - t0) / dur);
-      setX(end * ease(t));
-      if (t < 1) anim = requestAnimationFrame(f); else showWinner(false);
-    })(t0);
+    curve = function (now) { return end * ease(Math.max(0, Math.min(1, (now - t0) / dur))); };
+    animate(tok, t0, dur);
   }
 
-  function apply(st) {
-    S = st || { players: [], visible: false, winnerId: null };
+  function retarget(dur, w) {
+    var now = performance.now(), h = 8;
+    var x0 = curve(now), v0 = Math.max(0, (x0 - curve(now - h)) / h);   // px/ms
+    var tok = ++spinTok; cancelAnimationFrame(anim);
+    var size = V ? view.clientHeight : view.clientWidth;
+    var delta = Math.max(0.6 * v0 * dur, size / 2 + 2 * CW);
+    var kids = strip.children, c0 = kids[0];
+    var pitch = V ? kids[1].offsetTop - c0.offsetTop : kids[1].offsetLeft - c0.offsetLeft;
+    var c0c = V ? c0.offsetTop + c0.offsetHeight / 2 : c0.offsetLeft + c0.offsetWidth / 2;
+    var idx = Math.ceil((x0 + delta + size / 2 - c0c) / pitch);
+    var ps = S.players;
+    while (kids.length < idx + 11) strip.appendChild(card(ps[Math.floor(Math.random() * ps.length)], false));
+    Array.prototype.forEach.call(strip.querySelectorAll('.c.w'), function (e) { e.classList.remove('w'); });
+    strip.replaceChild(card(w, true), kids[idx]);
+    var end = xFor(idx, (Math.random() - .5) * CW * .6), m0 = v0 * dur;
+    var prev = curve;
+    curve = function (n) {
+      if (n < now) return prev(n);
+      var t = Math.min(1, (n - now) / dur), t2 = t * t, t3 = t2 * t;
+      return (2 * t3 - 3 * t2 + 1) * x0 + (t3 - 2 * t2 + t) * m0 + (3 * t2 - 2 * t3) * end;
+    };
+    stage.classList.remove('done'); banner.classList.remove('on');
+    animate(tok, now, dur);
+  }
+
+  function apply(st, force) {
+    var ns = st || { players: [], visible: false, winnerId: null };
+    if (!force && spinning && ns.winnerId && (ns.players || []).some(function (p) { return p.id === ns.winnerId; })) {
+      S = ns; dbg('lucky-state (đang quay, giữ nguyên)');
+      stage.classList.toggle('show', !!S.visible);
+      return;
+    }
+    S = ns;
     dbg('lucky-state');
     stage.classList.toggle('show', !!S.visible);
-    ++spinTok; cancelAnimationFrame(anim);
+    ++spinTok; cancelAnimationFrame(anim); spinning = false; curve = null;
     if (S.winnerId && byId(S.winnerId)) showWinner(true); else idle();
   }
 

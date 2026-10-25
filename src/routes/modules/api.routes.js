@@ -6,6 +6,7 @@ const apiMessages = require('../api/messages');
 const apiNotifications = require('../api/notifications');
 const apiOrders = require('../api/orders');
 const apiPages = require('../api/pages');
+const apiLucky = require('../api/lucky');
 
 module.exports = function registerApiRoutes(app) {
     app.use('/api/auth', apiAuth);
@@ -16,4 +17,5 @@ module.exports = function registerApiRoutes(app) {
     app.use('/api/orders', apiOrders);
     app.use('/api/pages', apiPages);
     app.use('/api/notifications', apiNotifications);
+    app.use('/api/lucky', apiLucky);
 };
