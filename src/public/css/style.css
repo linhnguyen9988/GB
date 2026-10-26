@@ -1137,6 +1137,28 @@ table.dataTable tbody tr.selected {
     border-radius: 50px;
 }
 
+.order-refresh-btn {
+    border: 0;
+    background: transparent;
+    color: var(--bs-primary, #0d6efd);
+    padding: 0 6px;
+    line-height: 1;
+    font-size: 1.05rem;
+    cursor: pointer;
+    vertical-align: middle;
+}
+.order-refresh-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+.order-refresh-btn.is-loading i {
+    display: inline-block;
+    animation: order-refresh-spin 0.8s linear infinite;
+}
+@keyframes order-refresh-spin {
+    to { transform: rotate(360deg); }
+}
+
 .order-detail-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;

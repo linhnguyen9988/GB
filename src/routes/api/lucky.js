@@ -6,19 +6,9 @@ const BLOCK_MONTHS = 2;
 const DUP_WINDOW_SECONDS = 120;
 
 let tableReady = null;
-function ensureTable() {
-  if (!tableReady) {
-    tableReady = db.query(CREATE_SQL).catch((err) => {
-      tableReady = null;
-      throw err;
-    });
-  }
-  return tableReady;
-}
 
 router.get('/blocked', auth, async (req, res) => {
   try {
-    await ensureTable();
     const [rows] = await db.query(
       `SELECT userid, MAX(khid) AS khid, UNIX_TIMESTAMP(MAX(won_at)) AS ts
          FROM lucky_winners

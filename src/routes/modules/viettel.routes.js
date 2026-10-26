@@ -8,6 +8,7 @@ const viettelOrderEdit = require('../../services/viettelOrderEdit');
 const { CreateOrderID } = require('../../utils/orderId');
 const { DONHANG_DIR } = require('../../configs/constants');
 const { GetViettelToken, PrintBillViettel } = require('../../services/viettelService');
+const { refreshOrderStatus } = require('../../services/viettelStatusService');
 const { applyAddressFixes, cleanSearchTerm, normalizeSQL, preprocessForViettel } = require('../../utils/address');
 
 async function runViettelEdit(res, label, fn) {
@@ -71,6 +72,23 @@ module.exports = function registerViettelRoutes(router) {
                 message: "Lỗi hệ thống hoặc lỗi kết nối API",
                 error: error.message
             });
+        }
+    });
+
+    router.post('/refreshstatusviettel', jwtAuth, async function (req, res) {
+        const realorderid = String(req.body.realorderid || '').trim();
+        if (!/^[A-Za-z0-9]{6,30}$/.test(realorderid)) {
+            return res.status(400).json({ success: false, message: 'Mã đơn không hợp lệ' });
+        }
+        try {
+            const result = await refreshOrderStatus(realorderid);
+            res.json({ success: true, ...result });
+        } catch (error) {
+            if (error.httpStatus) {
+                return res.status(error.httpStatus).json({ success: false, message: error.message });
+            }
+            console.error('Lỗi /refreshstatusviettel:', error.message);
+            res.status(500).json({ success: false, message: 'Lỗi hệ thống, thử lại sau' });
         }
     });
 

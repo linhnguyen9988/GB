@@ -24,6 +24,7 @@
   <link rel="stylesheet" href="/css/label.css">
   <link rel="stylesheet" href="/css/pane.css">
   <script src="/js/bs5utils.js"></script>
+  <script src="/js/orderstatusrefresh.js"></script>
   <script src="/js/editorderviettel.js"></script>
   <script src="/js/theme-toggle.js"></script>
 
@@ -771,6 +772,7 @@
         <div class="modal-body order-detail-body">
           <div class="order-detail-row order-detail-id">
             <span class="order-detail-code" onclick="copyOrderNumber(this)"><i class="bi bi-upc"></i> ${d.realorderid}</span>
+            ${(!motphan && canRefreshOrderStatus(d)) ? `<button type="button" class="order-refresh-btn" title="Cập nhật trạng thái từ Viettel" onclick="RefreshStatusInDetail(this, '${d.realorderid}')"><i class="bi bi-arrow-clockwise"></i></button>` : ''}
             ${motphan ? `<span class="badge bg-secondary">${motphan}</span>` : ''}
             <span class="badge bg-${badge} order-detail-status">${d.statustext || 'Đang xử lý'}</span>
           </div>
@@ -897,12 +899,12 @@
       phoneLink.style.pointerEvents = "none";
     }
 
-    // Luôn mở lại ở tab Hành trình mỗi khi xem một đơn mới
     document.getElementById('tab-journey-btn').classList.add('active');
     document.getElementById('tab-calllog-btn').classList.remove('active');
 
     $('#trackingModal').modal('show');
 
+    setupTrackingRefreshButton(orderNumber);
     loadOrderJourney(orderNumber);
   }
 
@@ -2286,6 +2288,7 @@
               <div>
                 <span class="text-muted">📦</span>
                 <span id="header-order-number" class="order-copy-badge" onclick="copyOrderNumber(this)"></span>
+                <button type="button" id="header-order-refresh" class="order-refresh-btn d-none" title="Cập nhật trạng thái từ Viettel" onclick="RefreshStatusInTracking(this)"><i class="bi bi-arrow-clockwise"></i></button>
               </div>
             </div>
           </div>
