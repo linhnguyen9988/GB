@@ -1,4 +1,5 @@
-﻿import express from "express";
+﻿'use strict';
+const express = require("express");
 
 require('../configs/processHandlers');
 require('../services/browserService');

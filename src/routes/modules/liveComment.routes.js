@@ -1,4 +1,5 @@
-import DBConnection from "../../configs/DBConnection";
+'use strict';
+const DBConnection = require("../../configs/DBConnection");
 const SqlString = require('sqlstring');
 const StringBuilder = require('node-stringbuilder');
 const jwtAuth = require('../../middleware/jwtAuth');

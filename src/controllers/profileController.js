@@ -1,3 +1,4 @@
+'use strict';
 let handleProfile = async (req, res) => {
     return res.render("profile.ejs",{
         user: req.user

@@ -1,3 +1,4 @@
+'use strict';
 const chromeCfg = require('../chrome-config');
 const puppeteer = require('puppeteer');
 const { exec } = require('child_process');

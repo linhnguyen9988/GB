@@ -1,7 +1,8 @@
+'use strict';
 // controllers/publicJourneyController.js
 // Trang public cho khách xem thông tin đơn hàng + hành trình vận chuyển.
 // KHÔNG yêu cầu đăng nhập — chỉ cần đúng mã đơn hàng là xem được.
-import DBConnection from "../configs/DBConnection";
+const DBConnection = require("../configs/DBConnection");
 
 // Trạng thái -> màu badge (đồng bộ với statusBadgeClass() trong headerafterlogin.ejs)
 const STATUS_COLOR_MAP = {

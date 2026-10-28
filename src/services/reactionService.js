@@ -1,4 +1,5 @@
-import DBConnection from "../configs/DBConnection";
+'use strict';
+const DBConnection = require("../configs/DBConnection");
 const { codeToEmoji } = require('../utils/emoji');
 
 function emitReactionSummary(io, mid, extra) {

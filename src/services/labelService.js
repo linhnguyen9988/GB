@@ -1,3 +1,4 @@
+'use strict';
 const PDFDocument = require('pdfkit');
 const axios = require('axios');
 const bwipjs = require('bwip-js');

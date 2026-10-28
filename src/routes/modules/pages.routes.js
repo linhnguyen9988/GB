@@ -1,12 +1,13 @@
-import auth from "../../validation/authValidation";
-import dienNuocController from "../../controllers/dienNuocController";
-import loadcommentController from "../../controllers/loadcommentController";
-import loginController from "../../controllers/loginController";
-import orderController from "../../controllers/orderController";
-import profileController from "../../controllers/profileController";
-import publicJourneyController from "../../controllers/publicJourneyController";
-import readcommentController from "../../controllers/readcommentController";
-import registerController from "../../controllers/registerController";
+'use strict';
+const auth = require("../../validation/authValidation");
+const dienNuocController = require("../../controllers/dienNuocController");
+const loadcommentController = require("../../controllers/loadcommentController");
+const loginController = require("../../controllers/loginController");
+const orderController = require("../../controllers/orderController");
+const profileController = require("../../controllers/profileController");
+const publicJourneyController = require("../../controllers/publicJourneyController");
+const readcommentController = require("../../controllers/readcommentController");
+const registerController = require("../../controllers/registerController");
 const { REGISTER_PATH } = require('../../configs/constants');
 const { webAuth } = require('../../middleware/jwtAuth');
 

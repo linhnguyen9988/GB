@@ -1,4 +1,5 @@
-import DBConnection from "../../configs/DBConnection";
+'use strict';
+const DBConnection = require("../../configs/DBConnection");
 const { sendFcmToUser } = require('../fcm');
 
 module.exports = function registerJtexWebhook(router) {

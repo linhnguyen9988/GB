@@ -1,3 +1,4 @@
+'use strict';
 const CryptoJS = require("crypto-js");
 
 function md5ToBase64(input) {

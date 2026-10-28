@@ -1,5 +1,6 @@
-import DBConnection from "../../configs/DBConnection";
-import { v2 as cloudinary } from 'cloudinary';
+'use strict';
+const DBConnection = require("../../configs/DBConnection");
+const { v2: cloudinary } = require('cloudinary');
 const SqlString = require('sqlstring');
 const axios = require('axios');
 const socket = require('../../socket');

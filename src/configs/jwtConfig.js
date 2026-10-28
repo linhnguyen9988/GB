@@ -1,3 +1,4 @@
+'use strict';
 if (!process.env.JWT_SECRET) {
     console.warn(
         '⚠️  Thiếu biến môi trường JWT_SECRET trong .env'

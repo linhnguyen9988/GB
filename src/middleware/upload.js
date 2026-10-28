@@ -1,3 +1,4 @@
+'use strict';
 // Multer upload (tạm vào thư mục uploads/, tối đa 25MB)
 
 const multer = require('multer');

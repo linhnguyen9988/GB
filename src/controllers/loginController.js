@@ -1,6 +1,7 @@
-import { validationResult } from "express-validator";
-import loginService from "../services/loginService";
-import jwt from "jsonwebtoken";
+'use strict';
+const { validationResult } = require("express-validator");
+const loginService = require("../services/loginService");
+const jwt = require("jsonwebtoken");
 const { JWT_SECRET, JWT_EXPIRES_IN, COOKIE_NAME } = require("../configs/jwtConfig");
 
 let getPageLogin = (req, res) => {

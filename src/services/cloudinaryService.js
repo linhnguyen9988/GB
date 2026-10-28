@@ -1,4 +1,5 @@
-import { v2 as cloudinary } from 'cloudinary';
+'use strict';
+const { v2: cloudinary } = require('cloudinary');
 
 let accountIndex = 0;
 const cloudinaryAccounts = [1, 2, 3].map(i => ({

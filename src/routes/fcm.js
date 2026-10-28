@@ -1,3 +1,4 @@
+'use strict';
 const { GoogleAuth } = require('google-auth-library');
 const path = require('path');
 

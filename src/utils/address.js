@@ -1,3 +1,4 @@
+'use strict';
 function preprocessForViettel(addr) {
     if (!addr) return addr;
     let a = addr.trim();

@@ -1,3 +1,4 @@
+'use strict';
 require('dotenv').config();
 const os = require('os');
 const path = require('path');

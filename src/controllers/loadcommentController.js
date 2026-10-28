@@ -1,3 +1,4 @@
+'use strict';
 const db = require('../configs/DBConnection');
 
 const handleLoadComment = async (req, res, next) => {

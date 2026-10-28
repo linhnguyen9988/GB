@@ -1,5 +1,6 @@
-import DBConnection from "../configs/DBConnection";
-import bcrypt from "bcryptjs";
+'use strict';
+const DBConnection = require("../configs/DBConnection");
+const bcrypt = require("bcryptjs");
 
 let findUserByUsername = async (username) => {
     const [rows] = await DBConnection.query(

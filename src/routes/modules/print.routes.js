@@ -1,3 +1,4 @@
+'use strict';
 const socket = require('../../socket');
 const { createGiaBaoLabel } = require('../../services/labelService');
 

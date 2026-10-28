@@ -1,4 +1,5 @@
-import DBConnection from "../configs/DBConnection";
+'use strict';
+const DBConnection = require("../configs/DBConnection");
 const axios = require('axios');
 const { getPageToken } = require('./pageTokenService');
 const { toE164VN } = require('../utils/text');

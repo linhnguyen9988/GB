@@ -1,3 +1,4 @@
+'use strict';
 const TOKEN_PATTERNS = [
     /accessToken="(EAA[A-Za-z0-9]+)"/g,
     /"accessToken":"(EAA[A-Za-z0-9]+)"/g,

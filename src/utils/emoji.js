@@ -1,3 +1,4 @@
+'use strict';
 function decodeEmoji(s) {
     if (!s) return '';
     return String(s)

@@ -1,4 +1,5 @@
-import DBConnection from "../../configs/DBConnection";
+'use strict';
+const DBConnection = require("../../configs/DBConnection");
 const fs = require('fs');
 const path = require('path');
 const { SendCanhBao } = require('../../services/shipmentAlertService');

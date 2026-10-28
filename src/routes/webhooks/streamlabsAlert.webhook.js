@@ -1,3 +1,4 @@
+'use strict';
 const MAX_LOG = 3000;
 
 function parseDetail(body) {

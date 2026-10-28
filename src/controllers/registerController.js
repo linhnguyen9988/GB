@@ -1,5 +1,6 @@
-import registerService from "./../services/registerService";
-import { validationResult } from "express-validator";
+'use strict';
+const registerService = require("./../services/registerService");
+const { validationResult } = require("express-validator");
 
 let getPageRegister = (req, res) => {
     return res.render("register.ejs", {

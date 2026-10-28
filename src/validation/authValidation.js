@@ -1,4 +1,5 @@
-import { check } from "express-validator";
+'use strict';
+const { check } = require("express-validator");
 
 let validateRegister = [
     check("username", "Tên đăng nhập cần ít nhất 3 ký tự").isLength({ min: 3 }),

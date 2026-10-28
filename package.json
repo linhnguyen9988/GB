@@ -4,25 +4,13 @@
   "description": "GB Solution",
   "main": "server.js",
   "scripts": {
-    "build": "babel src --out-dir dist --ignore \"src/public/**\" --ignore \"src/views/**\" && ln -sfn ../src/public dist/public && cp src/routes/firebase-service-account.json dist/routes/",
-    "start:prod": "node dist/server.js",
-    "start": "nodemon --exec babel-node src/server.js"
-  },
-  "nodemonConfig": {
-    "exec": "babel-node",
-    "watch": [
-      "./.no-watch"
-    ],
-    "ignore": [
-      "**/*"
-    ]
+    "build": "echo \"Không cần build: dự án chạy Node thuần (node src/server.js)\"",
+    "start:prod": "node src/server.js",
+    "start": "node src/server.js"
   },
   "author": "LinhK",
   "license": "ISC",
   "dependencies": {
-    "@babel/core": "^7.29.7",
-    "@babel/node": "^7.29.7",
-    "@babel/preset-env": "^7.29.7",
     "async-q": "^0.3.1",
     "async-wait-until": "^2.0.12",
     "axios": "^1.11.0",
@@ -69,8 +57,6 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
-    "@babel/cli": "^7.29.7",
-    "electron": "^25.2.0",
-    "nodemon": "^3.0.1"
+    "electron": "^25.2.0"
   }
 }

@@ -1,4 +1,5 @@
-import DBConnection from "../configs/DBConnection";
+'use strict';
+const DBConnection = require("../configs/DBConnection");
 let handleOrder = async (req, res) => {
     try {
         const db = DBConnection.promise();

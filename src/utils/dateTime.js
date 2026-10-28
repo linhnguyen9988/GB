@@ -1,3 +1,4 @@
+'use strict';
 function addZero(x, n) {
     while (x.toString().length < n) {
         x = "0" + x;

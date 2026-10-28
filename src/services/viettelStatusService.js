@@ -1,3 +1,4 @@
+'use strict';
 const DBConnection = require('../configs/DBConnection');
 const axios = require('axios');
 

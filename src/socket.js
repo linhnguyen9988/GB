@@ -1,5 +1,6 @@
-import DBConnection from "./configs/DBConnection";
-import bcrypt from "bcryptjs";
+'use strict';
+const DBConnection = require("./configs/DBConnection");
+const bcrypt = require("bcryptjs");
 const { Server } = require("socket.io");
 let io;
 const luckyStates = new Map();

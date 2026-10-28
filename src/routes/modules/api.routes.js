@@ -1,3 +1,4 @@
+'use strict';
 const apiAuth = require('../api/auth');
 const apiCustomers = require('../api/customers');
 const apiDashboard = require('../api/dashboard');

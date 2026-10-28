@@ -1,4 +1,5 @@
-import DBConnection from "../configs/DBConnection";
+'use strict';
+const DBConnection = require("../configs/DBConnection");
 const axios = require('axios');
 const qs = require('qs');
 const request = require('request');

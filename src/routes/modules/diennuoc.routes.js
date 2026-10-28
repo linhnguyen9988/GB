@@ -1,4 +1,5 @@
-import DBConnection from "../../configs/DBConnection";
+'use strict';
+const DBConnection = require("../../configs/DBConnection");
 
 module.exports = function registerDienNuocRoutes(router) {
     router.get('/api/rooms', (req, res) => {

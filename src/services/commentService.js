@@ -1,4 +1,5 @@
-import DBConnection from "../configs/DBConnection";
+'use strict';
+const DBConnection = require("../configs/DBConnection");
 const SqlString = require('sqlstring');
 const { AKA_SQL } = require('./akaService');
 const { REAL_COMMENT_ID_SQL_REGEXP, makeFakeCommentId } = require('./fakeComment');

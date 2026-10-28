@@ -1,4 +1,5 @@
-import DBConnection from "../../configs/DBConnection";
+'use strict';
+const DBConnection = require("../../configs/DBConnection");
 const SqlString = require('sqlstring');
 const jwtAuth = require('../../middleware/jwtAuth');
 const { RestartChromeX, getBrowser } = require('../../services/browserService');

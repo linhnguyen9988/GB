@@ -1,4 +1,5 @@
-import DBConnection from "../configs/DBConnection";
+'use strict';
+const DBConnection = require("../configs/DBConnection");
 
 const AKA_SQL = "(SELECT GROUP_CONCAT(DISTINCT k2.fbname SEPARATOR ' - ') FROM khachhang k2 WHERE khachhang.phone IS NOT NULL AND khachhang.phone<>'' AND k2.phone=khachhang.phone AND k2.userid<>khachhang.userid AND (khachhang.realfbid IS NULL OR khachhang.realfbid='' OR k2.realfbid IS NULL OR k2.realfbid<>khachhang.realfbid)) AS aka";
 
