@@ -6,7 +6,7 @@ const socket = require('../../socket');
 const { AVA_DIR, GlobalPageID, GlobalPageID2 } = require('../../configs/constants');
 const { LocDau } = require('../../utils/text');
 const { attachAkaCount, dedupeByPerson } = require('../../services/akaService');
-const { download } = require('../../utils/download');
+const { downloadAvatar } = require('../../utils/download');
 const { getBrowser } = require('../../services/browserService');
 const { getPageToken } = require('../../services/pageTokenService');
 const { isNumeric } = require('../../utils/common');
@@ -37,12 +37,26 @@ module.exports = function registerCustomerRoutes(router) {
                     DBConnection.query(updateSql, (err, res) => err ? reject(err) : resolve(res));
                 });
 
-                //console.log('Updated: ' + fbName);
-                download(avatarUrl, data.id, AVA_DIR);
+                let avatarSaved = true;
+                let avatarError = '';
+                try {
+                    await downloadAvatar(avatarUrl, data.id || psid, AVA_DIR);
+                } catch (avaErr) {
+                    avatarSaved = false;
+                    avatarError = avaErr.message;
+                    console.error('Lỗi tải avatar của', psid, '-', avaErr.message);
+                }
 
                 response.json({
                     success: true,
-                    data: data
+                    data: data,
+                    avatarSaved: avatarSaved,
+                    avatarError: avatarError
+                });
+            } else {
+                response.status(404).json({
+                    success: false,
+                    error: 'Facebook không trả về thông tin người dùng'
                 });
             }
         } catch (error) {

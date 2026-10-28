@@ -11,4 +11,5 @@ src/public/images/
 src/public/donhang/
 /.vscode
 /uploads/
+/dist
 src/routes/firebase-service-account.json

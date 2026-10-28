@@ -367,6 +367,18 @@ function InItKeys() {
                 data: { psid: x[12], pageid: x[18] },
                 dataType: "JSON",
                 success: function (data) {
+                    var uid = String(x[12]);
+                    $('img[src*="/images/ava/' + uid + '.jpg"]').each(function () {
+                        this.src = '/images/ava/' + uid + '.jpg?t=' + Date.now();
+                    });
+                    if (data.avatarSaved === false) {
+                        ShowCenterToast('warning', 'Đã cập nhật tên nhưng không tải được avatar: ' + (data.avatarError || ''), 4500);
+                    } else {
+                        ShowCenterToast('success', 'Đã cập nhật avatar.', 2500);
+                    }
+                },
+                error: function (xhr) {
+                    ShowCenterToast('danger', (xhr.responseJSON && xhr.responseJSON.error) || 'Không cập nhật được thông tin khách', 3500);
                 }
             });
         } else if (keyCode == 77) {//nut M

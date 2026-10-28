@@ -4,6 +4,8 @@
   "description": "GB Solution",
   "main": "server.js",
   "scripts": {
+    "build": "babel src --out-dir dist --ignore \"src/public/**\" --ignore \"src/views/**\" && ln -sfn ../src/public dist/public && cp src/routes/firebase-service-account.json dist/routes/",
+    "start:prod": "node dist/server.js",
     "start": "nodemon --exec babel-node src/server.js"
   },
   "nodemonConfig": {
@@ -67,6 +69,7 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
+    "@babel/cli": "^7.29.7",
     "electron": "^25.2.0",
     "nodemon": "^3.0.1"
   }
