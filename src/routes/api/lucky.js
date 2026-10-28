@@ -5,8 +5,6 @@ const auth = require('../../middleware/jwtAuth');
 const BLOCK_MONTHS = 2;
 const DUP_WINDOW_SECONDS = 120;
 
-let tableReady = null;
-
 router.get('/blocked', auth, async (req, res) => {
   try {
     const [rows] = await db.query(
@@ -34,7 +32,6 @@ router.post('/winner', auth, async (req, res) => {
   const phone = String(b.phone || '').trim().slice(0, 20) || null;
 
   try {
-    await ensureTable();
     const [dup] = await db.query(
       `SELECT id FROM lucky_winners
         WHERE userid = ? AND won_at >= DATE_SUB(NOW(), INTERVAL ${DUP_WINDOW_SECONDS} SECOND) LIMIT 1`,
