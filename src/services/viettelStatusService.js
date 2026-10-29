@@ -4,7 +4,33 @@ const axios = require('axios');
 
 const VIETTEL_DETAIL_URL = 'https://partner.viettelpost.vn/v2/order/detail-v2';
 
-const FINAL_STATUSES = new Set([101, 107, 201, 501, 503, 504]);
+const STATUS_MAP = {
+    100: 'Chờ lấy hàng',
+    101: 'Viettel Post hủy lấy hàng',
+    102: 'Lấy hàng thất bại',
+    103: 'Điều phối bưu cục lấy hàng',
+    104: 'Lấy hàng điều phối bưu tá',
+    107: 'Đối tác yêu cầu hủy',
+    200: 'Lấy hàng thành công',
+    201: 'Viettel Post hủy đơn hàng',
+    202: 'Sửa phiếu gửi',
+    300: 'Khai thác đi',
+    400: 'Khai thác đến',
+    500: 'Giao bưu tá đi phát',
+    501: 'Phát thành công',
+    503: 'Tiêu hủy - Theo yêu cầu khách hàng',
+    504: 'Đã hoàn trả',
+    505: 'Yêu cầu chuyển hoàn',
+    506: 'Tồn/Chờ phát lại',
+    507: 'Khách hàng đến bưu cục nhận',
+    508: 'Phát tiếp',
+    509: 'Chuyển tiếp bưu cục khác',
+    515: 'Duyệt hoàn',
+    550: 'Phát tiếp',
+    551: 'Đang chuyển hoàn',
+};
+
+const FINAL_STATUSES = new Set([101, 104, 107, 201, 501, 503, 504]);
 
 const COOLDOWN_MS = 5000;
 const recentResults = new Map();
@@ -49,18 +75,9 @@ async function fetchViettelOrderStatus(orderNumber) {
     return status;
 }
 
-async function getStatusText(statusCode) {
-    const [logRows] = await DBConnection.query(
-        "SELECT status_name FROM order_logs WHERE status_code = ? AND status_name IS NOT NULL AND status_name <> '' LIMIT 1",
-        [statusCode]);
-    if (logRows.length) return logRows[0].status_name;
-
-    const [orderRows] = await DBConnection.query(
-        "SELECT statustext FROM lendon WHERE statuscode = ? AND statustext IS NOT NULL AND statustext <> '' LIMIT 1",
-        [statusCode]);
-    if (orderRows.length) return orderRows[0].statustext;
-
-    return 'Trạng thái ' + statusCode;
+function getStatusText(statusCode) {
+    const code = parseInt(statusCode, 10);
+    return STATUS_MAP[code] || `Trạng thái ${code}`;
 }
 
 async function refreshOrderStatus(orderNumber) {
@@ -94,7 +111,7 @@ async function refreshOrderStatus(orderNumber) {
     if (status === current) {
         result = { statuscode: current, statustext: order.statustext, changed: false, isFinal: FINAL_STATUSES.has(current) };
     } else {
-        const statustext = await getStatusText(status);
+        const statustext = getStatusText(status);
         await DBConnection.query(
             'UPDATE lendon SET statuscode = ?, statustext = ?, last_update = NOW() WHERE realorderid = ?',
             [status, statustext, orderNumber]);
@@ -107,4 +124,4 @@ async function refreshOrderStatus(orderNumber) {
     return result;
 }
 
-module.exports = { refreshOrderStatus, StatusRefreshError, FINAL_STATUSES };
+module.exports = { refreshOrderStatus, StatusRefreshError, FINAL_STATUSES, STATUS_MAP, getStatusText };

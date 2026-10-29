@@ -19,19 +19,19 @@ const initSocket = (server) => {
     io.on('connection', (socket) => {
         socket.on('join-live-stream', (postId) => {
             socket.join(postId);
-            console.log(`User joined live stream room: ${postId}`);
+            //console.log(`User joined live stream room: ${postId}`);
         });
 
         socket.on('leave-live-stream', (postId) => {
             socket.leave(postId);
-            console.log(`User left live stream room: ${postId}`);
+            //console.log(`User left live stream room: ${postId}`);
         });
 
         socket.on('join-user-room', (userId) => {
             if (!userId) return;
             const room = `USER_ROOM_${userId}`;
             socket.join(room);
-            console.log(`[Push] Socket ${socket.id} joined ${room}`);
+            //console.log(`[Push] Socket ${socket.id} joined ${room}`);
         });
 
         socket.on("login-printer", (credentials) => {

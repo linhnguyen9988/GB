@@ -132,7 +132,7 @@ function runGetConversations() {
                                 sb.appendLine().append(sql);
                             }
                             DBConnection.query(sb.toString());
-                            console.log('Done getconversations: ' + pageid);
+                            //console.log('Done getconversations: ' + pageid);
                         } catch (e) {
                             console.log('Lỗi parse conversations (getconversations):', e);
                         }

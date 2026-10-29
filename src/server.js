@@ -80,7 +80,7 @@ if (BEHIND_PROXY) {
     const server = http.createServer(app);
     server.on('error', (err) => console.error('❌ [HTTP Server Error]', err));
     server.listen(APP_PORT, '127.0.0.1', () => {
-        console.log(`Listening (sau nginx): 127.0.0.1:${APP_PORT}`);
+        console.log(`Listening: 127.0.0.1:${APP_PORT}`);
         socket.initSocket(server);
     });
 } else {

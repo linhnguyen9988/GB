@@ -26,7 +26,6 @@ const CONNECT_RETRY_DELAY_MS = 5000;
 let connectAttempt = 0;
 
 async function tryConnectOnce() {
-    console.log(`Begin MySQL Connect`);
     connectAttempt += 1;
     const conn = await pool.getConnection();
     try {
