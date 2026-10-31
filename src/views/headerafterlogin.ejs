@@ -800,6 +800,7 @@
         <div class="modal-footer order-detail-foot">
           <button class="open-message-modal btn btn-outline-primary" data-customer-id="${d.userid}" data-customer-name="${d.name}" data-sender-page-id="${d.pageid}" data-bs-dismiss="modal"><i class="bi bi-send-fill"></i> Tin nhắn</button>
           <button type="button" class="btn btn-outline-primary" onclick="OrderJourney('${d.realorderid}','${d.name}','${d.userid}','${d.phone}')" data-bs-dismiss="modal"><i class="bi bi-truck"></i> Hành trình</button>
+          <button type="button" class="btn btn-outline-primary" onclick="TuDocFileVaIn('${d.realorderid}')"><i class="bi bi-printer"></i> In lại</button>
           ${button}
         </div>
       </div>
@@ -1336,7 +1337,12 @@
   var khid = '';
 
   async function TuDocFileVaIn(realorderid) {
-    const htmlTuFile = await fetch(`https://aodaigiabao.com/donhang/${realorderid}.txt`)
+    realorderid = String(realorderid || '').replace('1P1', '').trim();
+    if (!realorderid || realorderid === 'undefined') {
+      ShowAlertModal("Chưa chọn đơn hàng để in lại!");
+      return false;
+    }
+    const htmlTuFile = await fetch(`/donhang/${encodeURIComponent(realorderid)}.txt`)
       .then(res => {
         if (!res.ok) throw new Error("Không tìm thấy file trên Server");
         return res.text();
@@ -1347,35 +1353,43 @@
       });
 
     if (!htmlTuFile) {
-      ShowAlertModal("Không lấy được nội dung file!");
-      return;
+      ShowAlertModal("Không lấy được nội dung file in của đơn " + realorderid + " (đơn tạo bằng tay hoặc chưa lưu nhãn).");
+      return false;
     }
 
-    $.ajax({
-      url: "/print-order",
-      method: "POST",
-      contentType: "application/json",
-      data: JSON.stringify({
-        userId: window.CURRENT_USER_ID,
-        type: 'html',
-        content: htmlTuFile,
-        config: {
-          printerName: "HPRT N41",
-          widthMm: 150,
-          heightMm: 100
+    return new Promise(function (resolve) {
+      $.ajax({
+        url: "/print-order",
+        method: "POST",
+        contentType: "application/json",
+        data: JSON.stringify({
+          userId: window.CURRENT_USER_ID,
+          type: 'html',
+          content: htmlTuFile,
+          config: {
+            printerName: "HPRT N41",
+            widthMm: 150,
+            heightMm: 100
+          }
+        }),
+        success: function (res) {
+          if (res.success) {
+            $('#qrresult').empty();
+            var vc = document.getElementById("video-container");
+            if (vc) vc.style.display = "block";
+            ShowCenterToast('success', 'Đã gửi lệnh in lại: ' + realorderid, 2500);
+            resolve(true);
+          } else {
+            ShowAlertModal("Máy in đang Offline!");
+            resolve(false);
+          }
+        },
+        error: function (xhr) {
+          var msg = (xhr.responseJSON && xhr.responseJSON.message) || "Lỗi kết nối route in";
+          ShowAlertModal(msg);
+          resolve(false);
         }
-      }),
-      success: function (res) {
-        if (res.success) {
-          $('#qrresult').empty();
-          document.getElementById("video-container").style.display = "block";
-        } else {
-          ShowAlertModal("Máy in đang Offline!");
-        }
-      },
-      error: function () {
-        console.log("Lỗi kết nối route in");
-      }
+      });
     });
   }
 
