@@ -61,6 +61,7 @@
 
 <script>
   window.CURRENT_USER_ID = "<%= user.id %>";
+  window.ACTIVE_CARRIER = "<%= typeof activeCarrier !== 'undefined' ? activeCarrier : 'viettel' %>";
   const socket = io();
   var lockToast = 0;
 
@@ -772,7 +773,7 @@
         <div class="modal-body order-detail-body">
           <div class="order-detail-row order-detail-id">
             <span class="order-detail-code" onclick="copyOrderNumber(this)"><i class="bi bi-upc"></i> ${d.realorderid}</span>
-            ${(!motphan && canRefreshOrderStatus(d)) ? `<button type="button" class="order-refresh-btn" title="Cập nhật trạng thái từ Viettel" onclick="RefreshStatusInDetail(this, '${d.realorderid}')"><i class="bi bi-arrow-clockwise"></i></button>` : ''}
+            ${(!motphan && canRefreshOrderStatus(d)) ? `<button type="button" class="order-refresh-btn" title="Cập nhật trạng thái từ ${d.provider === 'J&T' ? 'J&T' : 'Viettel'}" onclick="RefreshStatusInDetail(this, '${d.realorderid}', '${d.provider || ''}')"><i class="bi bi-arrow-clockwise"></i></button>` : ''}
             ${motphan ? `<span class="badge bg-secondary">${motphan}</span>` : ''}
             <span class="badge bg-${badge} order-detail-status">${d.statustext || 'Đang xử lý'}</span>
           </div>
@@ -938,6 +939,12 @@
           logs.forEach((log) => {
             const formattedCOD = new Intl.NumberFormat('vi-VN').format(log.money_collection || 0) + ' ₫';
             const phone = log.employee_phone || '';
+            let pics = [];
+            try { pics = log.sigpic ? JSON.parse(log.sigpic) : []; } catch (e) { pics = []; }
+            pics = (Array.isArray(pics) ? pics : []).filter(u => /^https?:\/\//i.test(u));
+            const picsHtml = pics.length
+              ? `<div class="d-flex flex-wrap gap-1 mt-2">${pics.map(u => `<a href="${u}" target="_blank" rel="noopener"><img src="${u}" loading="lazy" style="width:64px;height:64px;object-fit:cover;border-radius:6px"></a>`).join('')}</div>`
+              : '';
 
             html += `
                     <div class="tracking-card">
@@ -947,6 +954,7 @@
                         ${log.employee_name ? `<a href="tel:${phone}" class="shipper-tag"><b>${log.employee_name}</b>&nbsp;${phone ? '- ' + phone : ''}</a>` : ''}
                         <div style="font-size: 0.8rem; color: #28a745; margin-top: 5px; font-weight: 600;">💰 COD: ${formattedCOD}</div>
                         ${log.note ? `<div class="text-muted mt-1" style="font-size:0.8rem">📝 ${log.note}</div>` : ''}
+                        ${picsHtml}
                     </div>`;
           });
           content.innerHTML = html;
@@ -1393,7 +1401,14 @@
     });
   }
 
+  // Lên đơn theo nhà vận chuyển cấu hình ở biến môi trường CARRIER (viettel | jt)
+  function PushOrder() {
+    if (window.ACTIVE_CARRIER === 'jt') PushJTOrder();
+    else PushViettelOrder();
+  }
+
   function PushJTOrder() {
+    var pushBtn = document.getElementById("pushjtorder") || document.getElementById("pushviettelorder");
     var phone = document.getElementById('phoneviettel').value;
     var add = document.getElementById("diachilendonviettel");
     var selectedOpt = add.options[add.selectedIndex];
@@ -1431,7 +1446,7 @@
     cod = cod.toString().replaceAll('.', '');
     kg = parseFloat(kg);
 
-    document.getElementById("pushjtorder").disabled = true;
+    pushBtn.disabled = true;
 
     $.ajax({
       url: "/pushorderjtex",
@@ -1451,7 +1466,7 @@
         xa: xajt
       }),
       success: function (data) {
-        document.getElementById("pushjtorder").disabled = false;
+        pushBtn.disabled = false;
         if (data.success) {
           ShowAlertModal('✅ J&T: ' + data.order_code);
         } else {
@@ -1459,7 +1474,7 @@
         }
       },
       error: function () {
-        document.getElementById("pushjtorder").disabled = false;
+        pushBtn.disabled = false;
         ShowAlertModal('Lỗi kết nối server');
       }
     });
@@ -1865,7 +1880,7 @@
                   <span class="input-group-text qr-ig-icon"><i class="bi bi-coin"></i></span>
                   <input type="text" pattern="[0-9]+" inputmode="numeric" id="CODX" placeholder="COD" class="form-control" value="0" onfocus="SelectX(this)" onkeyup="onlyNumberAmount(this)">
                   <input type="text" pattern="[0-9]+" inputmode="numeric" id="SOKG" placeholder="KG" class="form-control" style="max-width:70px" value="1" onfocus="SelectX(this)" onkeyup="onlyNumberAmount(this)">
-                  <button type="button" id="pushviettelorder" class="btn btn-success" onclick="PushViettelOrder()" title="Lên đơn Viettel"><i class="bi bi-printer-fill"></i> Lên đơn</button>
+                  <button type="button" id="pushviettelorder" class="btn btn-success" onclick="PushOrder()" title="Lên đơn ${window.ACTIVE_CARRIER === 'jt' ? 'J&T' : 'Viettel'}"><i class="bi bi-printer-fill"></i> Lên đơn</button>
                 </div>
               </div>
               <select id="diachilendonviettel" class="form-select qr-select mb-2"></select>

@@ -48,6 +48,9 @@ function handleInLaiDon() {
 }
 
 function LenDonKhachHang() {
+    // Nhà vận chuyển lấy từ biến môi trường CARRIER (server -> window.ACTIVE_CARRIER)
+    if (window.ACTIVE_CARRIER === 'jt') return LenDonKhachHangJT();
+
     var btn = document.getElementById('btnlendonkh');
     var phone = document.getElementById('userphone').value.trim();
     var add = document.getElementById('diachilendon');
@@ -189,6 +192,90 @@ function LenDonKhachHang() {
     });
 }
 
+// Lên đơn J&T từ trang khách hàng. Bill được server lấy từ API J&T và gửi thẳng tới máy in.
+function LenDonKhachHangJT() {
+    var btn = document.getElementById('btnlendonkh');
+    var phone = document.getElementById('userphone').value.trim();
+    var add = document.getElementById('diachilendon');
+    var cod = document.getElementById('COD').value.replace(/\./g, '').replace(/,/g, '').trim();
+    var kg = document.getElementById('KG').value;
+    var realfbidEl = document.getElementById('realfbid');
+    var realfbid = realfbidEl ? realfbidEl.value : '';
+
+    if (phone.length != 10 && phone.substring(0, 2) != '02') {
+        ShowAlertModal('Sai SĐT');
+        return;
+    }
+    if (!add || add.selectedIndex < 0 || !add.options[add.selectedIndex]) {
+        ShowAlertModal('Chưa có địa chỉ');
+        return;
+    }
+    var opt = add.options[add.selectedIndex];
+    var address = (opt.dataset && opt.dataset.address) ? opt.dataset.address : opt.text.replace(/^[✅⚠️🔄❌]\s*/, '');
+    if (!address || address.length < 5) {
+        ShowAlertModal('Chưa có địa chỉ');
+        return;
+    }
+    var xajt = opt.dataset.xajt || '';
+    var huyenjt = opt.dataset.huyenjt || '';
+    var tinhjt = opt.dataset.tinhjt || '';
+    if (opt.dataset.jtready !== '1' || !xajt) {
+        ShowAlertModal('Địa chỉ chưa có dữ liệu J&T. Bấm + để validate địa chỉ mới.');
+        return;
+    }
+    if (!isNumeric(cod) || cod < 0) cod = 0;
+    if (!isNumeric(kg) || kg <= 0) kg = 1;
+
+    var fbnameNow = (document.getElementById('fbname').value || '').trim();
+    var useridNow = document.getElementById('userid').value;
+    var khidNow = window.khid;
+    try {
+        var rowNow = $('#tblkhachhang').DataTable().row(getRowIdx()).data();
+        if (rowNow && String(rowNow[0]) === String(useridNow)) khidNow = rowNow[18];
+    } catch (e) { }
+
+    if (!fbnameNow) {
+        ShowAlertModal('Chưa có tên khách');
+        return;
+    }
+
+    if (btn) btn.disabled = true;
+
+    $.ajax({
+        url: "/pushorderjtex",
+        method: "POST",
+        contentType: "application/json",
+        data: JSON.stringify({
+            fbname: fbnameNow,
+            phone: phone,
+            address: address,
+            cod: String(cod),
+            kg: parseFloat(kg),
+            khid: khidNow,
+            userid: useridNow,
+            realfbid: realfbid,
+            tinh: tinhjt,
+            huyen: huyenjt,
+            xa: xajt
+        }),
+        success: function (data) {
+            if (btn) btn.disabled = false;
+            if (data.success) {
+                document.getElementById('COD').value = 0;
+                document.getElementById('KG').value = 1;
+                ShowCenterToast('success', `${fbnameNow} • ${data.order_code} • ${(+cod).toLocaleString()} đ`, 4000);
+                FillDiaChi();
+            } else {
+                ShowCenterToast('danger', 'Lỗi lên đơn', data.message, 4000);
+            }
+        },
+        error: function () {
+            if (btn) btn.disabled = false;
+            ShowCenterToast('danger', 'Không thể tạo đơn, kiểm tra lại kết nối', 4000);
+        }
+    });
+}
+
 (function injectLenDonButton() {
     function tryInject() {
         var kgInput = document.getElementById('labelkg');
@@ -198,7 +285,7 @@ function LenDonKhachHang() {
         btn.type = 'button';
         btn.id = 'btnlendonkh';
         btn.className = 'btn btn-success';
-        btn.title = 'Lên đơn Viettel';
+        btn.title = 'Lên đơn ' + (window.ACTIVE_CARRIER === 'jt' ? 'J&T' : 'Viettel');
         btn.innerHTML = '🖨️';
         btn.onclick = LenDonKhachHang;
 

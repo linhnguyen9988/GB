@@ -1,154 +1,94 @@
 'use strict';
 const DBConnection = require("../../configs/DBConnection");
 const { sendFcmToUser } = require('../fcm');
+const {
+    jtHasSigpic, isPartReturnBill, eventCode, toWaybillRow, toEpoch,
+    insertWaybillIfNew, latestStoredScanEpoch, applyJTStatus, createPartReturnOrder
+} = require('../../services/jtExpressService');
+
+// Mã trạng thái cần đẩy thông báo cho shop
+const JT_NOTIFY_CODES = new Set([116, 117, 118, 120]);
+
+async function notifyShop(db, billCode, scanCode, statusText, issueText) {
+    const [orderRows] = await db.query('SELECT * FROM lendon WHERE realorderid = ? LIMIT 1', [billCode]);
+    if (!orderRows.length) return;
+    const order = orderRows[0];
+    const userId = order.useraccountid;
+    const title = `${order.name} - J&T`;
+    const body = `${statusText}${issueText ? ' - ' + issueText : ''}`;
+
+    // Mỗi (đơn, trạng thái) chỉ báo 1 lần dù J&T bắn webhook lặp
+    const [notiRows] = await db.query(
+        'SELECT 1 FROM order_noti_log WHERE realorderid = ? AND status_code = ? LIMIT 1',
+        [billCode, scanCode]
+    );
+    if (notiRows.length) return;
+
+    const [result] = await db.query(
+        'INSERT IGNORE INTO order_noti_log (realorderid, status_code, sent_at, title, body, userid) VALUES (?, ?, NOW(), ?, ?, ?)',
+        [billCode, scanCode, title, body, userId]
+    );
+    await sendFcmToUser(db, userId, title, body, {
+        type: 'order_status',
+        realorderid: billCode,
+        status: scanCode,
+        noti_id: result.insertId
+    });
+}
 
 module.exports = function registerJtexWebhook(router) {
     router.post('/jtex', async function (req, res) {
-        const db = DBConnection.promise();
+        // J&T chỉ cần nhận được phản hồi này, xử lý tiếp ở phía sau
         res.json({ "code": "1", "msg": "success", "data": null });
 
         try {
             const { bizContent } = req.body;
             if (!bizContent) return;
 
-            const data = JSON.parse(bizContent);
+            const data = typeof bizContent === 'string' ? JSON.parse(bizContent) : bizContent;
             const billCode = data.billCode;
-            const details = data.details[0];
+            const events = Array.isArray(data.details) ? data.details.filter(Boolean) : [];
+            if (!billCode || events.length === 0) return;
 
-            const statusMapVn = {
-                103: "Tạo đơn thành công",
-                105: "Đã hủy đơn",
-                106: "Bưu tá đã lấy hàng",
-                109: "Xuất kho trung chuyển",
-                110: "Hàng đã đến bưu cục",
-                112: "Đang giao hàng",
-                113: "Giao hàng thành công",
-                116: "Đang chuyển hoàn",
-                117: "Đã ký nhận hoàn trả",
-                118: "Kiện vấn đề (Giao)",
-                120: "Kiện vấn đề (Hoàn)"
-            };
+            const db = DBConnection.promise();
 
-            let currentTypeName = statusMapVn[details.scanTypeCode] || details.scanTypeName || "Hành trình mới";
-            if (currentTypeName == '中心到件') currentTypeName = 'Hàng đến kho TTKT';
-            else if (currentTypeName == '取件失败') currentTypeName = 'Nhận hàng không thành công';
+            // Xử lý theo thứ tự thời gian, sự kiện mới nhất quyết định trạng thái
+            events.sort((a, b) => (toEpoch(a.scanTime) || 0) - (toEpoch(b.scanTime) || 0));
+            const newest = events[events.length - 1];
+            const scanCode = eventCode(newest);
 
-            let scanbyphone = details.scanByContact;
-            if (scanbyphone) scanbyphone = scanbyphone.replace("+84", "0");
-
-            const waybillParams = [
-                billCode,
-                details.scanByCode || null,
-                scanbyphone || null,
-                details.scanByName || null,
-                details.scanNetworkArea || null,
-                details.scanNetworkCity || null,
-                details.scanNetworkProvince || null,
-                details.scanNetworkName || null,
-                details.scanTime,
-                currentTypeName,
-                details.abnormalPieceName || null
-            ];
-
-            const sqlInsertWaybill = `INSERT INTO jtwaybill
-            (billcode, scanbycode, scanbycontact, scanbyname, scanward, scancity, scanprov, scanpost, scantime, scantypename, issuename, scantypecode)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`;
-
-            await db.query(sqlInsertWaybill, [...waybillParams, Number(details.scanTypeCode)]);
-            const scanCode = Number(details.scanTypeCode);
-            let updateSql = "";
-            let params = [];
-
-            switch (scanCode) {
-                case 103:
-                case 105:
-                case 106:
-                case 109:
-                    updateSql = `UPDATE lendon SET statuscode = ?, statustext = ?, kg = ?, last_update = NOW() WHERE realorderid = ?`;
-                    params = [scanCode, currentTypeName, details.weight, billCode];
-                    break;
-
-                case 110:
-                    updateSql = `UPDATE lendon SET statuscode = ?, statustext = ?, issue = NULL , kg = ?, last_update = NOW()
-                     WHERE realorderid = ? AND statuscode NOT IN (113, 105, 117)`;
-                    params = [scanCode, currentTypeName, details.weight, billCode];
-                    break;
-
-                case 112:
-                case 116:
-                case 117:
-                    updateSql = `UPDATE lendon SET statuscode = ?, statustext = ?, issue = NULL, kg = ?, last_update = NOW() WHERE realorderid = ?`;
-                    params = [scanCode, currentTypeName, details.weight, billCode];
-                    break;
-
-                case 113:
-                    updateSql = `UPDATE lendon SET statuscode = ?, statustext = ?, issue = NULL, kg = ?, last_update = NOW() WHERE realorderid = ?`;
-                    params = [scanCode, currentTypeName, details.weight, billCode];
-                    break;
-
-                case 118:
-                case 120:
-                    updateSql = `UPDATE lendon SET statuscode = ?, statustext = ?, issue = ?, kg = ?, last_update = NOW() WHERE realorderid = ?`;
-                    params = [scanCode, currentTypeName, details.abnormalPieceName, details.weight, billCode];
-                    break;
-
-                default:
-                    console.log(details.scanTypeName);
-                    updateSql = null;
+            // Ký nhận 1 phần -> tạo đơn hoàn <bill>-001 (chỉ với đơn gốc)
+            const partSign = Number(newest.partSign ?? data.partSign ?? 0);
+            if (partSign === 1 && !isPartReturnBill(billCode)) {
+                await createPartReturnOrder(billCode);
             }
 
-            if (updateSql) {
-                const [result] = await db.query(updateSql, params);
-                if (result.affectedRows === 0) {
-                    console.warn(`[Webhook J&T] KHÔNG TÌM THẤY đơn hàng. Bill: ${billCode}`);
-                }
+            // Mốc thời gian đã lưu TRƯỚC khi chèn, để biết sự kiện này có bị đến trễ không
+            const storedNewestEpoch = await latestStoredScanEpoch(billCode);
+
+            const withSig = await jtHasSigpic();
+            for (const ev of events) {
+                await insertWaybillIfNew(db, toWaybillRow(billCode, ev), withSig);
             }
 
-            const JT_NOTIFY_CODES = {
-                116: '🔄',
-                117: '🔄',
-                118: '⚠️',
-                120: '⚠️',
-            };
+            // Sự kiện cũ hơn dữ liệu đã có (webhook đến trễ/sai thứ tự) -> chỉ lưu hành trình, không đổi trạng thái
+            const newestEpoch = toEpoch(newest.scanTime);
+            const isStale = storedNewestEpoch !== null && newestEpoch !== null && newestEpoch < storedNewestEpoch;
+            if (isStale) return;
 
-            if (JT_NOTIFY_CODES[scanCode]) {
+            const st = await applyJTStatus(billCode, newest);
+            if (!st.found) {
+                console.warn(`[Webhook J&T] KHÔNG TÌM THẤY đơn hàng. Bill: ${billCode}`);
+                return;
+            }
+
+            if (st.applied && JT_NOTIFY_CODES.has(scanCode)) {
                 try {
-                    const [orderRows] = await db.query(
-                        'SELECT * FROM lendon WHERE realorderid = ? LIMIT 1',
-                        [billCode]
-                    );
-
-                    if (orderRows.length > 0) {
-                        const order = orderRows[0];
-                        const userId = order.useraccountid;
-                        const title = `${order.name} - J&T`;
-                        const body = `${currentTypeName}${details.abnormalPieceName ? ' - ' + details.abnormalPieceName : ''}`;
-
-                        const [notiRows] = await db.query(
-                            'SELECT 1 FROM order_noti_log WHERE realorderid = ? AND status_code = ? LIMIT 1',
-                            [billCode, scanCode]
-                        );
-
-                        if (!notiRows.length) {
-                            const [result] = await db.query(
-                                'INSERT IGNORE INTO order_noti_log (realorderid, status_code, sent_at, title, body, userid) VALUES (?, ?, NOW(), ?, ?, ?)',
-                                [billCode, scanCode, title, body, userId]
-                            );
-                            const notiId = result.insertId;
-                            const payload = {
-                                type: 'order_status',
-                                realorderid: billCode,
-                                status: scanCode,
-                                noti_id: notiId
-                            };
-                            await sendFcmToUser(db, userId, title, body, payload);
-                        }
-                    }
+                    await notifyShop(db, billCode, scanCode, st.statustext, st.issue);
                 } catch (notiError) {
                     console.error('[J&T FCM] Lỗi gửi notification:', notiError.message);
                 }
             }
-
         } catch (error) {
             console.error('Lỗi Webhook J&T:', error);
         }

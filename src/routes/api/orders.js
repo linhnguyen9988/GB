@@ -111,6 +111,7 @@ router.get('/logs/:orderNumber', auth, async (req, res) => {
 
     let rows = [];
     if (provider === 'J&T') {
+      const sigCol = (await require('../../services/jtExpressService').jtHasSigpic()) ? ', sigpic' : '';
       [rows] = await db.query(
         `SELECT
            scantime        AS status_date_raw,
@@ -120,7 +121,7 @@ router.get('/logs/:orderNumber', auth, async (req, res) => {
            scanbycontact   AS employee_phone,
            issuename       AS note,
            0               AS money_collection,
-           scantypecode    AS status_code
+           scantypecode    AS status_code${sigCol}
          FROM jtwaybill
          WHERE billcode = ?
          ORDER BY scantime DESC`,
@@ -231,144 +232,19 @@ router.post('/', auth, async (req, res) => {
 });
 
 router.post('/push-jt', auth, async (req, res) => {
-  const CryptoJS = require('crypto-js');
-  const axios = require('axios');
-
-  function md5ToBase64(input) {
-    const md5Hash = CryptoJS.MD5(input);
-    return CryptoJS.enc.Base64.stringify(md5Hash);
-  }
-
-  async function getBillAndPrint(matuquan, userId, io) {
-    const pkey = process.env.JT_PKEY;
-    const apiAccount = process.env.JT_API_ACCOUNT;
-    const oderjson = JSON.stringify({
-      customerCode: process.env.JT_CUSTOMER_CODE,
-      password: process.env.JT_PASSWORD,
-      txlogisticId: matuquan,
-    });
-    const digest = md5ToBase64(oderjson + pkey);
-    const params = new URLSearchParams();
-    params.append('bizContent', oderjson);
-    try {
-      const r = await axios.post(
-        'https://ylopenapi.jtexpress.vn/webopenplatformapi/api/order/printOrder',
-        params,
-        {
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            apiAccount,
-            digest,
-            timestamp: Date.now().toString(),
-          },
-          timeout: 5000,
-        }
-      );
-      const body = r.data;
-      if (body.msg === 'success' && body.data?.base64EncodeContent) {
-        await db.query('INSERT INTO jtbill (billcode, base64) VALUES (?, ?)', [
-          matuquan,
-          body.data.base64EncodeContent,
-        ]);
-        if (io && userId) {
-          const userRoom = `USER_ROOM_${userId}`;
-          io.to(userRoom).emit('print-now', {
-            type: 'pdf',
-            base64: body.data.base64EncodeContent,
-            config: { printerName: 'HPRT N41', widthMm: 80, heightMm: 80 },
-          });
-        }
-      }
-    } catch (_) {}
-  }
-
-  let { fbname, address, phone, cod, kg, khid, userid, realfbid, tinh, huyen, xa } = req.body;
-
-  if (!xa) return res.json({ success: false, message: 'Check địa chỉ trước' });
-
-  kg = parseFloat(kg) || 1; // đảm bảo là số float, không phải string
-  const pkey = process.env.JT_PKEY;
-  const apiAccount = process.env.JT_API_ACCOUNT;
-  const matuquan = 'DH' + Date.now();
-  const timenow = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Saigon' }); 
-
-  const oderjson = JSON.stringify({
-    customerCode: process.env.JT_CUSTOMER_CODE,
-    password: process.env.JT_PASSWORD,
-    txlogisticId: matuquan,
-    productType: 'EXPRESS',
-    orderType: '1',
-    serviceType: '1',
-    partSign: 1,
-    deliveryType: '1',
-    totalQuantity: 1,
-    sender: {
-      name: 'Áo Dài Gia Bảo',
-      mobile: '0888118855',
-      prov: 'Đồng Nai',
-      city: 'Thành phố Biên Hoà',
-      area: 'Phường Long Bình-251TPB07',
-      address: '197 HBB',
-    },
-    receiver: { name: fbname, mobile: phone, prov: tinh, city: huyen, area: xa, address },
-    payType: 'PP_PM',
-    goodsType: 'bm000010',
-    goodsValue: cod.toString(),
-    codMoney: cod.toString(),
-    itemsValue: cod.toString(),
-    remark: 'Cho xem hàng. Không nhận thu 30k',
-    englishName: 'none',
-    packageInfo: { weight: kg, length: 10, width: 10, height: 10, volume: '10' },
-    items: [{ itemName: 'Vải', englishName: 'None', number: 1, itemValue: cod }],
-  });
-
-  const digest = md5ToBase64(oderjson + pkey);
-  const params = new URLSearchParams();
-  params.append('bizContent', oderjson);
-
+  const { createJTOrder, GetBillJT } = require('../../services/jtExpressService');
   try {
-    const response = await axios.post(
-      'https://ylopenapi.jtexpress.vn/webopenplatformapi/api/order/addOrder',
-      params,
-      {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          apiAccount,
-          digest,
-          timestamp: Date.now().toString(),
-        },
-        timeout: 5000,
-      }
-    );
+    const result = await createJTOrder({ ...req.body, accountId: req.user?.id ?? null });
+    if (!result.success) return res.json({ success: false, message: result.message });
 
-    const body = response.data;
-    if (body.msg !== 'success') {
-      return res.json({ success: false, message: 'J&T từ chối: ' + body.msg });
-    }
-
-    const sqlOrder = `
-      INSERT INTO lendon
-        (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, sortline, statuscode, statustext, useraccountid, last_update)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'J&T', ?, ?, ?, ?, NOW())`;
-    await db.query(sqlOrder, [
-      fbname, phone, address, cod, kg,
-      1, timenow, matuquan, body.data.billCode,
-      khid, userid, realfbid,
-      body.data.sortLine || null, 100, 'Mới tạo',
-      req.user?.id ?? null,
-    ]);
-
-    // In bill — dùng userId từ JWT
-    const jwtUserId = req.user?.id ?? userid;
-    let io = null;
-    try { io = require('../../socket').getIo(); } catch (_) {}
-    getBillAndPrint(matuquan, jwtUserId, io);
+    // In bill — dùng userId từ JWT, không chờ để app phản hồi nhanh
+    GetBillJT(result.txlogisticId, req.user?.id ?? req.body.userid).catch(() => {});
 
     return res.json({
       success: true,
-      message: 'Lên đơn J&T thành công',
-      order_code: body.data.billCode,
-      sort_line: body.data.sortLine,
+      message: result.message,
+      order_code: result.order_code,
+      sort_line: result.sort_line,
     });
   } catch (error) {
     console.error('Lỗi Create Order J&T (API):', error.message);
