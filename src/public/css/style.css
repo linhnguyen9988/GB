@@ -1205,6 +1205,30 @@ table.dataTable tbody tr.selected {
     word-break: break-word;
 }
 
+.order-detail-item {
+    transition: background-color 0.25s ease, border-color 0.25s ease;
+}
+
+.order-detail-item.order-detail-chot-ok {
+    background-color: rgba(25, 135, 84, 0.12) !important;
+    border-color: #198754;
+}
+
+.order-detail-item.order-detail-chot-ok i,
+.order-detail-item.order-detail-chot-ok .order-detail-value {
+    color: #198754 !important;
+}
+
+[data-bs-theme="dark"] .order-detail-item.order-detail-chot-ok {
+    background-color: rgba(47, 184, 119, 0.18) !important;
+    border-color: #2fb877;
+}
+
+[data-bs-theme="dark"] .order-detail-item.order-detail-chot-ok i,
+[data-bs-theme="dark"] .order-detail-item.order-detail-chot-ok .order-detail-value {
+    color: #4cd38d !important;
+}
+
 .order-detail-foot {
     background-color: var(--bg-card) !important;
     border-top: 1px solid var(--border) !important;

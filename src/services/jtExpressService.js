@@ -284,7 +284,7 @@ async function applyJTStatus(billCode, ev) {
     const w = Number(ev.weight);
     const weight = Number.isFinite(w) && w > 0 ? w : null;
     const issue = (code === 118 || code === 120)
-        ? (ev.abnormalPieceName || ev.reason || ev.desc || 'Kiện vấn đề')
+        ? String(ev.abnormalPieceName || ev.reason || ev.desc || 'Kiện vấn đề').slice(0, 255)
         : null;
     const terminal = JT_FINAL_CODES.includes(code);
 
@@ -310,8 +310,8 @@ async function createPartReturnOrder(billCode) {
     try {
         await DBConnection.query(
             `INSERT INTO lendon
-                (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, sortline, statuscode, statustext, useraccountid, last_update)
-             SELECT p.name, p.phone, p.address, 0, p.kg, p.status, p.date, CONCAT(p.orderid, '-001'), ?, p.khid, p.userid, p.realfbid, NOW(), 'J&T', p.sortline, 116, 'Đang chuyển hoàn', p.useraccountid, NOW()
+                (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, sortline, sortcode, statuscode, statustext, useraccountid, last_update)
+             SELECT p.name, p.phone, p.address, 0, p.kg, p.status, p.date, CONCAT(p.orderid, '-001'), ?, p.khid, p.userid, p.realfbid, NOW(), 'J&T', p.sortline, p.sortcode, 116, 'Đang chuyển hoàn', p.useraccountid, NOW()
                FROM lendon p
               WHERE p.realorderid = ? AND p.provider = 'J&T'
                 AND NOT EXISTS (SELECT 1 FROM lendon c WHERE c.realorderid = ?)
@@ -370,13 +370,18 @@ async function createJTOrder(input) {
         return { success: false, message: 'J&T từ chối: ' + (body && body.msg) };
     }
 
+    // sortLine (vd 620-B256C03-002) -> cột sortline; mã phân loại -> cột sortcode
+    // (ưu tiên sortingCode do J&T trả về, không có thì dùng sortLine). Cắt theo độ dài cột để không lỗi "Data too long".
+    const sortLine = String(body.data.sortLine || '').slice(0, 45) || null;
+    const sortCode = String(body.data.sortingCode || body.data.sortCode || body.data.sortLine || '').slice(0, 100) || null;
+
     try {
         await DBConnection.query(
             `INSERT INTO lendon
-                (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, sortline, statuscode, statustext, useraccountid, last_update)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'J&T', ?, ?, ?, ?, NOW())`,
+                (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, sortline, sortcode, statuscode, statustext, useraccountid, last_update)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'J&T', ?, ?, ?, ?, ?, NOW())`,
             [fbname, phone, address, codStr, weight, 1, timenow, txlogisticId, body.data.billCode,
-             khid, userid, realfbid, body.data.sortLine || null, 100, 'Mới tạo', accountId ?? null]
+             khid, userid, realfbid, sortLine, sortCode, 100, 'Mới tạo', accountId ?? null]
         );
     } catch (dbErr) {
         // Đơn đã tạo bên J&T nhưng lưu DB lỗi — báo rõ để khỏi lên trùng
@@ -388,7 +393,8 @@ async function createJTOrder(input) {
         success: true,
         message: 'Lên đơn J&T thành công',
         order_code: body.data.billCode,
-        sort_line: body.data.sortLine,
+        sort_line: sortLine,
+        sort_code: sortCode,
         txlogisticId
     };
 }

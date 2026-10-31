@@ -364,20 +364,20 @@ module.exports = function registerLiveCommentRoutes(router) {
     });
 
     router.post('/getcommentchot', jwtAuth, function (request, response, next) {
-        var sllive = request.body.sllive;
+        var sllive = parseInt(request.body.sllive);
+        if (!(sllive > 0)) sllive = 1;
         var userid = request.body.userid;
         var sb = '';
-        var sql = SqlString.format("SELECT * FROM livestream order by idx desc limit ?;", [parseInt(sllive)]);
+        var sql = SqlString.format("SELECT * FROM livestream order by idx desc limit ?;", [sllive]);
         DBConnection.query(sql, function (error, data) {
-            if (data.length > 0) {
-                for (var i = 0; i < data.length; i++) {
-                    sb += `liveid='${data[i].id}' OR `;
-                }
+            if (error || !data || data.length === 0) return response.json({ data: [] });
+            for (var i = 0; i < data.length; i++) {
+                sb += `liveid='${data[i].id}' OR `;
             }
             sb = sb.substring(0, sb.length - 4);
             DBConnection.query(SqlString.format(`SELECT * FROM livecomment WHERE (${sb}) AND userid=?;`, [userid]), function (error, data) {
                 response.json({
-                    data: data
+                    data: error ? [] : data
                 });
             });
         });

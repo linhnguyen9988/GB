@@ -711,6 +711,42 @@
     return map[Number(statuscode)] ?? 'secondary';
   }
 
+  function countChotItems(rows) {
+    var total = 0;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].gia != '') {
+        for (var sl = 0; sl < rows[i].slchot; sl++) total++;
+      }
+    }
+    return total;
+  }
+
+  function LoadChotForOrder(userid, valueEl) {
+    if (!valueEl) return;
+    if (!userid) { valueEl.textContent = '—'; return; }
+    var sel = document.getElementById('soluonglive');
+    var sllive = sel && sel.value ? sel.value : '1';
+    $.ajax({
+      url: "/getcommentchot",
+      method: "POST",
+      dataType: "JSON",
+      data: { userid: userid, sllive: sllive },
+      success: function (chot) {
+        if (!document.body.contains(valueEl)) return;
+        if (!chot || !Array.isArray(chot.data)) { valueEl.textContent = 'Không lấy được'; return; }
+        if (chot.data.length === 0) { valueEl.textContent = 'Không có comment nào'; return; }
+        var extra = Number(sllive) > 1 ? ` <span class="text-muted small">(${Number(sllive)} live gần nhất)</span>` : '';
+        var soChot = countChotItems(chot.data);
+        valueEl.innerHTML = `<strong>${soChot}</strong> vải${extra}`;
+        var box = valueEl.closest('.order-detail-item');
+        if (box) box.classList.toggle('order-detail-chot-ok', soChot > 0);
+      },
+      error: function () {
+        if (document.body.contains(valueEl)) valueEl.textContent = 'Không lấy được';
+      }
+    });
+  }
+
   function DetailDonHang(realorderid, onDone) {
     let motphan = '';
     if (realorderid.includes('1P1')) {
@@ -788,6 +824,10 @@
               <div><span class="order-detail-label">Khối lượng</span><span class="order-detail-value">${d.kg} Kg</span></div>
             </div>
             <div class="order-detail-item order-detail-item-wide">
+              <i class="bi bi-chat-dots"></i>
+              <div><span class="order-detail-label">Chốt trên live</span><span class="order-detail-value detail-chot-value"><span class="spinner-border spinner-border-sm"></span></span></div>
+            </div>
+            <div class="order-detail-item order-detail-item-wide">
               <i class="bi bi-calendar-date"></i>
               <div><span class="order-detail-label">Ngày lên đơn</span><span class="order-detail-value">${d.date}</span></div>
             </div>
@@ -807,6 +847,8 @@
       </div>
     </div>
   </div>`);
+        var detailModalEl = document.getElementById('notetoshow').nextElementSibling;
+        LoadChotForOrder(d.userid, detailModalEl && detailModalEl.querySelector('.detail-chot-value'));
         if ($('#modaldetail').hasClass('show')) {
           console.log('Duplicated.');
         } else {

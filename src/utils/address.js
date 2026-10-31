@@ -34,6 +34,7 @@ function applyAddressFixes(sWard, sDist) {
     if (sDist === 'đạ huoai' && sWard === 'quảng trị') { sDist = 'đạ tẻh'; sWard = 'Triệu Hải' }
     if (sDist === 'gia lộc' && sWard === 'gia tiến') sWard = 'Gia Lương';
     if (sDist === 'ý yên' && sWard === 'tân minh') sWard = 'yên minh';
+    if (sDist === 'phú lộc' && sWard === 'hương xuân') sDist = 'nam đông';
     if (sDist === 'đạ huoai' && sWard === 'mỹ đức') sDist = 'đạ tẻh';
     if (sDist === 'đạ huoai' && sWard === 'đạ kho') sDist = 'đạ tẻh';
     if (sDist === 'đạ huoai' && sWard === 'đạ lây') sDist = 'đạ tẻh';
