@@ -202,8 +202,6 @@
   }
 
   function resetQRCustomerInfo() {
-    // Xoá sạch thông tin khách hàng/đơn hàng của lần quét trước, tránh trường hợp
-    // quét lần mới thất bại nhưng màn hình vẫn còn hiển thị thông tin khách cũ.
     $('#qrresult').empty();
     khid = '';
     userid = '';
@@ -1443,7 +1441,6 @@
     });
   }
 
-  // Lên đơn theo nhà vận chuyển cấu hình ở biến môi trường CARRIER (viettel | jt)
   function PushOrder() {
     if (window.ACTIVE_CARRIER === 'jt') PushJTOrder();
     else PushViettelOrder();

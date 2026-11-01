@@ -110,7 +110,6 @@ function ShowToast(type,icon,title,content,delay) {
     }, delay);
   }
 
-  // Nhận diện lỗi Graph API khi bình luận đã bị xóa (không tồn tại / không còn truy cập được)
   function IsDeletedCommentError(err) {
     if (!err) return false;
     var msg = (typeof err === 'object') ? String(err.message || '') : String(err);

@@ -6,7 +6,6 @@ const {
     insertWaybillIfNew, latestStoredScanEpoch, applyJTStatus, createPartReturnOrder
 } = require('../../services/jtExpressService');
 
-// Mã trạng thái cần đẩy thông báo cho shop
 const JT_NOTIFY_CODES = new Set([116, 117, 118, 120]);
 
 async function notifyShop(db, billCode, scanCode, statusText, issueText) {
@@ -17,7 +16,6 @@ async function notifyShop(db, billCode, scanCode, statusText, issueText) {
     const title = `${order.name} - J&T`;
     const body = `${statusText}${issueText ? ' - ' + issueText : ''}`;
 
-    // Mỗi (đơn, trạng thái) chỉ báo 1 lần dù J&T bắn webhook lặp
     const [notiRows] = await db.query(
         'SELECT 1 FROM order_noti_log WHERE realorderid = ? AND status_code = ? LIMIT 1',
         [billCode, scanCode]
@@ -38,7 +36,6 @@ async function notifyShop(db, billCode, scanCode, statusText, issueText) {
 
 module.exports = function registerJtexWebhook(router) {
     router.post('/jtex', async function (req, res) {
-        // J&T chỉ cần nhận được phản hồi này, xử lý tiếp ở phía sau
         res.json({ "code": "1", "msg": "success", "data": null });
 
         try {
@@ -52,18 +49,15 @@ module.exports = function registerJtexWebhook(router) {
 
             const db = DBConnection.promise();
 
-            // Xử lý theo thứ tự thời gian, sự kiện mới nhất quyết định trạng thái
             events.sort((a, b) => (toEpoch(a.scanTime) || 0) - (toEpoch(b.scanTime) || 0));
             const newest = events[events.length - 1];
             const scanCode = eventCode(newest);
 
-            // Ký nhận 1 phần -> tạo đơn hoàn <bill>-001 (chỉ với đơn gốc)
             const partSign = Number(newest.partSign ?? data.partSign ?? 0);
             if (partSign === 1 && !isPartReturnBill(billCode)) {
                 await createPartReturnOrder(billCode);
             }
 
-            // Mốc thời gian đã lưu TRƯỚC khi chèn, để biết sự kiện này có bị đến trễ không
             const storedNewestEpoch = await latestStoredScanEpoch(billCode);
 
             const withSig = await jtHasSigpic();
@@ -71,7 +65,6 @@ module.exports = function registerJtexWebhook(router) {
                 await insertWaybillIfNew(db, toWaybillRow(billCode, ev), withSig);
             }
 
-            // Sự kiện cũ hơn dữ liệu đã có (webhook đến trễ/sai thứ tự) -> chỉ lưu hành trình, không đổi trạng thái
             const newestEpoch = toEpoch(newest.scanTime);
             const isStale = storedNewestEpoch !== null && newestEpoch !== null && newestEpoch < storedNewestEpoch;
             if (isStale) return;

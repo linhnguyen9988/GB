@@ -98,13 +98,8 @@ function PrintBillJT(orderid) {
     });
 }
 
-// =====================================================================
-//  J&T — dùng chung cho: lên đơn, in bill, tra hành trình, webhook
-//  (tham khảo cách tổ chức của repo PushJTxVT)
-// =====================================================================
 const JT_BASE = 'https://ylopenapi.jtexpress.vn/webopenplatformapi/api';
 
-// Mã trạng thái cuối: đã hủy / giao thành công / đã hoàn — không bị sự kiện cũ ghi đè
 const JT_FINAL_CODES = [105, 113, 117];
 const JT_KNOWN_CODES = [103, 105, 106, 109, 110, 112, 113, 116, 117, 118, 120];
 
@@ -122,7 +117,6 @@ const JT_STATUS_VN = {
     120: "Kiện vấn đề (Hoàn)"
 };
 
-// Người gửi — mặc định giữ đúng giá trị cũ, có thể ghi đè bằng biến môi trường
 const JT_SENDER = {
     name: process.env.JT_SENDER_NAME || 'Áo Dài Gia Bảo',
     mobile: process.env.JT_SENDER_MOBILE || '0888118855',
@@ -138,7 +132,6 @@ function httpError(status, message) {
     return e;
 }
 
-// POST có ký digest tới J&T. biz sẽ được gắn customerCode + password.
 async function jtPost(apiPath, biz, timeout = 5000) {
     const json = JSON.stringify({ customerCode: JT_CUSTOMER_CODE, password: JT_PASSWORD, ...biz });
     const params = new URLSearchParams();
@@ -155,7 +148,6 @@ async function jtPost(apiPath, biz, timeout = 5000) {
     return response.data;
 }
 
-// ---------- helpers ----------
 function isPartReturnBill(code) {
     return /^\d+-\d{3}$/.test(String(code || ''));
 }
@@ -180,7 +172,6 @@ function jtTypeName(code, name) {
     return n;
 }
 
-// Gom mọi URL ảnh (ảnh giao hàng / chữ ký) trong 1 sự kiện J&T -> JSON string
 function jtPics(d) {
     d = d || {};
     const urls = [];
@@ -209,7 +200,6 @@ function toEpoch(v) {
     return Number.isNaN(t) ? null : t;
 }
 
-// 1 sự kiện J&T -> 1 dòng bảng jtwaybill
 function toWaybillRow(billCode, d) {
     const code = eventCode(d);
     let typeName = jtTypeName(code, d.scanTypeName);
@@ -232,7 +222,6 @@ function toWaybillRow(billCode, d) {
     };
 }
 
-// Cột sigpic là tùy chọn (cần chạy migration) — kiểm tra 1 lần, cache lại
 let _sigpicCache = { value: false, at: 0 };
 async function jtHasSigpic() {
     if (_sigpicCache.value || Date.now() - _sigpicCache.at < 60000) return _sigpicCache.value;
@@ -245,7 +234,6 @@ async function jtHasSigpic() {
     return _sigpicCache.value;
 }
 
-// Chèn 1 dòng hành trình nếu chưa có (trùng billcode + thời gian + mã trạng thái thì bỏ qua)
 async function insertWaybillIfNew(conn, r, withSig) {
     const cols = ['billcode', 'scanbycode', 'scanbycontact', 'scanbyname', 'scanward', 'scancity', 'scanprov', 'scanpost', 'scantime', 'scantypename', 'issuename', 'scantypecode'];
     const vals = [r.billcode, r.scanbycode, r.scanbycontact, r.scanbyname, r.scanward, r.scancity, r.scanprov, r.scanpost, r.scantime, r.scantypename, r.issuename, r.scantypecode];
@@ -271,8 +259,6 @@ async function latestStoredScanEpoch(billCode) {
     return toEpoch(rows[0] && rows[0].m);
 }
 
-// Cập nhật trạng thái đơn trong lendon theo 1 sự kiện J&T.
-// Trạng thái cuối (105/113/117) luôn được ghi; trạng thái khác không ghi đè đơn đã ở trạng thái cuối.
 async function applyJTStatus(billCode, ev) {
     const code = eventCode(ev);
     if (!JT_KNOWN_CODES.includes(code)) return { applied: false, found: false };
@@ -304,7 +290,6 @@ async function applyJTStatus(billCode, ev) {
     };
 }
 
-// J&T báo "ký nhận 1 phần": tạo đơn hoàn mới mang mã <bill>-001 (không tạo trùng)
 async function createPartReturnOrder(billCode) {
     const child = billCode + '-001';
     try {
@@ -323,8 +308,6 @@ async function createPartReturnOrder(billCode) {
     }
 }
 
-// ---------- Lên đơn ----------
-// Dùng chung cho /pushorderjtex (web) và /push-jt (app). Không in bill — route tự gọi GetBillJT.
 async function createJTOrder(input) {
     let { fbname, address, phone, cod, kg, khid, userid, realfbid, tinh, huyen, xa, accountId } = input || {};
 
@@ -370,8 +353,6 @@ async function createJTOrder(input) {
         return { success: false, message: 'J&T từ chối: ' + (body && body.msg) };
     }
 
-    // sortLine (vd 620-B256C03-002) -> cột sortline; mã phân loại -> cột sortcode
-    // (ưu tiên sortingCode do J&T trả về, không có thì dùng sortLine). Cắt theo độ dài cột để không lỗi "Data too long".
     const sortLine = String(body.data.sortLine || '').slice(0, 45) || null;
     const sortCode = String(body.data.sortingCode || body.data.sortCode || body.data.sortLine || '').slice(0, 100) || null;
 
@@ -384,7 +365,6 @@ async function createJTOrder(input) {
              khid, userid, realfbid, sortLine, sortCode, 100, 'Mới tạo', accountId ?? null]
         );
     } catch (dbErr) {
-        // Đơn đã tạo bên J&T nhưng lưu DB lỗi — báo rõ để khỏi lên trùng
         console.error(`Lỗi lưu đơn J&T ${body.data.billCode} vào DB:`, dbErr.message);
         return { success: false, message: `Đã tạo đơn J&T ${body.data.billCode} nhưng lưu hệ thống lỗi: ${dbErr.message}` };
     }
@@ -399,13 +379,11 @@ async function createJTOrder(input) {
     };
 }
 
-// ---------- In bill ----------
 async function GetBillJT(orderid, userId) {
     const io = socket.getIo();
     try {
         const body = await jtPost('/order/printOrder', { txlogisticId: orderid }, 5000);
         if (body.msg === 'success' && body.data?.base64EncodeContent) {
-            // Không lưu bill vào DB (file base64 rất nặng) — mỗi lần cần in thì gọi API J&T lấy bill rồi gửi thẳng tới máy in
             if (io && userId) {
                 io.to(`USER_ROOM_${userId}`).emit("print-now", {
                     type: 'pdf',
@@ -423,7 +401,6 @@ async function GetBillJT(orderid, userId) {
     }
 }
 
-// ---------- Tra hành trình ----------
 async function traceJT(billCode) {
     const body = await jtPost('/logistics/trace', { billCodes: billCode, txlogisticId: '' }, 10000);
     if (body.code !== '1' || !Array.isArray(body.data) || body.data.length === 0) {
@@ -436,7 +413,6 @@ async function traceJT(billCode) {
     return { ok: true, details: sortedAsc };
 }
 
-// Kéo hành trình từ J&T, ghi đè bảng jtwaybill của đơn đó (giữ lại ảnh cũ nếu trace không có) rồi cập nhật trạng thái.
 async function refreshJTStatus(billCode) {
     billCode = String(billCode || '').trim();
     const [orders] = await DBConnection.query(
@@ -491,7 +467,6 @@ async function refreshJTStatus(billCode) {
 module.exports = {
     CancelOrderJT, PrintBillJT, GetBillJT,
     createJTOrder, traceJT, refreshJTStatus,
-    // dùng cho webhook
     JT_FINAL_CODES, jtHasSigpic, isPartReturnBill, eventCode, toWaybillRow, toEpoch,
     insertWaybillIfNew, latestStoredScanEpoch, applyJTStatus, createPartReturnOrder
 };

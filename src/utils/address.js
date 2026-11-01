@@ -120,6 +120,7 @@ function cleanSearchTerm(str) {
         .replace('trấn trấn', '')
         .replace('`', '')
         .replace('iapal', 'ia pal')
+        .replace('viên an đông', 'viễn an đông')
         .replace('nghìn tường', 'nghinh tường')
         .replace('nam  yang', 'nam yang')
         .replace('tt bảy ngàn', 'bảy ngàn')

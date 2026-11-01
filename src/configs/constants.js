@@ -13,7 +13,6 @@ const VIETTEL_WEBHOOK_TOKEN = process.env.VIETTEL_WEBHOOK_TOKEN;
 const FB_WEBHOOK_VERIFY_TOKEN = process.env.FB_WEBHOOK_VERIFY_TOKEN;
 const REGISTER_PATH = process.env.REGISTER_PATH;
 
-// Nhà vận chuyển dùng để lên đơn: CARRIER=viettel | jt  (mặc định viettel)
 const CARRIER_ALIASES = { viettel: 'viettel', jt: 'jt', 'j&t': 'jt' };
 const CARRIER_RAW = String(process.env.CARRIER || 'viettel').trim().toLowerCase();
 const ACTIVE_CARRIER = CARRIER_ALIASES[CARRIER_RAW] || 'viettel';

@@ -1750,6 +1750,12 @@ if (holdToastEl) {
     });
 }
 
+function GetPriceFromCell(cellHtml) {
+    if (!cellHtml) return "0";
+    var priceText = $('<div>').html(cellHtml).find('.tag-green, .badge.bg-success').first().text();
+    return priceText.replace(/[^0-9]/g, "") || "0";
+}
+
 async function handlePrintLabel(rowElement) {
     var data = $('#comment_table').DataTable().row(rowElement).data();
     if (!data) return;
@@ -1766,7 +1772,7 @@ async function handlePrintLabel(rowElement) {
         name: rawNameHtml.split('<br>')[0].replace(/<[^>]*>?/gm, '').trim(),
         phone: data[3] ? data[3].replace(/<[^>]*>?/gm, '').trim() : "",
         comment: data[2] ? data[2].replace(/<[^>]*>?/gm, '').trim() : "",
-        gia: data[6] ? data[6].replace(/[^0-9]/g, "") : "0",
+        gia: GetPriceFromCell(data[6]),
         id: data[25],
         avabase64: avatarUrl,
         address: data[10],

@@ -3,7 +3,6 @@ const jwtAuth = require('../../middleware/jwtAuth');
 const { CancelOrderJT, GetBillJT, PrintBillJT, createJTOrder, refreshJTStatus } = require('../../services/jtExpressService');
 
 module.exports = function registerJtexRoutes(router) {
-    // Lên đơn J&T từ web (chat/live) — logic nằm ở services/jtExpressService.createJTOrder
     router.post('/pushorderjtex', jwtAuth, async function (req, res) {
         const result = await createJTOrder({ ...req.body, accountId: req.user.id });
         if (!result.success) return res.json({ success: false, message: result.message });
@@ -29,7 +28,6 @@ module.exports = function registerJtexRoutes(router) {
         res.json({ message: mess });
     });
 
-    // Làm mới hành trình + trạng thái 1 đơn J&T trực tiếp từ J&T (khi webhook bị sót)
     router.post('/refreshstatusjt', jwtAuth, async function (req, res) {
         const realorderid = String(req.body.realorderid || '').trim();
         if (!/^[A-Za-z0-9]+(-\d{3})?$/.test(realorderid) || realorderid.length < 6 || realorderid.length > 30) {

@@ -48,7 +48,6 @@ function handleInLaiDon() {
 }
 
 function LenDonKhachHang() {
-    // Nhà vận chuyển lấy từ biến môi trường CARRIER (server -> window.ACTIVE_CARRIER)
     if (window.ACTIVE_CARRIER === 'jt') return LenDonKhachHangJT();
 
     var btn = document.getElementById('btnlendonkh');
@@ -192,7 +191,6 @@ function LenDonKhachHang() {
     });
 }
 
-// Lên đơn J&T từ trang khách hàng. Bill được server lấy từ API J&T và gửi thẳng tới máy in.
 function LenDonKhachHangJT() {
     var btn = document.getElementById('btnlendonkh');
     var phone = document.getElementById('userphone').value.trim();
@@ -326,7 +324,6 @@ function LenDonKhachHangJT() {
     } else {
         tryInject();
     }
-    // Phòng trường hợp nút tra hành trình được render động sau khi DOM đã sẵn sàng
     observer = new MutationObserver(tryInject);
     observer.observe(document.body, { childList: true, subtree: true });
 })();
@@ -359,7 +356,6 @@ function OnUpdateUser() {
     if (!userid || document.getElementById("fbname").value.length < 1) {
         return;
     }
-    // LẤY DATA BẰNG USERID, KHÔNG DÙNG getRowIdx()
     var data = null;
     table.rows().every(function () {
         if (this.data()[0] == userid) { data = this.data(); }
@@ -411,7 +407,6 @@ function OnUpdateUser() {
             } else if (nn != 'Nước ngoài') {
                 this.cell(rowIdx, 1).data(this.cell(rowIdx, 1).data().split(`<span class="label label--lightpink">Nước ngoài</span>`)[0]);
             }
-            // Bỏ badge nhãn cũ (nếu có) trước khi gắn badge mới, vì badge nằm luôn trong HTML của cell tên khách
             if (data[4] && data[4].length > 0) {
                 var oldBadge = `<span class="label label--${GetLabelBadgeClass(data[4])}">${data[4]}</span>`;
                 this.cell(rowIdx, 1).data(this.cell(rowIdx, 1).data().split(oldBadge).join(''));

@@ -77,7 +77,6 @@ function RefreshStatusInTracking(btn) {
   var provider = btn.dataset.provider || 'Viettel';
   requestOrderStatusRefresh(orderNumber, btn, function (res) {
     if (res.isFinal) btn.classList.add('d-none');
-    // J&T: hành trình vừa được kéo lại từ J&T -> tải lại danh sách hành trình đang xem
     if (provider === 'J&T' && typeof loadOrderJourney === 'function') loadOrderJourney(orderNumber);
   }, provider);
 }
