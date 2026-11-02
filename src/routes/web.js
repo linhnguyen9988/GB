@@ -9,6 +9,7 @@ const registerNotificationRoutes = require('./modules/notification.routes');
 const registerPrintRoutes = require('./modules/print.routes');
 const registerViettelRoutes = require('./modules/viettel.routes');
 const registerOrderRoutes = require('./modules/order.routes');
+const registerJtAddressRoutes = require('./modules/jtaddress.routes');
 const registerJtexRoutes = require('./modules/jtex.routes');
 const registerFacebookRoutes = require('./modules/facebook.routes');
 const registerLiveCommentRoutes = require('./modules/liveComment.routes');
@@ -40,6 +41,7 @@ let initWebRoutes = (app) => {
     registerViettelRoutes(router);
     registerJtexRoutes(router);
     registerOrderRoutes(router);
+    registerJtAddressRoutes(router);
     registerFacebookRoutes(router);
     registerLiveCommentRoutes(router);
     registerCustomerRoutes(router);

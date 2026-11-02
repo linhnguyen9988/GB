@@ -218,6 +218,11 @@ function LenDonKhachHangJT() {
     var huyenjt = opt.dataset.huyenjt || '';
     var tinhjt = opt.dataset.tinhjt || '';
     if (opt.dataset.jtready !== '1' || !xajt) {
+        if (opt.dataset.dbid && opt.dataset.xa && typeof OpenJTPickerForOpt === 'function') {
+            OpenJTPickerForOpt(opt);
+            ShowCenterToast('warning', 'Chọn đủ Tỉnh/Huyện/Xã J&T rồi lên đơn lại', 3000);
+            return;
+        }
         ShowAlertModal('Địa chỉ chưa có dữ liệu J&T. Bấm + để validate địa chỉ mới.');
         return;
     }
@@ -283,8 +288,9 @@ function LenDonKhachHangJT() {
         btn.type = 'button';
         btn.id = 'btnlendonkh';
         btn.className = 'btn btn-success';
-        btn.title = 'Lên đơn ' + (window.ACTIVE_CARRIER === 'jt' ? 'J&T' : 'Viettel');
-        btn.innerHTML = '🖨️';
+        var carrierName = window.ACTIVE_CARRIER === 'jt' ? 'J&amp;T' : 'Viettel';
+        btn.title = 'Lên đơn ' + carrierName.replace('&amp;', '&');
+        btn.innerHTML = '<i class="bi bi-box-seam"></i> ' + carrierName;
         btn.onclick = LenDonKhachHang;
 
         kgInput.insertAdjacentElement('afterend', btn);
@@ -868,7 +874,14 @@ function AddDiaChi() {
             select.appendChild(opt);
             select.value = opt.value;
             //OnUpdateUser();
-            ShowAlertModal(`GB: ${diachi}\nViettel: ${data.adx}`,'success');
+            if (!data.jtready && data.jtSuggest && data.id && typeof OpenJTPickerForOpt === 'function') {
+                opt.dataset.sugtinh = data.jtSuggest.tinhjt || '';
+                opt.dataset.sughuyen = data.jtSuggest.huyenjt || '';
+                OpenJTPickerForOpt(opt);
+                ShowCenterToast('warning', 'J&T chưa nhận địa chỉ này, chọn Tỉnh/Huyện/Xã bên dưới', 4000);
+            } else {
+                ShowAlertModal(`GB: ${diachi}\nViettel: ${data.adx}`,'success');
+            }
 
             document.getElementById('diachi').value = diachi;
         }

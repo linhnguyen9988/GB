@@ -1468,6 +1468,11 @@
     tinhjt = selectedOpt.dataset.tinhjt || '';
 
     if (!jtready || !xajt) {
+      if (selectedOpt.dataset.dbid && selectedOpt.dataset.xa) {
+        OpenJTPickerForOpt(selectedOpt);
+        ShowCenterToast('warning', 'Chọn đủ Tỉnh/Huyện/Xã J&T rồi lên đơn lại', 3000);
+        return;
+      }
       ShowAlertModal('Địa chỉ chưa có dữ liệu J&T. Bấm + để validate địa chỉ mới.');
       return;
     }
@@ -1692,6 +1697,201 @@
     });
   }
 
+
+  // ===== Chọn tay địa chỉ J&T: 3 ô Tỉnh / Huyện / Xã nằm ngang ngay dưới select địa chỉ =====
+  // Dữ liệu lấy từ bảng jtaddress. Chọn xong ô Xã là tự lưu.
+  var JTProvincesCache = null;
+
+  // Ẩn đuôi mã J&T (vd "Phường An Phú-028TPT03" -> "Phường An Phú") cho dễ nhìn
+  function JTPickerLabel(v) {
+    return String(v).replace(/-\s*\d{2,3}[A-Za-z]+\d*\s*$/, '');
+  }
+
+  function JTPickerFill(sel, items, placeholder, selected) {
+    sel.innerHTML = '';
+    var ph = document.createElement('option');
+    ph.value = '';
+    ph.textContent = placeholder;
+    sel.appendChild(ph);
+    (items || []).forEach(function (v) {
+      var o = document.createElement('option');
+      o.value = v;
+      o.textContent = JTPickerLabel(v);
+      sel.appendChild(o);
+    });
+    sel.disabled = !(items && items.length);
+    sel.value = (selected && (items || []).indexOf(selected) !== -1) ? selected : '';
+  }
+
+  async function JTPickerGet(url) {
+    var res = await fetch(url, { credentials: 'same-origin' });
+    var j = await res.json();
+    if (!j.success) throw new Error(j.message || 'Lỗi tải dữ liệu J&T');
+    return j.data || [];
+  }
+
+  function JTPanelEls(p) {
+    return {
+      info: p.querySelector('.jtp-info'),
+      prov: p.querySelector('.jtp-prov'),
+      dist: p.querySelector('.jtp-dist'),
+      ward: p.querySelector('.jtp-ward'),
+      err: p.querySelector('.jtp-err')
+    };
+  }
+
+  function JTHidePanel(p) {
+    if (!p) return;
+    p._seq = (p._seq || 0) + 1;
+    p._opt = null;
+    p.classList.add('d-none');
+  }
+
+  // Lấy (hoặc tạo) hàng 3 ô nằm ngay dưới select địa chỉ
+  function GetJTPanel(select) {
+    var id = 'jtinline_' + select.id;
+    var anchor = select.closest('.input-group') || select;
+    var p = document.getElementById(id);
+    if (p && p.previousElementSibling !== anchor) { p.remove(); p = null; }
+    if (p) return p;
+
+    p = document.createElement('div');
+    p.id = id;
+    p.className = 'jt-inline-picker d-none mb-2';
+    p.innerHTML =
+      '<div class="small text-muted mb-1 jtp-info" style="word-break:break-word;"></div>' +
+      '<div class="d-flex gap-1">' +
+      '<select class="form-select form-select-sm jtp-prov" style="flex:1 1 0;min-width:0;" title="Tỉnh / Thành phố"></select>' +
+      '<select class="form-select form-select-sm jtp-dist" style="flex:1 1 0;min-width:0;" title="Quận / Huyện" disabled></select>' +
+      '<select class="form-select form-select-sm jtp-ward" style="flex:1 1 0;min-width:0;" title="Phường / Xã" disabled></select>' +
+      '</div>' +
+      '<div class="text-danger small jtp-err"></div>';
+    anchor.insertAdjacentElement('afterend', p);
+
+    var el = JTPanelEls(p);
+    el.prov.addEventListener('change', function () { JTPanelLoadDistricts(p, this.value, ''); });
+    el.dist.addEventListener('change', function () { JTPanelLoadWards(p, el.prov.value, this.value); });
+    el.ward.addEventListener('change', function () { if (this.value) JTPanelSave(p); });
+
+    // Đổi sang địa chỉ khác (hoặc địa chỉ đã có J&T) thì ẩn hàng chọn
+    if (!select._jtBound) {
+      select._jtBound = true;
+      select.addEventListener('change', function () {
+        var pp = document.getElementById('jtinline_' + this.id);
+        if (!pp) return;
+        var o = this.options[this.selectedIndex];
+        if (!o || o.dataset.jtready === '1' || pp._opt !== o) JTHidePanel(pp);
+      });
+    }
+    return p;
+  }
+
+  async function JTPanelLoadDistricts(p, prov, selectedDist) {
+    var el = JTPanelEls(p);
+    var mySeq = p._seq = (p._seq || 0) + 1;
+    el.err.textContent = '';
+    JTPickerFill(el.ward, [], 'Xã/Phường', '');
+    JTPickerFill(el.dist, [], 'Huyện/Quận', '');
+    if (!prov) return;
+    try {
+      var items = await JTPickerGet('/jtaddress/districts?prov=' + encodeURIComponent(prov));
+      if (mySeq !== p._seq) return;
+      JTPickerFill(el.dist, items, 'Huyện/Quận', selectedDist);
+      if (el.dist.value) await JTPanelLoadWards(p, prov, el.dist.value);
+    } catch (e) {
+      el.err.textContent = e.message;
+    }
+  }
+
+  async function JTPanelLoadWards(p, prov, district) {
+    var el = JTPanelEls(p);
+    var mySeq = p._seq = (p._seq || 0) + 1;
+    el.err.textContent = '';
+    JTPickerFill(el.ward, [], 'Xã/Phường', '');
+    if (!prov || !district) return;
+    try {
+      var items = await JTPickerGet('/jtaddress/wards?prov=' + encodeURIComponent(prov) + '&district=' + encodeURIComponent(district));
+      if (mySeq !== p._seq) return;
+      JTPickerFill(el.ward, items, 'Xã/Phường', '');
+      if (items.length) el.ward.focus();
+    } catch (e) {
+      el.err.textContent = e.message;
+    }
+  }
+
+  // info: { address, adx, tinhjt, huyenjt }  (tinhjt/huyenjt: gợi ý sẵn nếu nhận diện được)
+  async function OpenJTPicker(opt, info) {
+    var select = opt && opt.parentNode;
+    if (!select || select.tagName !== 'SELECT') return;
+    info = info || {};
+    var p = GetJTPanel(select);
+    var el = JTPanelEls(p);
+    p._opt = opt;
+    p._seq = (p._seq || 0) + 1;
+    el.err.textContent = '';
+    el.info.textContent = info.adx ? ('Viettel: ' + info.adx + ' — J&T chưa nhận, chọn lại bên dưới') : 'Chọn địa chỉ J&T';
+    JTPickerFill(el.dist, [], 'Huyện/Quận', '');
+    JTPickerFill(el.ward, [], 'Xã/Phường', '');
+    p.classList.remove('d-none');
+
+    try {
+      if (!JTProvincesCache) JTProvincesCache = await JTPickerGet('/jtaddress/provinces');
+      JTPickerFill(el.prov, JTProvincesCache, 'Tỉnh/Thành', info.tinhjt || '');
+      if (el.prov.value) await JTPanelLoadDistricts(p, el.prov.value, info.huyenjt || '');
+      else el.prov.focus();
+    } catch (e) {
+      el.err.textContent = e.message;
+    }
+  }
+
+  function OpenJTPickerForOpt(opt) {
+    if (!opt) return;
+    var d = opt.dataset;
+    OpenJTPicker(opt, {
+      address: d.address || '',
+      adx: [d.xa, d.huyen, d.tinh].filter(Boolean).join(', '),
+      tinhjt: d.sugtinh || '',
+      huyenjt: d.sughuyen || ''
+    });
+  }
+
+  async function JTPanelSave(p) {
+    var opt = p._opt;
+    var el = JTPanelEls(p);
+    var tinhjt = el.prov.value, huyenjt = el.dist.value, xajt = el.ward.value;
+    if (!opt || !tinhjt || !huyenjt || !xajt) return;
+    if (!opt.dataset.dbid) {
+      el.err.textContent = 'Địa chỉ chưa được lưu, hãy bấm + để thêm lại.';
+      return;
+    }
+    el.ward.disabled = true;
+    el.err.textContent = '';
+    try {
+      var res = await fetch('/savejtaddress', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: opt.dataset.dbid, tinhjt: tinhjt, huyenjt: huyenjt, xajt: xajt })
+      });
+      var j = await res.json();
+      el.ward.disabled = false;
+      if (!j.success) {
+        el.err.textContent = j.message || 'Không lưu được';
+        return;
+      }
+      opt.dataset.xajt = j.xajt || '';
+      opt.dataset.huyenjt = j.huyenjt || '';
+      opt.dataset.tinhjt = j.tinhjt || '';
+      opt.dataset.jtready = '1';
+      opt.text = '✅ ' + (opt.dataset.address || opt.text.replace(/^[✅⚠️🔄❌]\s*/, ''));
+      JTHidePanel(p);
+      ShowCenterToast('success', 'Đã chọn J&T: ' + JTPickerLabel(j.xajt) + ', ' + j.huyenjt + ', ' + j.tinhjt, 4000);
+    } catch (e) {
+      el.ward.disabled = false;
+      el.err.textContent = e.message;
+    }
+  }
+
   async function AutoValidateJT(opt) {
     var address = opt.dataset.address;
     var phoneEl = document.getElementById('phoneviettel') || document.getElementById('userphone');
@@ -1718,7 +1918,7 @@
       const data = await res.json();
 
       if (data.adx) {
-        ShowCenterToast('info', data.adx, 4000);
+        ShowCenterToast('success', data.adx, 4000);
       }
 
       if (data.error) {
@@ -1740,6 +1940,19 @@
       } else {
         opt.text = '⚠️ ' + address;
         ShowCenterToast('warning', data.jtError || 'Chưa có dữ liệu J&T', 4000);
+        if (data.id) opt.dataset.dbid = data.id;
+        if (data.adx) {
+          var p = data.adx.split(',').map(function (x) { return x.trim(); });
+          opt.dataset.xa = p[0] || '';
+          opt.dataset.huyen = p[1] || '';
+          opt.dataset.tinh = p[2] || '';
+        }
+        if (data.jtSuggest) {
+          opt.dataset.sugtinh = data.jtSuggest.tinhjt || '';
+          opt.dataset.sughuyen = data.jtSuggest.huyenjt || '';
+          opt.disabled = false;
+          OpenJTPickerForOpt(opt);
+        }
       }
       opt.disabled = false;
     } catch (e) {
@@ -1807,7 +2020,14 @@
         select.appendChild(opt);
         select.value = opt.value;
 
-        ShowAlertModal(`GB: ${diachi}\nViettel: ${data.adx}`,'success');
+        if (!data.jtready && data.jtSuggest && data.id) {
+          opt.dataset.sugtinh = data.jtSuggest.tinhjt || '';
+          opt.dataset.sughuyen = data.jtSuggest.huyenjt || '';
+          OpenJTPickerForOpt(opt);
+          ShowCenterToast('warning', 'J&T chưa nhận địa chỉ này, chọn Tỉnh/Huyện/Xã bên dưới', 4000);
+        } else {
+          ShowAlertModal(`GB: ${diachi}\nViettel: ${data.adx}`,'success');
+        }
         UpdateAddress2(userid);
       }
     });
@@ -1919,7 +2139,7 @@
                   <span class="input-group-text qr-ig-icon"><i class="bi bi-coin"></i></span>
                   <input type="text" pattern="[0-9]+" inputmode="numeric" id="CODX" placeholder="COD" class="form-control" value="0" onfocus="SelectX(this)" onkeyup="onlyNumberAmount(this)">
                   <input type="text" pattern="[0-9]+" inputmode="numeric" id="SOKG" placeholder="KG" class="form-control" style="max-width:70px" value="1" onfocus="SelectX(this)" onkeyup="onlyNumberAmount(this)">
-                  <button type="button" id="pushviettelorder" class="btn btn-success" onclick="PushOrder()" title="Lên đơn ${window.ACTIVE_CARRIER === 'jt' ? 'J&T' : 'Viettel'}"><i class="bi bi-printer-fill"></i> Lên đơn</button>
+                  <button type="button" id="pushviettelorder" class="btn btn-success" onclick="PushOrder()" title="Lên đơn ${window.ACTIVE_CARRIER === 'jt' ? 'J&T' : 'Viettel'}"><i class="bi bi-box-seam"></i> ${window.ACTIVE_CARRIER === 'jt' ? 'J&amp;T' : 'Viettel'}</button>
                 </div>
               </div>
               <select id="diachilendonviettel" class="form-select qr-select mb-2"></select>

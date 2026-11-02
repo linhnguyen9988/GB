@@ -10,6 +10,7 @@ const { CreateOrderID } = require('../../utils/orderId');
 const { DONHANG_DIR } = require('../../configs/constants');
 const { GetViettelToken, PrintBillViettel } = require('../../services/viettelService');
 const { refreshOrderStatus } = require('../../services/viettelStatusService');
+const { suggestProvDistrict } = require('../../services/jtAddressService');
 const { applyAddressFixes, cleanSearchTerm, normalizeSQL, preprocessForViettel } = require('../../utils/address');
 
 async function runViettelEdit(res, label, fn) {
@@ -234,10 +235,11 @@ module.exports = function registerViettelRoutes(router) {
             const adx = `${xa}, ${huyen}, ${tinh}`;
 
             let jtResult = null;
+            let sProv = '', sDist = '';
             if (xa && huyen && tinh) {
                 try {
-                    const sProv = cleanSearchTerm(tinh);
-                    let sDist = cleanSearchTerm(huyen);
+                    sProv = cleanSearchTerm(tinh);
+                    sDist = cleanSearchTerm(huyen);
                     let sWard = cleanSearchTerm(xa);
                     sWard = sWard.replace(/phường|xã/gi, "").trim();
                     ({ sWard, sDist } = applyAddressFixes(sWard, sDist));
@@ -294,9 +296,11 @@ module.exports = function registerViettelRoutes(router) {
                 DBConnection.query(checkSql, (err, rows) => resolve(rows));
             });
 
+            let addressId = null;
             if (!existingAddr || existingAddr.length < 1) {
                 const insertValues = [name, phone, addressNorm, khid, userid, xa, huyen, tinh];
                 let insertSql;
+                const dbp = DBConnection.promise();
 
                 if (jtResult && !jtResult.error) {
                     insertSql = SqlString.format(
@@ -309,9 +313,11 @@ module.exports = function registerViettelRoutes(router) {
                         insertValues
                     );
                 }
-                DBConnection.query(insertSql);
+                const [insRes] = await dbp.query(insertSql);
+                addressId = insRes.insertId;
             } else {
                 const existingId = existingAddr[0].id;
+                addressId = existingId;
                 if (jtResult && !jtResult.error) {
                     const updateSql = SqlString.format(
                         'UPDATE diachilendon SET xa=?, huyen=?, tinh=?, xajt=?, huyenjt=?, tinhjt=?, xamoi=?, tinhmoi=? WHERE id=?',
@@ -327,8 +333,20 @@ module.exports = function registerViettelRoutes(router) {
                 }
             }
 
+            let jtSuggest = null;
+            if (jtResult && jtResult.error) {
+                try {
+                    jtSuggest = await suggestProvDistrict(DBConnection.promise(), sProv, sDist);
+                } catch (sgErr) {
+                    console.error('Lỗi gợi ý JT:', sgErr.message);
+                    jtSuggest = { tinhjt: '', huyenjt: '' };
+                }
+            }
+
             res.json({
                 adx,
+                id: addressId,
+                ...(jtSuggest ? { jtSuggest } : {}),
                 jtready: !!(jtResult && !jtResult.error),
                 ...(jtResult && !jtResult.error ? jtResult : {}),
                 ...(jtResult && jtResult.error ? { jtError: jtResult.error } : {})
