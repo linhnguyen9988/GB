@@ -2,6 +2,7 @@
 const router = require('express').Router();
 const db = require('../../configs/DBConnection');
 const auth = require('../../middleware/jwtAuth');
+const { ensureChot2 } = require('../../services/chotService');
 
 // GET /api/livecomments/livestreams - 5 livestream gần nhất
 router.get('/livestreams', auth, async (req, res) => {
@@ -73,8 +74,9 @@ router.post('/customer-chots', auth, async (req, res) => {
 
   try {
     const placeholders = ids.map(() => '?').join(', ');
+    const hasChot2 = await ensureChot2();
     const [rows] = await db.query(
-      `SELECT liveid, chot, COALESCE(slchot, 1) AS slchot
+      `SELECT liveid, chot, COALESCE(slchot, 1) AS slchot${hasChot2 ? ', COALESCE(slchot2, 0) AS slchot2, gia2' : ''}
        FROM livecomment
        WHERE userid = ?
          AND liveid IN (${placeholders})

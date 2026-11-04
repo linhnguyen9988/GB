@@ -22,7 +22,12 @@ function getRowIdx() {
 }
 $("#gia").on("keydown", function (e) {
     var keyCode = (e.keyCode ? e.keyCode : e.which);
-    if (keyCode == 13 || keyCode == 67) {
+    if (keyCode == 67 && e.shiftKey) {
+        e.preventDefault();
+        var rowData = null;
+        try { rowData = $('#comment_table').DataTable().row(getRowIdx()).data(); } catch (err) { rowData = null; }
+        OpenChot2Modal(rowData);
+    } else if (keyCode == 13 || keyCode == 67) {
         Chot();
     } else if (keyCode == 88) {
         XaHang();
@@ -315,14 +320,18 @@ function InItKeys() {
     var t = $('#comment_table').DataTable();
     t.on('key', function (e, datatable, keyCode, cell, originalEvent) {
         var x = datatable.row(cell.index().row).data();
-        if ($('#modalxaconfirm').hasClass('show') || $('#modalalertx').hasClass('show')) {
+        if ($('#modalxaconfirm').hasClass('show') || $('#modalalertx').hasClass('show') || $('#modalchot2').hasClass('show')) {
             return;
         }
         if ($('#viettelnotetext').is(':focus') || $('#message-input').is(':focus') || $('#notescan').is(':focus') || $('#diachiviettel').is(':focus') || $('#diachimodal').is(':focus') || $('#gia').is(':focus') || $('#slchot').is(':focus') || $('#gia_m').is(':focus') || $('#slchot_m').is(':focus') || $('#comment_table_filter input').is(':focus') || $('#livenote').is(':focus') || $('#OrderNote').is(':focus') || $('#MessToSend').is(':focus') || $('#link').is(':focus') || $('#usernote').is(':focus') || $('#userphone').is(':focus') || $('#useraddress').is(':focus') || $('#diachi').is(':focus') || $('#note').is(':focus')) {
             return;
         }
         if (keyCode == 67) {
-            Chot();
+            if (originalEvent && originalEvent.shiftKey) {
+                OpenChot2Modal(x);   // Shift+C: chốt 2 giá
+            } else {
+                Chot();
+            }
             //0-9 KeyCode
         } else if (keyCode == 66) { // Phím B
             var rowNode = datatable.row(cell.index().row).node();
@@ -579,15 +588,7 @@ async function LoadLive() {
                         if (message == null || message == undefined) {
                             message = '';
                         }
-                        var slchot = data.data[i].slchot;
-                        var slchottext = ''; 
-                        var giatext = '';
-                        if(slchot > 1){
-                            slchottext =`<span class='tag tag-purple tag-pulse'>x ${slchot}</span>`;
-                        }
-                        if(data.data[i].gia != ''){
-                            giatext = `<span class='tag tag-green tag-pulse'>💰${data.data[i].gia}</span>`;
-                        }
+                        var pricehtml = ChotPriceTags(data.data[i].gia, data.data[i].slchot, data.data[i].gia2, data.data[i].slchot2);
                         var xabadge = (data.data[i].gia != '' && data.data[i].gia != null) ? XaBadgeHtml() : '';
                         html += `
                                 <tr>
@@ -597,7 +598,7 @@ async function LoadLive() {
                                     <td>${phone}</td>
                                     <td>${zlabel}</td>
                                     <td><center><span class="badge bg-${xbel}">${data.data[i].chot}</span></center></td>
-                                    <td><center>${giatext}${slchottext}${xabadge}</center></td>
+                                    <td><center>${pricehtml}${xabadge}</center></td>
                                     <td>${data.data[i].count}</td>
                                     <td>${data.data[i].commentid}</td>
                                     <td>${timesort}</td>
@@ -993,7 +994,7 @@ async function ScanComment(soluong) {
                             phone,//3
                             zlabel,//4
                             `<center><span class="badge bg-${xbel}">${data.data[i].chot}</span></center>`,//5
-                            `<center><span class="badge bg-success">${data.data[i].gia}</span>${(data.data[i].slchot > 1 ? `<span class='tag tag-purple tag-pulse'>x ${data.data[i].slchot}</span>` : '')}${(data.data[i].gia != '' && data.data[i].gia != null) ? XaBadgeHtml() : ''}</center>`,//6
+                            `<center><span class="badge bg-success">${data.data[i].gia}</span>${(data.data[i].slchot > 1 ? `<span class='tag tag-purple tag-pulse'>x ${data.data[i].slchot}</span>` : '')}${ChotSecondPriceHtml(data.data[i].gia2, data.data[i].slchot2, true)}${(data.data[i].gia != '' && data.data[i].gia != null) ? XaBadgeHtml() : ''}</center>`,//6
                             data.data[i].count,//7
                             data.data[i].commentid,//8
                             timesort,//9
@@ -1443,11 +1444,19 @@ async function Chotxxx(buttongia) {
 
 var pendingChot = {};
 
-async function Chot(buttongia) {
+async function Chot(buttongia, extra) {
     var table = $('#comment_table').DataTable();
     if (table.rows().count() === 0) return;
 
-    var data = table.row(getRowIdx()).data();
+    var data = null;
+    if (extra && extra.commentid) {
+        table.rows().every(function () {
+            var d = this.data();
+            if (!data && d && d[8] == extra.commentid) data = d;
+        });
+    } else {
+        data = table.row(getRowIdx()).data();
+    }
     if (!data) return;
 
     var commentid = data[8];
@@ -1465,9 +1474,17 @@ async function Chot(buttongia) {
         avatarUrl = window.location.origin + avatarUrl;
     }
 
-    var slchot = parseInt(document.getElementById("slchot").value) || 1;
-    document.getElementById("slchot").value = 1;
-    var gia = buttongia > 0 ? buttongia : document.getElementById("gia").value;
+    var slchot, gia, gia2 = '', slchot2 = '';
+    if (extra && extra.gia2) {
+        slchot = extra.slchot1;
+        gia = extra.gia1;
+        gia2 = String(extra.gia2).replace(/[^0-9]/g, '');
+        slchot2 = extra.slchot2;
+    } else {
+        slchot = parseInt(document.getElementById("slchot").value) || 1;
+        document.getElementById("slchot").value = 1;
+        gia = buttongia > 0 ? buttongia : document.getElementById("gia").value;
+    }
     var cleanPrice = gia.toString().replace(/[^0-9]/g, "");
     UpdatePhone();
     if (realid.length < 1) {
@@ -1492,6 +1509,8 @@ async function Chot(buttongia) {
         region: data[23],
         gia: cleanPrice,
         slchot: slchot,
+        gia2: gia2,
+        slchot2: slchot2,
         timeoutId: setTimeout(function () {
             FailChot(commentid, 'Không nhận được phản hồi từ máy chủ, vui lòng thử lại.');
         }, 10000)
@@ -1500,7 +1519,7 @@ async function Chot(buttongia) {
     $.ajax({
         url: "/updatechot",
         method: "POST",
-        data: { commentid: commentid, chot: "CHỐT", gia: gia, liveid: liveid, slchot: slchot, socketid: socket.id },
+        data: { commentid: commentid, chot: "CHỐT", gia: gia, liveid: liveid, slchot: slchot, gia2: gia2, slchot2: slchot2, socketid: socket.id },
         dataType: "JSON",
         error: function () {
             FailChot(commentid, 'Gửi yêu cầu chốt đơn thất bại.');
@@ -1525,15 +1544,12 @@ socket.on('new-chot', async (data) => {
     var table = $('#comment_table').DataTable();
     var luotcuoilive = data.luotcuoilive;
 
-    let slchottext = '';
-    if (data.slchot > 1) {
-        slchottext = `<span class='tag tag-purple tag-pulse'>x ${data.slchot}</span>`;
-    }
+    var pricehtml = ChotPriceTags(data.gia, data.slchot, data.gia2, data.slchot2);
 
     table.rows().every(function (rowIdx) {
         if (table.cell(rowIdx, 8).data() == data.cid) {
             table.cell(rowIdx, 5).data("<center><span class='badge bg-primary'>CHỐT</span></center>");
-            table.cell(rowIdx, 6).data(`<center><span class='tag tag-green tag-pulse'>💰${data.gia}</span>${slchottext}${XaBadgeHtml()}</center>`);
+            table.cell(rowIdx, 6).data(`<center>${pricehtml}${XaBadgeHtml()}</center>`);
             table.cell(rowIdx, 16).data(luotcuoilive);
         }
     }).draw(false);
@@ -1562,27 +1578,165 @@ socket.on('new-chot', async (data) => {
         region: pending.region
     };
 
-    const resPdf = await fetch('/api/generate-pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(printData)
-    }).then(r => r.json());
+    var lines = [{ gia: pending.gia, sl: pending.slchot }];
+    if (pending.gia2) lines.push({ gia: pending.gia2, sl: pending.slchot2 });
+    for (var li = 0; li < lines.length; li++) {
+        var resPdf = await fetch('/api/generate-pdf', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(Object.assign({}, printData, { gia: lines[li].gia }))
+        }).then(r => r.json());
 
-    if (resPdf.success) {
-        for (var k = 0; k < pending.slchot; k++) {
-            fetch('/print-order', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    userId: window.CURRENT_USER_ID,
-                    type: 'pdf',
-                    content: resPdf.pdfBase64,
-                    config: { printerName: "XP-80C", widthMm: 80, heightMm: 297, marginTopPx: -5 }
-                })
-            });
+        if (resPdf.success) {
+            for (var k = 0; k < lines[li].sl; k++) {
+                fetch('/print-order', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId: window.CURRENT_USER_ID,
+                        type: 'pdf',
+                        content: resPdf.pdfBase64,
+                        config: { printerName: "XP-80C", widthMm: 80, heightMm: 297, marginTopPx: -5 }
+                    })
+                });
+            }
         }
     }
 });
+
+function ChotPriceTags(gia, sl, gia2, sl2) {
+    var html = '';
+    if (gia !== '' && gia != null) {
+        html += `<span class='tag tag-green tag-pulse'>💰${gia}</span>`;
+        if (sl > 1) html += `<span class='tag tag-purple tag-pulse'>x ${sl}</span>`;
+    }
+    if (gia2 !== '' && gia2 != null) {
+        html += ChotSecondPriceHtml(gia2, sl2, false);
+    }
+    return html;
+}
+
+function ChotSecondPriceHtml(gia2, sl2, badge) {
+    if (gia2 === '' || gia2 == null) return '';
+    var html = badge
+        ? `<span class="badge bg-success chot-p2">${gia2}</span>`
+        : `<span class='tag tag-green tag-pulse chot-p2'>💰${gia2}</span>`;
+    if (sl2 > 1) html += `<span class='tag tag-purple tag-pulse'>x ${sl2}</span>`;
+    return html;
+}
+
+function ChotPricesFromCell(cellHtml) {
+    var out = [];
+    if (!cellHtml) return out;
+    $('<div>').html(cellHtml).find('.tag-green, .badge.bg-success, .tag-purple').each(function () {
+        var el = $(this);
+        if (el.hasClass('tag-purple')) {
+            if (out.length) out[out.length - 1].sl = parseInt(el.text().replace(/[^0-9]/g, ''), 10) || 1;
+        } else {
+            out.push({ gia: el.text().replace(/[^0-9]/g, '') || '0', sl: 1 });
+        }
+    });
+    return out;
+}
+
+function EnsureChot2Modal() {
+    if (document.getElementById('modalchot2')) return;
+    document.body.insertAdjacentHTML('beforeend',
+        `<div class="modal fade" tabindex="-1" id="modalchot2" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content rounded-4 shadow">
+        <div class="modal-header border-0 pb-0">
+          <h5 class="modal-title fw-bold">Chốt 2 giá</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+        </div>
+        <div class="modal-body">
+          <div id="chot2who" class="text-muted mb-3"></div>
+          <div class="row g-2 align-items-end mb-2">
+            <div class="col-7"><label class="form-label mb-1" for="chot2gia1">Giá 1</label><input type="text" inputmode="numeric" class="form-control" id="chot2gia1" autocomplete="off"></div>
+            <div class="col-5"><label class="form-label mb-1" for="chot2sl1">SL giá 1</label><input type="number" min="1" max="20" class="form-control" id="chot2sl1" autocomplete="off"></div>
+          </div>
+          <div class="row g-2 align-items-end mb-3">
+            <div class="col-7"><label class="form-label mb-1" for="chot2gia2">Giá 2</label><input type="text" inputmode="numeric" class="form-control" id="chot2gia2" autocomplete="off"></div>
+            <div class="col-5"><label class="form-label mb-1" for="chot2sl2">SL giá 2</label><input type="number" min="1" max="20" class="form-control" id="chot2sl2" autocomplete="off"></div>
+          </div>
+          <div id="chot2total" class="fw-bold"></div>
+          <div id="chot2err" class="text-danger small mt-1"></div>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal">Hủy</button>
+          <button type="button" class="btn btn-success" id="chot2btn">Chốt</button>
+        </div>
+      </div>
+    </div>
+  </div>`);
+    var ids = ['chot2gia1', 'chot2sl1', 'chot2gia2', 'chot2sl2'];
+    ids.forEach(function (id, i) {
+        var el = document.getElementById(id);
+        el.addEventListener('input', Chot2Recalc);
+        el.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (i < ids.length - 1) { var n = document.getElementById(ids[i + 1]); n.focus(); n.select(); }
+                else SubmitChot2();
+            }
+        });
+    });
+    document.getElementById('chot2btn').addEventListener('click', SubmitChot2);
+    $('#modalchot2').on('shown.bs.modal', function () {
+        var g = document.getElementById('chot2gia1');
+        g.focus(); g.select();
+    });
+}
+
+var chot2Pending = null;
+
+function Chot2Read() {
+    var g1 = document.getElementById('chot2gia1').value.replace(/[^0-9]/g, '').replace(/^0+/, '');
+    var g2 = document.getElementById('chot2gia2').value.replace(/[^0-9]/g, '').replace(/^0+/, '');
+    var s1 = parseInt(document.getElementById('chot2sl1').value, 10);
+    var s2 = parseInt(document.getElementById('chot2sl2').value, 10);
+    return { g1: g1, g2: g2, s1: s1, s2: s2 };
+}
+
+function Chot2Recalc() {
+    var v = Chot2Read();
+    var total = (parseInt(v.g1, 10) || 0) * (v.s1 > 0 ? v.s1 : 0) + (parseInt(v.g2, 10) || 0) * (v.s2 > 0 ? v.s2 : 0);
+    document.getElementById('chot2total').textContent = total > 0 ? 'Tổng: ' + (total * 1000).toLocaleString('vi-VN') + 'đ' : '';
+    document.getElementById('chot2err').textContent = '';
+}
+
+function OpenChot2Modal(rowData) {
+    var table = $('#comment_table').DataTable();
+    var data = rowData;
+    if (!data) {
+        try { data = table.row(getRowIdx()).data(); } catch (e) { data = null; }
+    }
+    if (!data) return;
+    EnsureChot2Modal();
+    var name = $('<div>').html(data[1]).contents().filter(function () { return this.nodeType === 3; }).first().text().trim();
+    chot2Pending = { commentid: data[8] };
+    document.getElementById('chot2who').textContent = name;
+    document.getElementById('chot2gia1').value = (document.getElementById('gia').value || '').replace(/[^0-9]/g, '');
+    document.getElementById('chot2sl1').value = parseInt(document.getElementById('slchot').value, 10) || 1;
+    document.getElementById('chot2gia2').value = '';
+    document.getElementById('chot2sl2').value = 1;
+    Chot2Recalc();
+    $('#modalchot2').modal('show');
+}
+
+function SubmitChot2() {
+    var v = Chot2Read();
+    var err = document.getElementById('chot2err');
+    if (!v.g1 || !v.g2) { err.textContent = 'Nhập đủ cả 2 giá.'; return; }
+    if (!(v.s1 >= 1) || !(v.s2 >= 1)) { err.textContent = 'Số lượng mỗi giá phải từ 1 trở lên.'; return; }
+    if (v.s1 + v.s2 > 20) { err.textContent = 'Tổng số lượng tối đa 20.'; return; }
+    if (!chot2Pending) return;
+    var p = chot2Pending;
+    chot2Pending = null;
+    document.getElementById('slchot').value = 1;
+    $('#modalchot2').modal('hide');
+    Chot(0, { commentid: p.commentid, gia1: v.g1, slchot1: v.s1, gia2: v.g2, slchot2: v.s2 });
+}
 
 
 function XaBadgeHtml() {
@@ -1633,8 +1787,8 @@ document.addEventListener('click', function (e) {
     var data = row.data();
     if (!data) return;
     var name = $('<div>').html(data[1]).contents().filter(function () { return this.nodeType === 3; }).first().text().trim();
-    var gia = $('<div>').html(data[6]).find('.tag-green').text().trim();
-    var sl = $('<div>').html(data[6]).find('.tag-purple').text().trim();
+    var gia = ChotPricesFromCell(data[6]).map(function (x) { return x.gia + (x.sl > 1 ? ' x' + x.sl : ''); }).join(' + ');
+    var sl = '';
     xaPending = { commentid: data[8], liveid: data[17] };
     EnsureXaConfirmModal();
     document.getElementById('xaconfirmtext').textContent = [name, gia, sl].filter(Boolean).join(' ');
@@ -1779,25 +1933,29 @@ async function handlePrintLabel(rowElement) {
         region: data[23]
     };
 
-    const resPdf = await fetch('/api/generate-pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(printData)
-    }).then(r => r.json());
-
-    if (resPdf.success) {
-        fetch('/print-order', {
+    var prices = ChotPricesFromCell(data[6]).map(function (x) { return x.gia; });
+    if (prices.length === 0) prices = [printData.gia];
+    for (var pi = 0; pi < prices.length; pi++) {
+        const resPdf = await fetch('/api/generate-pdf', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                userId: window.CURRENT_USER_ID,
-                type: 'pdf',
-                content: resPdf.pdfBase64,
-                config: { printerName: "XP-80C", widthMm: 80, heightMm: 297, marginTopPx: -5 }
-            })
-        }).then(r => r.json()).then(res => {
-            //if (res.success) console.log("In thành công!");
-        });
+            body: JSON.stringify(Object.assign({}, printData, { gia: prices[pi] }))
+        }).then(r => r.json());
+
+        if (resPdf.success) {
+            fetch('/print-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId: window.CURRENT_USER_ID,
+                    type: 'pdf',
+                    content: resPdf.pdfBase64,
+                    config: { printerName: "XP-80C", widthMm: 80, heightMm: 297, marginTopPx: -5 }
+                })
+            }).then(r => r.json()).then(res => {
+                //if (res.success) console.log("In thành công!");
+            });
+        }
     }
 }
 

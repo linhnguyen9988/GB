@@ -709,12 +709,23 @@
     return map[Number(statuscode)] ?? 'secondary';
   }
 
+  function ChotEntries(row) {
+    var out = [];
+    if (!row || row.gia === '' || row.gia == null) return out;
+    var sl1 = parseInt(row.slchot, 10);
+    out.push({ gia: row.gia, sl: sl1 > 0 ? sl1 : 0 });
+    if (row.gia2 !== '' && row.gia2 != null) {
+      var sl2 = parseInt(row.slchot2, 10);
+      out.push({ gia: row.gia2, sl: sl2 > 0 ? sl2 : 1 });
+    }
+    return out;
+  }
+
   function countChotItems(rows) {
     var total = 0;
     for (var i = 0; i < rows.length; i++) {
-      if (rows[i].gia != '') {
-        for (var sl = 0; sl < rows[i].slchot; sl++) total++;
-      }
+      var e = ChotEntries(rows[i]);
+      for (var k = 0; k < e.length; k++) total += e[k].sl;
     }
     return total;
   }
@@ -2283,14 +2294,16 @@
                     <button type="button" class="btn btn-outline-warning" id="btncopyship" onclick="CopyMess2()" title="Copy có ship"><i class="bi bi-currency-dollar"></i> Ship</button>
                   </div>`);
                   for (var i = 0; i < chot.data.length; i++) {
-                    slchotx = chot.data[i].slchot;
-                    if (chot.data[i].gia != '') {
-                      var gia = chot.data[i].gia;
-                      for (var sl = 0; sl < slchotx; sl++) {
-                        tongchot++;
-                        arr.push(gia);
-                      }
-                      AddOptions(document.getElementById("commentchot"), i, `${chot.data[i].message} 🔸 ${gia}`);
+                    var entries = ChotEntries(chot.data[i]);
+                    if (entries.length > 0) {
+                      var giatext = entries.map(function (e) { return e.gia + (e.sl > 1 ? ' x' + e.sl : ''); }).join(' + ');
+                      entries.forEach(function (e) {
+                        for (var sl = 0; sl < e.sl; sl++) {
+                          tongchot++;
+                          arr.push(e.gia);
+                        }
+                      });
+                      AddOptions(document.getElementById("commentchot"), i, `${chot.data[i].message} 🔸 ${giatext}`);
                       j++;
                     } else {
                       AddOptions(document.getElementById("commentchot"), i, `${chot.data[i].message}`);

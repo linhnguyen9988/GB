@@ -13,9 +13,11 @@ const { getBrowser } = require('../../services/browserService');
 const { getPageToken } = require('../../services/pageTokenService');
 const { isFakeCommentId } = require('../../services/fakeComment');
 const { isNumeric } = require('../../utils/common');
+const { ensureChot2, hasChot2, selectCols, parseSecondPrice } = require('../../services/chotService');
 
 module.exports = function registerLiveCommentRoutes(router) {
     var currentlivetime;
+    ensureChot2().catch(function () { });
 
     router.post("/scancomment", jwtAuth, function (request, response, next) {
         currentlivetime = 0;
@@ -107,7 +109,7 @@ module.exports = function registerLiveCommentRoutes(router) {
             }
 
             DBConnection.query(
-                ` SELECT livecomment.idx, livecomment.mess, livecomment.userid, livecomment.timecomment, livecomment.name, livecomment.message, livecomment.datecreate, livecomment.chot, livecomment.gia, livecomment.commentid, livecomment.luotin, livecomment.count, livecomment.app, livecomment.liveid, livecomment.pageid, livecomment.updateava, livecomment.realfbid, khachhang.id, khachhang.phone, khachhang.diachi, khachhang.avalink, khachhang.label, khachhang.note, khachhang.fbnamex, khachhang.aka, khachhang.nuocngoai, khachhang.realfbid, khachhang.threadid FROM livecomment INNER JOIN khachhang ON (livecomment.userid=khachhang.userid) AND (${zzz.substring(0, zzz.length - 4)}) ORDER BY idx DESC LIMIT ${soluong}`,
+                ` SELECT livecomment.idx, livecomment.mess, livecomment.userid, livecomment.timecomment, livecomment.name, livecomment.message, livecomment.datecreate, livecomment.chot, livecomment.gia, livecomment.slchot,${selectCols('livecomment.')} livecomment.commentid, livecomment.luotin, livecomment.count, livecomment.app, livecomment.liveid, livecomment.pageid, livecomment.updateava, livecomment.realfbid, khachhang.id, khachhang.phone, khachhang.diachi, khachhang.avalink, khachhang.label, khachhang.note, khachhang.fbnamex, khachhang.aka, khachhang.nuocngoai, khachhang.realfbid, khachhang.threadid FROM livecomment INNER JOIN khachhang ON (livecomment.userid=khachhang.userid) AND (${zzz.substring(0, zzz.length - 4)}) ORDER BY idx DESC LIMIT ${soluong}`,
                 function (error, data) {
                     if (error) {
                         console.error(error);
@@ -151,7 +153,7 @@ module.exports = function registerLiveCommentRoutes(router) {
 
     router.post("/action", jwtAuth, function (request, response, next) {
         var liveid = request.body.liveid;
-        DBConnection.query(' SELECT livecomment.idx, livecomment.mess, livecomment.userid, livecomment.timecomment, livecomment.name, livecomment.message, livecomment.datecreate, livecomment.chot, livecomment.gia, livecomment.commentid, livecomment.luotin, livecomment.count, livecomment.app, livecomment.liveid, livecomment.pageid, livecomment.updateava, livecomment.realfbid, livecomment.slchot, khachhang.id, khachhang.phone, khachhang.diachi, khachhang.avalink, khachhang.label, khachhang.note, khachhang.fbnamex, khachhang.aka, khachhang.nuocngoai, khachhang.realfbid, khachhang.threadid FROM livecomment INNER JOIN khachhang ON livecomment.userid=khachhang.userid AND liveid= ? ', liveid,
+        DBConnection.query(' SELECT livecomment.idx, livecomment.mess, livecomment.userid, livecomment.timecomment, livecomment.name, livecomment.message, livecomment.datecreate, livecomment.chot, livecomment.gia, livecomment.commentid, livecomment.luotin, livecomment.count, livecomment.app, livecomment.liveid, livecomment.pageid, livecomment.updateava, livecomment.realfbid, livecomment.slchot,' + selectCols('livecomment.') + ' khachhang.id, khachhang.phone, khachhang.diachi, khachhang.avalink, khachhang.label, khachhang.note, khachhang.fbnamex, khachhang.aka, khachhang.nuocngoai, khachhang.realfbid, khachhang.threadid FROM livecomment INNER JOIN khachhang ON livecomment.userid=khachhang.userid AND liveid= ? ', liveid,
             function (error, data) {
                 if (error) {
                     response.json({
@@ -394,61 +396,64 @@ module.exports = function registerLiveCommentRoutes(router) {
         if (!isNumeric(slchot) || slchot == '' || slchot == 0) {
             slchot = 1;
         }
-        DBConnection.query('SELECT luotin FROM livecomment WHERE commentid = ? LIMIT 1', [cid], function (err0, existingRows) {
-            if (err0) {
-                console.error('updatechot select error:', err0);
-                return response.status(500).json({ error: 'Lỗi cơ sở dữ liệu' });
+        var second = parseSecondPrice(request.body);
+        ensureChot2().catch(function () { return false; }).then(function (hasCols) {
+            if (second.gia2 && !hasCols) {
+                return response.status(409).json({ error: 'Chưa thêm được cột gia2/slchot2 vào bảng livecomment, hãy chạy file sql/livecomment_gia2.sql' });
             }
-            var existingLuotin = (existingRows && existingRows[0]) ? parseInt(existingRows[0].luotin) : 0;
-            if (existingLuotin && existingLuotin > 0) {
-                var luotcuoi = existingLuotin;
-                DBConnection.query(SqlString.format('UPDATE livecomment SET chot=?, gia=?, slchot=? WHERE commentid=?', [chot, gia, slchot, cid]), function (err1) {
-                    if (err1) {
-                        console.error('updatechot update error:', err1);
-                        return response.status(500).json({ error: 'Lỗi cơ sở dữ liệu' });
-                    }
-                    const newChotData = {
-                        cid: cid,
-                        gia: gia,
-                        chot: chot,//nay la chu~ CHOT
-                        liveid: liveid,
-                        luotcuoilive: luotcuoi,
-                        slchot: slchot
-                    };
-                    io.to(liveid).emit('new-chot', newChotData);
-                    if (socketid) {
-                        io.to(socketid).emit('new-chot', newChotData);
-                    }
-                    response.json({ data: cid, luotcuoi: luotcuoi });
-                });
-            } else {
-                DBConnection.query(
-                    'UPDATE livestream SET luotincuoi = @newluot := luotincuoi + 1 WHERE id = ?; ' +
-                    'UPDATE livecomment SET chot = ?, gia = ?, luotin = @newluot, slchot = ? WHERE commentid = ?; ' +
-                    'SELECT @newluot AS luotcuoi;',
-                    [liveid, chot, gia, slchot, cid],
-                    function (err2, results) {
-                        if (err2) {
-                            console.error('updatechot increment error:', err2);
+            var extraSet = hasCols ? ', gia2 = ?, slchot2 = ?' : '';
+            var extraParams = hasCols ? [second.gia2, second.slchot2] : [];
+
+            function finish(luotcuoi) {
+                const newChotData = {
+                    cid: cid,
+                    gia: gia,
+                    chot: chot,//nay la chu~ CHOT
+                    liveid: liveid,
+                    luotcuoilive: luotcuoi,
+                    slchot: slchot,
+                    gia2: second.gia2,
+                    slchot2: second.slchot2
+                };
+                io.to(liveid).emit('new-chot', newChotData);
+                if (socketid) {
+                    io.to(socketid).emit('new-chot', newChotData);
+                }
+                response.json({ data: cid, luotcuoi: luotcuoi });
+            }
+
+            DBConnection.query('SELECT luotin FROM livecomment WHERE commentid = ? LIMIT 1', [cid], function (err0, existingRows) {
+                if (err0) {
+                    console.error('updatechot select error:', err0);
+                    return response.status(500).json({ error: 'Lỗi cơ sở dữ liệu' });
+                }
+                var existingLuotin = (existingRows && existingRows[0]) ? parseInt(existingRows[0].luotin) : 0;
+                if (existingLuotin && existingLuotin > 0) {
+                    var luotcuoi = existingLuotin;
+                    DBConnection.query(SqlString.format('UPDATE livecomment SET chot=?, gia=?, slchot=?' + extraSet + ' WHERE commentid=?', [chot, gia, slchot].concat(extraParams, [cid])), function (err1) {
+                        if (err1) {
+                            console.error('updatechot update error:', err1);
                             return response.status(500).json({ error: 'Lỗi cơ sở dữ liệu' });
                         }
-                        var luotcuoi = results && results[2] && results[2][0] ? results[2][0].luotcuoi : null;
-                        const newChotData = {
-                            cid: cid,
-                            gia: gia,
-                            chot: chot,//nay la chu~ CHOT
-                            liveid: liveid,
-                            luotcuoilive: luotcuoi,
-                            slchot: slchot
-                        };
-                        io.to(liveid).emit('new-chot', newChotData);
-                        if (socketid) {
-                            io.to(socketid).emit('new-chot', newChotData);
+                        finish(luotcuoi);
+                    });
+                } else {
+                    DBConnection.query(
+                        'UPDATE livestream SET luotincuoi = @newluot := luotincuoi + 1 WHERE id = ?; ' +
+                        'UPDATE livecomment SET chot = ?, gia = ?, luotin = @newluot, slchot = ?' + extraSet + ' WHERE commentid = ?; ' +
+                        'SELECT @newluot AS luotcuoi;',
+                        [liveid, chot, gia, slchot].concat(extraParams, [cid]),
+                        function (err2, results) {
+                            if (err2) {
+                                console.error('updatechot increment error:', err2);
+                                return response.status(500).json({ error: 'Lỗi cơ sở dữ liệu' });
+                            }
+                            var luotcuoi = results && results[2] && results[2][0] ? results[2][0].luotcuoi : null;
+                            finish(luotcuoi);
                         }
-                        response.json({ data: cid, luotcuoi: luotcuoi });
-                    }
-                );
-            }
+                    );
+                }
+            });
         });
     });
 
@@ -458,17 +463,20 @@ module.exports = function registerLiveCommentRoutes(router) {
         var cid = request.body.commentid;
         var liveid = request.body.liveid;
         var socketid = request.body.socketid;
-        DBConnection.query(SqlString.format('UPDATE livecomment SET chot=?, gia=?, slchot=1 WHERE commentid=?', [chot, '', cid]));
-        const newXaData = {
-            cid: cid,
-            chot: chot,
-        };
-        io.to(liveid).emit('new-xa', newXaData);
-        if (socketid) {
-            io.to(socketid).emit('new-xa', newXaData);
-        }
-        response.json({
-            data: cid
+        ensureChot2().catch(function () { return false; }).then(function (hasCols) {
+            var sql = SqlString.format('UPDATE livecomment SET chot=?, gia=?, slchot=1' + (hasCols ? ', gia2=NULL, slchot2=NULL' : '') + ' WHERE commentid=?', [chot, '', cid]);
+            DBConnection.query(sql).catch(function (err) { console.error('updatexa error:', err.message); });
+            const newXaData = {
+                cid: cid,
+                chot: chot,
+            };
+            io.to(liveid).emit('new-xa', newXaData);
+            if (socketid) {
+                io.to(socketid).emit('new-xa', newXaData);
+            }
+            response.json({
+                data: cid
+            });
         });
     });
 
