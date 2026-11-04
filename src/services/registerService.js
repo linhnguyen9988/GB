@@ -4,12 +4,10 @@ const bcrypt = require("bcryptjs");
 
 let createNewUser = (data) => {
     return new Promise(async (resolve, reject) => {
-        // check user is exist or not
         let isUserExist = await checkExistUser(data.username);
         if (isUserExist) {
             reject(`Tên "${data.username}" đã tồn tại. Hãy chọn tên khác`);
         } else {
-            // hash password
             let salt = bcrypt.genSaltSync(10);
             let userItem = {
                 fullname: data.fullname,
@@ -17,7 +15,6 @@ let createNewUser = (data) => {
                 password: bcrypt.hashSync(data.password, salt),
             };
 
-            //create a new account
             DBConnection.query(
                 ' INSERT INTO users set ? ', userItem,
                 function(err, rows) {

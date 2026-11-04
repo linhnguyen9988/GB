@@ -6,7 +6,6 @@ const bcrypt = require('bcryptjs');
 const { JWT_SECRET, JWT_EXPIRES_IN } = require('../../configs/jwtConfig');
 const { apiAuth } = require('../../middleware/jwtAuth');
 
-// POST /api/auth/login
 router.post('/login', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password)
@@ -38,7 +37,6 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// POST /api/auth/change-password
 router.post('/change-password', apiAuth, async (req, res) => {
   const { oldPassword, newPassword } = req.body;
   if (!oldPassword || !newPassword)

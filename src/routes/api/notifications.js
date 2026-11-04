@@ -3,7 +3,6 @@ const router = require('express').Router();
 const db = require('../../configs/DBConnection');
 const auth = require('../../middleware/jwtAuth');
 
-// GET /api/notifications/unread-count
 router.get('/unread-count', auth, async (req, res) => {
   try {
     const [[row]] = await db.query(
@@ -16,7 +15,6 @@ router.get('/unread-count', auth, async (req, res) => {
   }
 });
 
-// GET /api/notifications
 router.get('/', auth, async (req, res) => {
   try {
     const [rows] = await db.query(
@@ -29,7 +27,6 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-// POST /api/notifications/read-all  — phải khai báo TRƯỚC /:id/read
 router.post('/read-all', auth, async (req, res) => {
   try {
     await db.query('UPDATE order_noti_log SET is_read = 1 WHERE userid = ?', [req.user.id]);
@@ -39,7 +36,6 @@ router.post('/read-all', auth, async (req, res) => {
   }
 });
 
-// POST /api/notifications/:id/read
 router.post('/:id/read', auth, async (req, res) => {
   try {
     await db.query('UPDATE order_noti_log SET is_read = 1 WHERE id = ?', [req.params.id]);
@@ -49,7 +45,6 @@ router.post('/:id/read', auth, async (req, res) => {
   }
 });
 
-// DELETE /api/notifications/:id — xóa 1 thông báo
 router.delete('/:id', auth, async (req, res) => {
   try {
     await db.query(

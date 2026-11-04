@@ -3,7 +3,6 @@ const express = require('express');
 const router = express.Router();
 const DBConnection = require('../../configs/DBConnection');
 
-// GET /api/customers?limit=200&offset=0&fromDate=2025-01-01&search=...&pageId=...
 router.get('/', async (req, res) => {
     try {
         const db = DBConnection.promise();
@@ -86,7 +85,6 @@ router.get('/by-userid/:userid', async (req, res) => {
         res.status(500).json({ error: 'Lỗi tìm khách hàng' });
     }
 });
-// GET /api/customers/:id
 router.get('/:id', async (req, res) => {
     try {
         const db = DBConnection.promise();
@@ -99,7 +97,6 @@ router.get('/:id', async (req, res) => {
     }
 });
 
-// PUT /api/customers/:id
 router.put('/:id', async (req, res) => {
     try {
         const db = DBConnection.promise();

@@ -27,14 +27,12 @@ const registerStreamlabsAlertWebhook = require('./webhooks/streamlabsAlert.webho
 let router = express.Router();
 
 let initWebRoutes = (app) => {
-    // --- Webhook (bên thứ ba gọi vào) ---
     registerJtexWebhook(router);
     registerViettelWebhook(router);
     registerFacebookWebhook(router);
     registerStreamlabsWebhook(router);
     registerStreamlabsAlertWebhook(router);
 
-    // --- Chức năng nghiệp vụ ---
     registerMessagesRoutes(router);
     registerNotificationRoutes(router);
     registerPrintRoutes(router);
@@ -47,10 +45,8 @@ let initWebRoutes = (app) => {
     registerCustomerRoutes(router);
     registerDienNuocRoutes(router);
 
-    // --- Trang giao diện + đăng nhập ---
     registerPageRoutes(router);
 
-    // --- /api/* (đăng ký trước khi mount router chính, giống bản gốc) ---
     registerApiRoutes(app);
 
     return app.use("/", router);

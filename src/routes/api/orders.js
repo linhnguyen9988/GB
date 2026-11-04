@@ -3,7 +3,6 @@ const router = require('express').Router();
 const db = require('../../configs/DBConnection');
 const auth = require('../../middleware/jwtAuth');
 
-// GET /api/orders
 router.get('/', auth, async (req, res) => {
   const { status, search, fromDate, limit = 50, offset = 0 } = req.query;
   try {
@@ -237,7 +236,6 @@ router.post('/push-jt', auth, async (req, res) => {
     const result = await createJTOrder({ ...req.body, accountId: req.user?.id ?? null });
     if (!result.success) return res.json({ success: false, message: result.message });
 
-    // In bill — dùng userId từ JWT, không chờ để app phản hồi nhanh
     GetBillJT(result.txlogisticId, req.user?.id ?? req.body.userid).catch(() => {});
 
     return res.json({

@@ -354,7 +354,6 @@
         const result = await res.json();
 
         if (result.success) {
-          // Load lại bảng lịch sử sau khi xóa thành công
           loadHistory();
         } else {
           alert("Có lỗi xảy ra khi xóa: " + result.error);
@@ -365,7 +364,6 @@
       }
     }
 
-    // Chạy khi load trang
     loadRooms();
     loadHistory();
   </script>

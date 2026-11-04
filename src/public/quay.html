@@ -60,7 +60,7 @@
   var stage = document.getElementById('stage'), strip = document.getElementById('strip'),
       view = document.getElementById('view'), banner = document.getElementById('banner');
   var CW = 180, V = false, S = null, anim = 0, spinTok = 0;
-  var spinning = false, curve = null; // curve(now) -> vị trí dải thẻ của lượt quay đang chạy
+  var spinning = false, curve = null;
   var DBG = /[?&]debug=1/.test(location.search), dbgEl = document.getElementById('dbg');
   function dbg(note) {
     if (!DBG) return; dbgEl.style.display = 'block';
@@ -136,7 +136,7 @@
 
   function spin(dur) {
     var w = byId(S.winnerId); if (!w || S.players.length < 2) return;
-    if (spinning && curve) return retarget(dur, w);   // đang quay -> đổi đích, không dựng lại
+    if (spinning && curve) return retarget(dur, w);
     var tok = ++spinTok; cancelAnimationFrame(anim);
     stage.classList.remove('done'); banner.classList.remove('on');
     var target = Math.round(62 * dur / 7000), total = target + 10;
@@ -148,7 +148,7 @@
 
   function retarget(dur, w) {
     var now = performance.now(), h = 8;
-    var x0 = curve(now), v0 = Math.max(0, (x0 - curve(now - h)) / h);   // px/ms
+    var x0 = curve(now), v0 = Math.max(0, (x0 - curve(now - h)) / h);
     var tok = ++spinTok; cancelAnimationFrame(anim);
     var size = V ? view.clientHeight : view.clientWidth;
     var delta = Math.max(0.6 * v0 * dur, size / 2 + 2 * CW);

@@ -3,7 +3,6 @@ const router = require('express').Router();
 const db = require('../../configs/DBConnection');
 const auth = require('../../middleware/jwtAuth');
 
-// GET /api/dashboard/stats
 router.get('/stats', auth, async (req, res) => {
   try {
     const [[{ totalMessages }]] = await db.query('SELECT COUNT(*) as totalMessages FROM messaging');
@@ -19,7 +18,6 @@ router.get('/stats', auth, async (req, res) => {
     const [[{ totalCod }]] = await db.query('SELECT COALESCE(SUM(cod),0) as totalCod FROM lendon WHERE statuscode = 2');
     const [[{ totalLiveComments }]] = await db.query('SELECT COUNT(*) as totalLiveComments FROM livecomment');
 
-    // 7 ngày gần đây
     const [last7Days] = await db.query(`
       SELECT
         DATE_FORMAT(d.date, '%Y-%m-%d') as date,

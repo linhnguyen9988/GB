@@ -121,7 +121,6 @@ async function startCamera() {
   await video.play();
 }
 
-// ----- Engine 1: BarcodeDetector native (ML Kit / Vision framework) -----
 async function runNativeEngine() {
   engineBadge.textContent = '⚡ Native BarcodeDetector (ML Kit engine)';
   engineBadge.classList.add('native');
@@ -135,13 +134,12 @@ async function runNativeEngine() {
       if (codes.length > 0) {
         showResult(codes[0].rawValue, codes[0].format);
       }
-    } catch (e) { /* frame chưa sẵn sàng, bỏ qua */ }
+    } catch (e) {}
     requestAnimationFrame(loop);
   }
   loop();
 }
 
-// ----- Engine 2: zxing-wasm fallback (Safari, Firefox, desktop) -----
 async function runZxingFallback() {
   engineBadge.textContent = '🔁 zxing-wasm (fallback, quét nhiều lần/giây)';
   const { readBarcodes } = await import('https://esm.sh/zxing-wasm@2/reader');

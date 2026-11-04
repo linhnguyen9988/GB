@@ -537,7 +537,7 @@ function InItKeys() {
         } else if (keyCode == 85) {
             UpdatePsid(x[0]);
         } else if (keyCode == 78) {
-            ShowNote();
+            //Nút N
         }
         //console.log(keyCode);
     });

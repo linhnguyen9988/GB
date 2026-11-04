@@ -4,7 +4,6 @@ const db = require('../../configs/DBConnection');
 const auth = require('../../middleware/jwtAuth');
 const { ensureChot2 } = require('../../services/chotService');
 
-// GET /api/livecomments/livestreams - 5 livestream gần nhất
 router.get('/livestreams', auth, async (req, res) => {
   const { limit = 5 } = req.query;
   try {
@@ -22,7 +21,6 @@ router.get('/livestreams', auth, async (req, res) => {
   }
 });
 
-// GET /api/livecomments
 router.get('/', auth, async (req, res) => {
   const { liveId, pageId, limit, offset = 0 } = req.query;
   try {
@@ -54,8 +52,6 @@ LEFT JOIN khachhang k ON k.userid = lc.userid
   }
 });
 
-// POST /api/livecomments/customer-chots
-// Body: { userid: string, liveIds: string[] }
 router.post('/customer-chots', auth, async (req, res) => {
   const { userid, liveIds } = req.body;
 

@@ -1,7 +1,6 @@
 'use strict';
 const { normalizeSQL } = require('../utils/address');
 
-// Danh sách tỉnh trong bảng jtaddress
 async function getProvinces(db) {
     const [rows] = await db.query(
         'SELECT DISTINCT prov FROM jtaddress WHERE prov IS NOT NULL AND prov <> "" ORDER BY prov ASC'

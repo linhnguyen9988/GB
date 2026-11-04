@@ -1,10 +1,6 @@
 'use strict';
-// controllers/publicJourneyController.js
-// Trang public cho khách xem thông tin đơn hàng + hành trình vận chuyển.
-// KHÔNG yêu cầu đăng nhập — chỉ cần đúng mã đơn hàng là xem được.
 const DBConnection = require("../configs/DBConnection");
 
-// Trạng thái -> màu badge (đồng bộ với statusBadgeClass() trong headerafterlogin.ejs)
 const STATUS_COLOR_MAP = {
     100: 'secondary', 101: 'secondary', 102: 'secondary', 103: 'secondary', 104: 'secondary', 105: 'secondary', 106: 'secondary',
     200: 'info', 201: 'info', 202: 'info', 300: 'info', 400: 'info', 401: 'info', 402: 'info', 403: 'info', 509: 'info',
@@ -28,7 +24,6 @@ function formatVNDateTime(value) {
     return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-// Chuẩn hoá mã đơn khách nhập: bỏ khoảng trắng, chữ hoa; hỗ trợ mã "hoàn 1 phần" (hậu tố 1P1)
 function normalizeOrderCode(raw) {
     if (!raw) return { code: '', partial: false };
     let code = String(raw).trim().toUpperCase();
@@ -67,7 +62,6 @@ async function fetchJourneyLogs(db, orderCode, provider) {
     return rows;
 }
 
-// GET /journey  -> trang tra cứu (nhập mã đơn)
 const handleJourneySearch = async (req, res) => {
     const rawCode = (req.query.madonhang || req.query.code || '').toString().trim();
     if (!rawCode) {
@@ -82,7 +76,6 @@ const handleJourneySearch = async (req, res) => {
     return res.redirect('/journey/' + encodeURIComponent(rawCode));
 };
 
-// GET /journey/:madonhang  -> trang chi tiết đơn hàng + hành trình
 const handleJourneyDetail = async (req, res) => {
     try {
         const db = DBConnection.promise();

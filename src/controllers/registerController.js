@@ -9,7 +9,6 @@ let getPageRegister = (req, res) => {
 };
 
 let createNewUser = async (req, res) => {
-    //validate required fields
     let errorsArr = [];
     let validationErrors = validationResult(req);
     if (!validationErrors.isEmpty()) {
@@ -21,7 +20,6 @@ let createNewUser = async (req, res) => {
         return res.redirect("/register");
     }
 
-    //create a new user
     let newUser = {
         fullname: req.body.fullName,
         username: req.body.username,

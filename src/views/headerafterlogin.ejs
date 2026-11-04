@@ -518,93 +518,7 @@
       }
     });
   }
-  function ShowNote() {
-    document.getElementById("notetoshow").insertAdjacentHTML("afterend",
-      `<div class="modal" tabindex="-1" role="dialog" id="modalnote">
-    <div class="modal-dialog" role="document">
-    <div class="modal-content rounded-4 shadow">
-    <div class="modal-header p-5 pb-4 border-bottom-0">
-      <img id="imageid" src="/images/ava/default.jpg"><h4 class="fw-bold mb-0" id="namexxx">Khách Mới</h4>
-      <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-    </div>
-    <form id="myForm">
-    <div class="modal-body p-5 pt-0">
-    <div class="row mt-2">
-        <div class="col-md-12">
-          <div class="alert alert-danger" id="success-alert" style="display:none;"></div>
-          <center><img id="loadinggif" src="/images/icon/loading.gif" width="32" height="32"></center>
-            <div class="input-group mb-3">
-                <span class="input-group-text"><i class="bi bi-link"></i></span>
-                <input type="text" placeholder="Paste Link khách hàng" id="link" class="form-control input-sm" onchange="GetNewUserInfo()" required>
-            </div>
-        </div>
-    </div>
-    <div class="row mt-2">
-        <div class="col-md-12">
-            <div class="input-group mb-3">
-                <span class="input-group-text"><i class="bi bi-credit-card"></i></span>
-                <input type="text" id="fbid" class="form-control input-sm" disabled>
-                <input type="text" id="realfbid" class="form-control input-sm" disabled>
-            </div>
-            <div class="input-group mb-3">
-                <span class="input-group-text"><i class="bi bi-person-badge"></i></span>
-                <input type="text" id="namefb" class="form-control input-sm" disabled>
-                <input type="hidden" id="avalink" class="form-control input-sm" disabled>
-            </div>
-        </div>
-    </div>
-    <div class="row mt-2">
-        <div class="col-md-6">
-            <div class="input-group mb-3">
-                <span class="input-group-text"><i class="bi bi-phone-fill"></i></i></span>
-                <input type="text" id="mobilephone" class="form-control input-sm">
-            </div>
-        </div>
-        <div class="col-md-6">
-            <div class="input-group mb-3">
-                <span class="input-group-text"><i class="bi bi-tag-fill"></i></span>
-                <select id="labelkhach" class="form-select">
-                    <option selected hidden disabled></option>
-                    <option value="Thân thiết">Thân thiết</option>
-                    <option value="Bom hàng">Bom hàng</option>
-                    <option value="Xả hàng">Xả hàng</option>
-                    <option value="Có vấn đề">Có vấn đề</option>
-                    <option value="Xóa">Xóa</option>
-                </select>
-            </div>
-        </div>
-    </div>
-    
-    <div class="row mt-2">
-        <div class="col-md-12">
-            <div class="input-group mb-3">
-                <span class="input-group-text"><i class="bi bi-geo-alt-fill"></i></span>
-                <textarea class="form-control" id="useraddress" rows="2"></textarea>
-            </div>
-        </div>
-    </div>
-    <div class="row mt-2">
-        <div class="col-md-12"><textarea class="form-control" id="usernote" rows="5"></textarea></div>
-    </div>
-    <div class="row mt-2">
-                        <div class="text-center"><button class="btn btn-primary" type="button"
-                                onclick="InsertUser()">Lưu</button></div>
-                    </div>
-                    </form>
-    </div>
-  </div>`);
-
-    if (numx == 0) {
-      $('#modalnote').modal('show');
-      numx = 1;
-    }
-    setImageVisible('loadinggif', false);
-    $('#modalnote').on('hidden.bs.modal', function () {
-      numx = 0
-      var div = document.getElementById('modalnote');
-      div.remove();
-    });
-  }
+  
   function ShowImportant(title, note) {
     document.getElementById("notetoshow").insertAdjacentHTML("afterend",
       `<div class="modal" tabindex="-1" role="dialog" id="modalimp">
@@ -1092,7 +1006,7 @@
   async function CopyMess2() {
     try {
       await navigator.clipboard.writeText(thuship);
-      window.copiedText = thuship; // Đã sửa lỗi chính tả ở đây
+      window.copiedText = thuship;
     } catch (err) {
       console.error('Lỗi khi truy cập clipboard:', err);
       ShowAlertModal('Lỗi: Vui lòng cho phép trang web truy cập clipboard và thử lại.');
@@ -1220,53 +1134,6 @@
     return !isNaN(parseFloat(n)) && isFinite(n);
   }
 
-  function GetNewUserInfo() {
-    document.getElementById("success-alert").innerHTML = "";
-    setImageVisible('loadinggif', true);
-    var link = document.getElementById("link").value;
-    var userid = link.split('selected_item_id=').pop().split('&')[0].split('profile.php?id=').pop();
-    if (!userid.includes('facebook.com') && !isNumeric(userid)) {
-      userid = 'https://facebook.com/' + userid;
-    }
-    $.ajax({
-      url: "/getnewuser",
-      method: "POST",
-      data: { userid: userid },
-      dataType: "JSON",
-      success: function (x) {
-        setImageVisible('loadinggif', false);
-        if (x.data.hasOwnProperty('error')) {
-          document.getElementById("myForm").reset();
-          document.getElementById('success-alert').innerHTML += x.data.error;
-          $("#success-alert").fadeTo(2000, 500).slideUp(500, function () {
-            $("#success-alert").slideUp(500);
-          });
-          return;
-        }
-        if (x.data.hasOwnProperty('picture')) {
-          document.getElementById("myForm").reset();
-          document.getElementById("fbid").value = x.data.id;
-          document.getElementById("realfbid").value = x.data.id;
-          document.getElementById("namefb").value = x.data.name;
-          document.getElementById("imageid").src = x.data.picture.data.url;
-          document.getElementById("avalink").value = x.data.picture.data.url;
-          namexxx.innerText = x.data.name;
-        } else {
-          document.getElementById("myForm").reset();
-          document.getElementById("fbid").value = x.data.userid;
-          document.getElementById("realfbid").value = x.data.realfbid;
-          document.getElementById("namefb").value = x.data.fbname;
-          document.getElementById("imageid").src = '/images/ava/' + x.data.userid + '.jpg';
-          document.getElementById("avalink").value = x.data.avalink;
-          document.getElementById("mobilephone").value = x.data.phone;
-          document.getElementById("useraddress").value = x.data.diachi;
-          document.getElementById("labelkhach").value = x.data.label;
-          document.getElementById("usernote").value = x.data.note;
-          namexxx.innerText = x.data.fbname;
-        }
-      }
-    });
-  }
   function setImageVisible(id, visible) {
     var img = document.getElementById(id);
     img.style.visibility = (visible ? 'visible' : 'hidden');
@@ -1709,11 +1576,8 @@
   }
 
 
-  // ===== Chọn tay địa chỉ J&T: 3 ô Tỉnh / Huyện / Xã nằm ngang ngay dưới select địa chỉ =====
-  // Dữ liệu lấy từ bảng jtaddress. Chọn xong ô Xã là tự lưu.
   var JTProvincesCache = null;
 
-  // Ẩn đuôi mã J&T (vd "Phường An Phú-028TPT03" -> "Phường An Phú") cho dễ nhìn
   function JTPickerLabel(v) {
     return String(v).replace(/-\s*\d{2,3}[A-Za-z]+\d*\s*$/, '');
   }
@@ -1758,7 +1622,6 @@
     p.classList.add('d-none');
   }
 
-  // Lấy (hoặc tạo) hàng 3 ô nằm ngay dưới select địa chỉ
   function GetJTPanel(select) {
     var id = 'jtinline_' + select.id;
     var anchor = select.closest('.input-group') || select;
@@ -1784,7 +1647,6 @@
     el.dist.addEventListener('change', function () { JTPanelLoadWards(p, el.prov.value, this.value); });
     el.ward.addEventListener('change', function () { if (this.value) JTPanelSave(p); });
 
-    // Đổi sang địa chỉ khác (hoặc địa chỉ đã có J&T) thì ẩn hàng chọn
     if (!select._jtBound) {
       select._jtBound = true;
       select.addEventListener('change', function () {
@@ -1830,7 +1692,6 @@
     }
   }
 
-  // info: { address, adx, tinhjt, huyenjt }  (tinhjt/huyenjt: gợi ý sẵn nếu nhận diện được)
   async function OpenJTPicker(opt, info) {
     var select = opt && opt.parentNode;
     if (!select || select.tagName !== 'SELECT') return;
