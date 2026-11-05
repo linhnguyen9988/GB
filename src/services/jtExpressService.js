@@ -5,7 +5,6 @@ const qs = require('qs');
 const socket = require('../socket');
 const { JT_API_ACCOUNT, JT_CUSTOMER_CODE, JT_PASSWORD, JT_PKEY, SHIP_LABEL } = require('../configs/constants');
 const { md5ToBase64 } = require('../utils/crypto');
-const { renderShipLabelPdf } = require('./shipLabelService');
 const { isPrinterOnline } = require('./printAgent');
 const { printLabelByCode, resolveAdminUnits, stripJtCode } = require('./labelPrintService');
 
@@ -74,30 +73,6 @@ const JT_STATUS_VN = {
 };
 
 const { JT_SENDER, JT_ORDER_NOTE, JT_PRODUCT_NAME } = require('../configs/jtLabelConfig');
-
-async function buildGBLabelBase64(orderid) {
-    const [rows] = await DBConnection.query(
-        `SELECT name, phone, address, cod, kg, realorderid, sortline, sortcode
-           FROM lendon
-          WHERE (orderid = ? OR realorderid = ?) AND provider = 'J&T'
-          LIMIT 1`,
-        [orderid, orderid]
-    );
-    if (!rows.length) throw new Error('Không tìm thấy đơn J&T trong hệ thống');
-    const r = rows[0];
-    const pdf = await renderShipLabelPdf([{
-        billCode: r.realorderid,
-        name: r.name,
-        phone: r.phone,
-        address: r.address,
-        cod: r.cod,
-        kg: r.kg,
-        sortLine: r.sortline || r.sortcode,
-        note: JT_ORDER_NOTE,
-        productName: JT_PRODUCT_NAME
-    }], JT_SENDER);
-    return pdf.toString('base64');
-}
 
 function httpError(status, message) {
     const e = new Error(message);
@@ -365,7 +340,7 @@ async function GetBillJT(orderid, userId) {
         }
     };
 
-    if (SHIP_LABEL === 'html') {
+    if (SHIP_LABEL === 'gb') {
         try {
             const r = await printLabelByCode(orderid, userId);
             if (r.success) return true;
@@ -373,14 +348,8 @@ async function GetBillJT(orderid, userId) {
             console.error(`❌ Lỗi in tem HTML (${orderid}): ${r.message}`);
             return false;
         } catch (e) {
-            console.error(`❌ Lỗi dựng tem HTML (${orderid}), chuyển sang tem J&T:`, e.message);
-        }
-    } else if (SHIP_LABEL === 'gb') {
-        try {
-            emitPdf(await buildGBLabelBase64(orderid));
-            return true;
-        } catch (e) {
-            console.error(`❌ Lỗi tạo tem GB (${orderid}), chuyển sang tem J&T:`, e.message);
+            console.error(`❌ Lỗi dựng tem HTML (${orderid}):`, e.message);
+            return false;
         }
     }
 
@@ -480,7 +449,7 @@ async function refreshJTStatus(billCode) {
 }
 
 module.exports = {
-    CancelOrderJT, GetBillJT, reprintBillJT, buildGBLabelBase64,
+    CancelOrderJT, GetBillJT, reprintBillJT,
     createJTOrder, traceJT, refreshJTStatus,
     JT_FINAL_CODES, jtHasSigpic, isPartReturnBill, eventCode, toWaybillRow, toEpoch,
     insertWaybillIfNew, latestStoredScanEpoch, applyJTStatus, createPartReturnOrder

@@ -4,6 +4,7 @@ const { createGiaBaoLabel } = require('../../services/labelService');
 const jwtAuth = require('../../middleware/jwtAuth');
 const DBConnection = require('../../configs/DBConnection');
 const { printLabelByCode } = require('../../services/labelPrintService');
+const { reprintBillJT } = require('../../services/jtExpressService');
 
 module.exports = function registerPrintRoutes(router) {
     router.post('/api/generate-pdf', async (req, res) => {
@@ -22,7 +23,13 @@ module.exports = function registerPrintRoutes(router) {
             return res.status(400).json({ success: false, message: 'Mã đơn không hợp lệ' });
         }
         try {
-            const r = await printLabelByCode(code, req.user.id);
+            const [rows] = await DBConnection.query(
+                'SELECT provider FROM lendon WHERE realorderid = ? OR orderid = ? LIMIT 1', [code, code]
+            );
+            if (!rows.length) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn hàng' });
+            const r = rows[0].provider === 'J&T'
+                ? await reprintBillJT(code, req.user.id)
+                : await printLabelByCode(code, req.user.id);
             res.status(r.success ? 200 : (r.status || 500)).json({ success: r.success, message: r.message });
         } catch (error) {
             console.error('Lỗi /reprintorder:', error.message);

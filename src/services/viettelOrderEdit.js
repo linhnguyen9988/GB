@@ -118,7 +118,7 @@ function parseKg(v) {
     return { value: Math.round(n * 100) / 100 };
 }
 
-function toViettelWeight(kgInput) {
+function toViettelWeight(kgInput) {//duoi 3kg -> 1kg, 4 -> 2, 5->3, 15->12
     let kg = parseFloat(kgInput) * 1000;
     if (kg <= 1000) kg = 500;
     else if (kg <= 2000) kg = 1000;

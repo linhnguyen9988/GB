@@ -19,11 +19,11 @@ const ACTIVE_CARRIER = CARRIER_ALIASES[CARRIER_RAW] || 'viettel';
 if (!CARRIER_ALIASES[CARRIER_RAW]) {
     console.warn(`[CARRIER] Giá trị "${process.env.CARRIER}" không hợp lệ (chỉ nhận viettel | jt), dùng mặc định: viettel`);
 }
-const SHIP_LABEL_ALIASES = { html: 'html', gb: 'gb', jt: 'jt' };
-const SHIP_LABEL_RAW = String(process.env.SHIP_LABEL || 'html').trim().toLowerCase();
-const SHIP_LABEL = SHIP_LABEL_ALIASES[SHIP_LABEL_RAW] || 'html';
+const SHIP_LABEL_ALIASES = { html: 'gb', gb: 'gb', jt: 'jt' };
+const SHIP_LABEL_RAW = String(process.env.SHIP_LABEL || 'gb').trim().toLowerCase();
+const SHIP_LABEL = SHIP_LABEL_ALIASES[SHIP_LABEL_RAW] || 'gb';
 if (!SHIP_LABEL_ALIASES[SHIP_LABEL_RAW]) {
-    console.warn(`[SHIP_LABEL] Giá trị "${process.env.SHIP_LABEL}" không hợp lệ (chỉ nhận HTML | GB | JT), dùng mặc định: HTML`);
+    console.warn(`[SHIP_LABEL] Giá trị "${process.env.SHIP_LABEL}" không hợp lệ (chỉ nhận GB | JT), dùng mặc định: GB`);
 }
 const GlobalPageID = '223266991771270';
 const GlobalPageID2 = '102116919355833';
