@@ -1262,57 +1262,32 @@
   var fbnamex = ``;
   var khid = '';
 
-  async function TuDocFileVaIn(realorderid) {
+  // In lại tem: server dựng lại tem từ bảng lendon (Viettel -> HTML, J&T -> tem GB/J&T) rồi gửi tới máy in
+  function TuDocFileVaIn(realorderid) {
     realorderid = String(realorderid || '').replace('1P1', '').trim();
     if (!realorderid || realorderid === 'undefined') {
       ShowAlertModal("Chưa chọn đơn hàng để in lại!");
-      return false;
+      return Promise.resolve(false);
     }
-    const htmlTuFile = await fetch(`/donhang/${encodeURIComponent(realorderid)}.txt`)
-      .then(res => {
-        if (!res.ok) throw new Error("Không tìm thấy file trên Server");
-        return res.text();
-      })
-      .catch(err => {
-        console.error(err);
-        return null;
-      });
-
-    if (!htmlTuFile) {
-      ShowAlertModal("Không lấy được nội dung file in của đơn " + realorderid + " (đơn tạo bằng tay hoặc chưa lưu nhãn).");
-      return false;
-    }
-
     return new Promise(function (resolve) {
       $.ajax({
-        url: "/print-order",
+        url: "/reprintorder",
         method: "POST",
-        contentType: "application/json",
-        data: JSON.stringify({
-          userId: window.CURRENT_USER_ID,
-          type: 'html',
-          content: htmlTuFile,
-          config: {
-            printerName: "HPRT N41",
-            widthMm: 150,
-            heightMm: 100
-          }
-        }),
+        data: { realorderid: realorderid },
         success: function (res) {
-          if (res.success) {
+          if (res && res.success) {
             $('#qrresult').empty();
             var vc = document.getElementById("video-container");
             if (vc) vc.style.display = "block";
             ShowCenterToast('success', 'Đã gửi lệnh in lại: ' + realorderid, 2500);
             resolve(true);
           } else {
-            ShowAlertModal("Máy in đang Offline!");
+            ShowAlertModal((res && res.message) || "Không in lại được");
             resolve(false);
           }
         },
         error: function (xhr) {
-          var msg = (xhr.responseJSON && xhr.responseJSON.message) || "Lỗi kết nối route in";
-          ShowAlertModal(msg);
+          ShowAlertModal((xhr.responseJSON && xhr.responseJSON.message) || "Lỗi kết nối route in");
           resolve(false);
         }
       });
@@ -1488,12 +1463,6 @@
 
         document.getElementById("pushviettelorder").disabled = false;
 
-        $.ajax({
-          url: "/printviettel",
-          method: "POST",
-          dataType: "JSON",
-          data: { html: html, realorderid: data.realorderid }
-        });
 
         $.ajax({
           url: "/print-order",

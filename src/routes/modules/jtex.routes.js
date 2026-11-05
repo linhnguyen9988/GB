@@ -1,6 +1,6 @@
 'use strict';
 const jwtAuth = require('../../middleware/jwtAuth');
-const { CancelOrderJT, GetBillJT, PrintBillJT, createJTOrder, refreshJTStatus } = require('../../services/jtExpressService');
+const { CancelOrderJT, GetBillJT, reprintBillJT, createJTOrder, refreshJTStatus } = require('../../services/jtExpressService');
 
 module.exports = function registerJtexRoutes(router) {
     router.post('/pushorderjtex', jwtAuth, async function (req, res) {
@@ -16,10 +16,17 @@ module.exports = function registerJtexRoutes(router) {
         });
     });
 
-    router.post('/printjtex', jwtAuth, function (req, res) {
-        var orderid = req.body.orderid;
-        PrintBillJT(orderid);
-        res.sendStatus(200)
+    // In lại tem J&T: orderid = mã vận đơn hoặc mã đơn nội bộ. Tem gửi tới máy in của user, không in trên server.
+    router.post('/printjtex', jwtAuth, async function (req, res) {
+        const orderid = String(req.body.orderid || '').trim();
+        if (!orderid) return res.status(400).json({ success: false, message: 'Thiếu mã đơn' });
+        try {
+            const r = await reprintBillJT(orderid, req.user.id);
+            res.status(r.success ? 200 : (r.status || 500)).json({ success: r.success, message: r.message });
+        } catch (error) {
+            console.error('Lỗi /printjtex:', error.message);
+            res.status(500).json({ success: false, message: 'Lỗi hệ thống, thử lại sau' });
+        }
     });
 
     router.post('/cancelorderjt', jwtAuth, async function (req, res) {

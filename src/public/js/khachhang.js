@@ -149,13 +149,6 @@ function LenDonKhachHang() {
                 </body></html>`;
 
             $.ajax({
-                url: "/printviettel",
-                method: "POST",
-                dataType: "JSON",
-                data: { html: html, realorderid: data.realorderid }
-            });
-
-            $.ajax({
                 url: "/print-order",
                 method: "POST",
                 contentType: "application/json",

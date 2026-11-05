@@ -2,12 +2,9 @@
 const DBConnection = require("../../configs/DBConnection");
 const SqlString = require('sqlstring');
 const axios = require('axios');
-const fs = require('fs');
 const jwtAuth = require('../../middleware/jwtAuth');
-const path = require('path');
 const viettelOrderEdit = require('../../services/viettelOrderEdit');
 const { CreateOrderID } = require('../../utils/orderId');
-const { DONHANG_DIR } = require('../../configs/constants');
 const { GetViettelToken, PrintBillViettel } = require('../../services/viettelService');
 const { refreshOrderStatus } = require('../../services/viettelStatusService');
 const { suggestProvDistrict } = require('../../services/jtAddressService');
@@ -469,16 +466,5 @@ module.exports = function registerViettelRoutes(router) {
             console.error('Lỗi Create Order:', error.message);
             res.json({ error: 'Lỗi hệ thống: ' + error.message });
         }
-    });
-
-    router.post('/printviettel', function (req, res) {
-        const { html, realorderid } = req.body;
-        try {
-            const safeId = String(realorderid || '').replace(/[^A-Za-z0-9_-]/g, '');
-            if (!safeId) return res.status(400).json({ success: false, error: 'realorderid không hợp lệ' });
-            fs.mkdirSync(DONHANG_DIR, { recursive: true });
-            fs.writeFileSync(path.join(DONHANG_DIR, `${safeId}.txt`), html);
-        } catch (e) { console.log("Lỗi ghi file:", e); }
-        res.json({ success: true });
     });
 };

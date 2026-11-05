@@ -2,13 +2,11 @@
 const DBConnection = require("../configs/DBConnection");
 const axios = require('axios');
 const qs = require('qs');
-const request = require('request');
 const socket = require('../socket');
 const { JT_API_ACCOUNT, JT_CUSTOMER_CODE, JT_PASSWORD, JT_PKEY, SHIP_LABEL } = require('../configs/constants');
-const { delay } = require('../utils/common');
-const { getBrowser } = require('./browserService');
 const { md5ToBase64 } = require('../utils/crypto');
 const { renderShipLabelPdf } = require('./shipLabelService');
+const { isPrinterOnline } = require('./printAgent');
 
 async function CancelOrderJT(orderid) {
     const pkey = JT_PKEY;
@@ -53,67 +51,6 @@ async function CancelOrderJT(orderid) {
         console.error('Lỗi khi gọi API J&T:', error.message);
         return 'Lỗi kết nối API';
     }
-}
-
-// In 1 file PDF (base64) bằng Chrome trên server
-async function printPdfInServerChrome(base64) {
-    const browser = await getBrowser();
-    const page2 = await browser.newPage();
-    await page2.bringToFront();
-    await page2.setContent(`
-        <html>
-        <body style="margin:0;padding:0; height:100%;">
-            <iframe src="data:application/pdf;base64,${base64}" style="width:100%; height:100%; border:none;"></iframe>
-        </body>
-        </html>
-    `, { waitUntil: 'load' });
-    await delay(500);
-    await page2.evaluate(() => { window.print(); });
-    setTimeout(() => {
-        page2.close();
-    }, 500);
-}
-
-function printBillFromJTApi(orderid) {
-    const pkey = JT_PKEY;
-    var apiAccount = JT_API_ACCOUNT;
-    var oderjson = `{"customerCode":"${JT_CUSTOMER_CODE}","password":"${JT_PASSWORD}","txlogisticId":"${orderid}"}`;
-    var digest = md5ToBase64(oderjson + pkey);
-    var query = 'https://ylopenapi.jtexpress.vn/webopenplatformapi/api/order/printOrder';
-    request({
-        url: encodeURI(query),
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'apiAccount': apiAccount,
-            'digest': digest,
-            'timestamp': new Date().getTime()
-        },
-        form: {
-            'bizContent': oderjson
-        }
-    }, async function (error, response, bodyx) {
-        const body = JSON.parse(bodyx);
-        if (body.msg == 'success') {
-            printPdfInServerChrome(body.data.base64EncodeContent);
-        } else {
-            console.log(body.msg);
-        }
-    });
-}
-
-function PrintBillJT(orderid) {
-    if (SHIP_LABEL !== 'gb') return printBillFromJTApi(orderid);
-    (async () => {
-        let base64;
-        try {
-            base64 = await buildGBLabelBase64(orderid);
-        } catch (e) {
-            console.error(`❌ Lỗi tạo tem GB (${orderid}), chuyển sang tem J&T:`, e.message);
-            return printBillFromJTApi(orderid);
-        }
-        printPdfInServerChrome(base64);
-    })();
 }
 
 const JT_BASE = 'https://ylopenapi.jtexpress.vn/webopenplatformapi/api';
@@ -459,6 +396,24 @@ async function GetBillJT(orderid, userId) {
     }
 }
 
+async function reprintBillJT(code, userId) {
+    code = String(code || '').trim();
+    if (!code) return { success: false, status: 400, message: 'Thiếu mã đơn' };
+
+    const [rows] = await DBConnection.query(
+        "SELECT orderid FROM lendon WHERE (orderid = ? OR realorderid = ?) AND provider = 'J&T' LIMIT 1",
+        [code, code]
+    );
+    if (!rows.length) return { success: false, status: 404, message: 'Không tìm thấy đơn J&T này' };
+
+    if (!isPrinterOnline(userId)) return { success: false, status: 404, message: 'Máy in Offline' };
+
+    const ok = await GetBillJT(rows[0].orderid, userId);
+    return ok
+        ? { success: true, message: 'Đã gửi lệnh in lại' }
+        : { success: false, status: 502, message: 'Không tạo được tem J&T, thử lại sau' };
+}
+
 async function traceJT(billCode) {
     const body = await jtPost('/logistics/trace', { billCodes: billCode, txlogisticId: '' }, 10000);
     if (body.code !== '1' || !Array.isArray(body.data) || body.data.length === 0) {
@@ -523,7 +478,7 @@ async function refreshJTStatus(billCode) {
 }
 
 module.exports = {
-    CancelOrderJT, PrintBillJT, GetBillJT, buildGBLabelBase64,
+    CancelOrderJT, GetBillJT, reprintBillJT, buildGBLabelBase64,
     createJTOrder, traceJT, refreshJTStatus,
     JT_FINAL_CODES, jtHasSigpic, isPartReturnBill, eventCode, toWaybillRow, toEpoch,
     insertWaybillIfNew, latestStoredScanEpoch, applyJTStatus, createPartReturnOrder
