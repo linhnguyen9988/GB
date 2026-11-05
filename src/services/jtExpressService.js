@@ -4,10 +4,11 @@ const axios = require('axios');
 const qs = require('qs');
 const request = require('request');
 const socket = require('../socket');
-const { JT_API_ACCOUNT, JT_CUSTOMER_CODE, JT_PASSWORD, JT_PKEY } = require('../configs/constants');
+const { JT_API_ACCOUNT, JT_CUSTOMER_CODE, JT_PASSWORD, JT_PKEY, SHIP_LABEL } = require('../configs/constants');
 const { delay } = require('../utils/common');
 const { getBrowser } = require('./browserService');
 const { md5ToBase64 } = require('../utils/crypto');
+const { renderShipLabelPdf } = require('./shipLabelService');
 
 async function CancelOrderJT(orderid) {
     const pkey = JT_PKEY;
@@ -54,7 +55,26 @@ async function CancelOrderJT(orderid) {
     }
 }
 
-function PrintBillJT(orderid) {
+// In 1 file PDF (base64) bằng Chrome trên server
+async function printPdfInServerChrome(base64) {
+    const browser = await getBrowser();
+    const page2 = await browser.newPage();
+    await page2.bringToFront();
+    await page2.setContent(`
+        <html>
+        <body style="margin:0;padding:0; height:100%;">
+            <iframe src="data:application/pdf;base64,${base64}" style="width:100%; height:100%; border:none;"></iframe>
+        </body>
+        </html>
+    `, { waitUntil: 'load' });
+    await delay(500);
+    await page2.evaluate(() => { window.print(); });
+    setTimeout(() => {
+        page2.close();
+    }, 500);
+}
+
+function printBillFromJTApi(orderid) {
     const pkey = JT_PKEY;
     var apiAccount = JT_API_ACCOUNT;
     var oderjson = `{"customerCode":"${JT_CUSTOMER_CODE}","password":"${JT_PASSWORD}","txlogisticId":"${orderid}"}`;
@@ -75,27 +95,25 @@ function PrintBillJT(orderid) {
     }, async function (error, response, bodyx) {
         const body = JSON.parse(bodyx);
         if (body.msg == 'success') {
-            (async () => {
-                const browser = await getBrowser();
-                const page2 = await browser.newPage();
-                await page2.bringToFront();
-                await page2.setContent(`
-                    <html>
-                    <body style="margin:0;padding:0; height:100%;">
-                        <iframe src="data:application/pdf;base64,${body.data.base64EncodeContent}" style="width:100%; height:100%; border:none;"></iframe>
-                    </body>
-                    </html>
-                `, { waitUntil: 'load' });
-                await delay(500);
-                await page2.evaluate(() => { window.print(); });
-                setTimeout(() => {
-                    page2.close();
-                }, 500);
-            })();
+            printPdfInServerChrome(body.data.base64EncodeContent);
         } else {
             console.log(body.msg);
         }
     });
+}
+
+function PrintBillJT(orderid) {
+    if (SHIP_LABEL !== 'gb') return printBillFromJTApi(orderid);
+    (async () => {
+        let base64;
+        try {
+            base64 = await buildGBLabelBase64(orderid);
+        } catch (e) {
+            console.error(`❌ Lỗi tạo tem GB (${orderid}), chuyển sang tem J&T:`, e.message);
+            return printBillFromJTApi(orderid);
+        }
+        printPdfInServerChrome(base64);
+    })();
 }
 
 const JT_BASE = 'https://ylopenapi.jtexpress.vn/webopenplatformapi/api';
@@ -125,6 +143,33 @@ const JT_SENDER = {
     area: process.env.JT_SENDER_AREA || 'Phường Long Bình-251TPB07',
     address: process.env.JT_SENDER_ADDRESS || '197 HBB'
 };
+
+const JT_ORDER_NOTE = 'Cho xem hàng. Không nhận thu 30k';
+const JT_PRODUCT_NAME = 'Vải';
+
+async function buildGBLabelBase64(orderid) {
+    const [rows] = await DBConnection.query(
+        `SELECT name, phone, address, cod, kg, realorderid, sortline, sortcode
+           FROM lendon
+          WHERE (orderid = ? OR realorderid = ?) AND provider = 'J&T'
+          LIMIT 1`,
+        [orderid, orderid]
+    );
+    if (!rows.length) throw new Error('Không tìm thấy đơn J&T trong hệ thống');
+    const r = rows[0];
+    const pdf = await renderShipLabelPdf([{
+        billCode: r.realorderid,
+        name: r.name,
+        phone: r.phone,
+        address: r.address,
+        cod: r.cod,
+        kg: r.kg,
+        sortLine: r.sortline || r.sortcode,
+        note: JT_ORDER_NOTE,
+        productName: JT_PRODUCT_NAME
+    }], JT_SENDER);
+    return pdf.toString('base64');
+}
 
 function httpError(status, message) {
     const e = new Error(message);
@@ -316,8 +361,8 @@ async function createJTOrder(input) {
 
     const codStr = normalizeMoney(cod);
     const weight = parseFloat(kg) || 1;
-    const note = 'Cho xem hàng. Không nhận thu 30k';
-    const productName = 'Vải';
+    const note = JT_ORDER_NOTE;
+    const productName = JT_PRODUCT_NAME;
     const txlogisticId = 'DH' + Date.now();
     const timenow = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Saigon' });
 
@@ -381,16 +426,29 @@ async function createJTOrder(input) {
 
 async function GetBillJT(orderid, userId) {
     const io = socket.getIo();
+    const emitPdf = (base64) => {
+        if (io && userId) {
+            io.to(`USER_ROOM_${userId}`).emit("print-now", {
+                type: 'pdf',
+                base64,
+                config: { printerName: "HPRT N41", widthMm: 80, heightMm: 80 }
+            });
+        }
+    };
+
+    if (SHIP_LABEL === 'gb') {
+        try {
+            emitPdf(await buildGBLabelBase64(orderid));
+            return true;
+        } catch (e) {
+            console.error(`❌ Lỗi tạo tem GB (${orderid}), chuyển sang tem J&T:`, e.message);
+        }
+    }
+
     try {
         const body = await jtPost('/order/printOrder', { txlogisticId: orderid }, 5000);
         if (body.msg === 'success' && body.data?.base64EncodeContent) {
-            if (io && userId) {
-                io.to(`USER_ROOM_${userId}`).emit("print-now", {
-                    type: 'pdf',
-                    base64: body.data.base64EncodeContent,
-                    config: { printerName: "HPRT N41", widthMm: 80, heightMm: 80 }
-                });
-            }
+            emitPdf(body.data.base64EncodeContent);
             return true;
         }
         console.error(`❌ Lỗi lấy bill J&T (${orderid}):`, body.msg);
@@ -465,7 +523,7 @@ async function refreshJTStatus(billCode) {
 }
 
 module.exports = {
-    CancelOrderJT, PrintBillJT, GetBillJT,
+    CancelOrderJT, PrintBillJT, GetBillJT, buildGBLabelBase64,
     createJTOrder, traceJT, refreshJTStatus,
     JT_FINAL_CODES, jtHasSigpic, isPartReturnBill, eventCode, toWaybillRow, toEpoch,
     insertWaybillIfNew, latestStoredScanEpoch, applyJTStatus, createPartReturnOrder

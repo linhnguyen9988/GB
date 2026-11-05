@@ -19,6 +19,13 @@ const ACTIVE_CARRIER = CARRIER_ALIASES[CARRIER_RAW] || 'viettel';
 if (!CARRIER_ALIASES[CARRIER_RAW]) {
     console.warn(`[CARRIER] Giá trị "${process.env.CARRIER}" không hợp lệ (chỉ nhận viettel | jt), dùng mặc định: viettel`);
 }
+// Kiểu tem ship hàng J&T: GB = tem tự tạo (shipLabelService) | JT = tem base64 lấy từ API J&T (mặc định)
+const SHIP_LABEL_ALIASES = { gb: 'gb', jt: 'jt' };
+const SHIP_LABEL_RAW = String(process.env.SHIP_LABEL || 'jt').trim().toLowerCase();
+const SHIP_LABEL = SHIP_LABEL_ALIASES[SHIP_LABEL_RAW] || 'jt';
+if (!SHIP_LABEL_ALIASES[SHIP_LABEL_RAW]) {
+    console.warn(`[SHIP_LABEL] Giá trị "${process.env.SHIP_LABEL}" không hợp lệ (chỉ nhận GB | JT), dùng mặc định: JT`);
+}
 const GlobalPageID = '223266991771270';
 const GlobalPageID2 = '102116919355833';
 
@@ -27,4 +34,4 @@ const AVA_DIR = path.join(PUBLIC_DIR, 'images', 'ava');
 const MESSPIC_DIR = path.join(PUBLIC_DIR, 'images', 'messpic');
 const DONHANG_DIR = path.join(PUBLIC_DIR, 'donhang');
 
-module.exports = { JT_PKEY, JT_API_ACCOUNT, JT_CUSTOMER_CODE, JT_PASSWORD, VIETTEL_USERNAME, VIETTEL_PASSWORD, VIETTEL_WEBHOOK_TOKEN, FB_WEBHOOK_VERIFY_TOKEN, REGISTER_PATH, ACTIVE_CARRIER, GlobalPageID, GlobalPageID2, PUBLIC_DIR, AVA_DIR, MESSPIC_DIR, DONHANG_DIR };
+module.exports = { JT_PKEY, JT_API_ACCOUNT, JT_CUSTOMER_CODE, JT_PASSWORD, VIETTEL_USERNAME, VIETTEL_PASSWORD, VIETTEL_WEBHOOK_TOKEN, FB_WEBHOOK_VERIFY_TOKEN, REGISTER_PATH, ACTIVE_CARRIER, SHIP_LABEL, GlobalPageID, GlobalPageID2, PUBLIC_DIR, AVA_DIR, MESSPIC_DIR, DONHANG_DIR };
