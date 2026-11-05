@@ -8,6 +8,7 @@ const { CreateOrderID } = require('../../utils/orderId');
 const { GetViettelToken, PrintBillViettel } = require('../../services/viettelService');
 const { refreshOrderStatus } = require('../../services/viettelStatusService');
 const { suggestProvDistrict } = require('../../services/jtAddressService');
+const { printLabelByCode } = require('../../services/labelPrintService');
 const { applyAddressFixes, cleanSearchTerm, normalizeSQL, preprocessForViettel } = require('../../utils/address');
 
 async function runViettelEdit(res, label, fn) {
@@ -444,22 +445,32 @@ module.exports = function registerViettelRoutes(router) {
             if (!xa) return res.json({ error: 'Sai địa chỉ: không tìm được Xã/Phường' });
 
             const sortCode = viettelOrder.SORT_CODE || '';
-            const tinhSort = sortCode ? `${tinh} - ${sortCode}` : tinh;
-
             const timenow = new Date().toLocaleString("vi-VN", { timeZone: "Asia/Saigon" });
             const now = new Date();
             const userId = req.user.id;
-            const sql = SqlString.format('INSERT INTO lendon (name,phone,address,cod,kg,status,date,orderid,realorderid,khid,userid,realfbid,time,provider,useraccountid,sortcode) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);',
-                [fbname, phone, address, cod, kgreal, 1, timenow, matuquan, finalRealOrderId, khid, userid, realfbid, now, 'Viettel', userId, sortCode]);//dung userid
+            const sql = SqlString.format('INSERT INTO lendon (name,phone,address,cod,kg,status,date,orderid,realorderid,khid,userid,realfbid,time,provider,useraccountid,sortcode,xa,huyen,tinh) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);',
+                [fbname, phone, address, cod, kgreal, 1, timenow, matuquan, finalRealOrderId, khid, userid, realfbid, now, 'Viettel', userId, sortCode, xa, huyen, tinh]);//dung userid
 
-            await new Promise((resolve) => DBConnection.query(sql, resolve));
+            await DBConnection.query(sql);
+
+            let printed = false, printMessage = '';
+            try {
+                const pr = await printLabelByCode(finalRealOrderId, userId);
+                printed = !!pr.success;
+                printMessage = pr.message || '';
+            } catch (pe) {
+                console.error('Lỗi in tem Viettel:', pe.message);
+                printMessage = 'Lỗi dựng tem, hãy in lại từ danh sách đơn';
+            }
 
             res.json({
-                xa, huyen, tinh: tinhSort,
+                xa, huyen, tinh,
                 sortcode: sortCode,
                 realorderid: finalRealOrderId,
                 timenow,
-                matuquan
+                matuquan,
+                printed,
+                printMessage
             });
 
         } catch (error) {

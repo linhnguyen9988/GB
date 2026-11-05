@@ -377,10 +377,12 @@ async function editOrder({ db, axios, realorderid, input, preprocess }) {
     if (!auth) return fail(500, 'Không tìm thấy token Viettel');
 
     let receiverAddress = v.values.address;
+    let newUnits = null;
     if (v.changed.includes('address')) {
         const a = await resolveAddress(axios, auth.token, v.values.address, preprocess);
         if (!a.ok) return fail(422, 'Địa chỉ chưa hợp lệ: ' + a.message);
         receiverAddress = a.sentAddress;
+        newUnits = { xa: a.xa, huyen: a.huyen, tinh: a.tinh };
     } else if (preprocess) {
         receiverAddress = preprocess(v.values.address);
     }
@@ -417,6 +419,7 @@ async function editOrder({ db, axios, realorderid, input, preprocess }) {
     const vo = body.data || {};
     const warnings = [];
     if (vo.SORT_CODE) dbSet.sortcode = vo.SORT_CODE;
+    if (newUnits) Object.assign(dbSet, newUnits);
     if (v.changed.includes('address') && vo.RECEIVER_WARDS !== undefined && (!vo.RECEIVER_WARDS || vo.RECEIVER_WARDS == 0)) {
         warnings.push('Viettel không trả về Xã/Phường cho địa chỉ mới, hãy kiểm tra lại trên Viettel.');
     }

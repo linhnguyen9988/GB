@@ -7,6 +7,7 @@ const { JT_API_ACCOUNT, JT_CUSTOMER_CODE, JT_PASSWORD, JT_PKEY, SHIP_LABEL } = r
 const { md5ToBase64 } = require('../utils/crypto');
 const { renderShipLabelPdf } = require('./shipLabelService');
 const { isPrinterOnline } = require('./printAgent');
+const { printLabelByCode, resolveAdminUnits, stripJtCode } = require('./labelPrintService');
 
 async function CancelOrderJT(orderid) {
     const pkey = JT_PKEY;
@@ -72,17 +73,7 @@ const JT_STATUS_VN = {
     120: "Kiện vấn đề (Hoàn)"
 };
 
-const JT_SENDER = {
-    name: process.env.JT_SENDER_NAME || 'Áo Dài Gia Bảo',
-    mobile: process.env.JT_SENDER_MOBILE || '0888118855',
-    prov: process.env.JT_SENDER_PROV || 'Đồng Nai',
-    city: process.env.JT_SENDER_CITY || 'Thành phố Biên Hoà',
-    area: process.env.JT_SENDER_AREA || 'Phường Long Bình-251TPB07',
-    address: process.env.JT_SENDER_ADDRESS || '197 HBB'
-};
-
-const JT_ORDER_NOTE = 'Cho xem hàng. Không nhận thu 30k';
-const JT_PRODUCT_NAME = 'Vải';
+const { JT_SENDER, JT_ORDER_NOTE, JT_PRODUCT_NAME } = require('../configs/jtLabelConfig');
 
 async function buildGBLabelBase64(orderid) {
     const [rows] = await DBConnection.query(
@@ -341,10 +332,11 @@ async function createJTOrder(input) {
     try {
         await DBConnection.query(
             `INSERT INTO lendon
-                (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, sortline, sortcode, statuscode, statustext, useraccountid, last_update)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'J&T', ?, ?, ?, ?, ?, NOW())`,
+                (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, sortline, sortcode, statuscode, statustext, useraccountid, last_update, xa, huyen, tinh)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'J&T', ?, ?, ?, ?, ?, NOW(), ?, ?, ?)`,
             [fbname, phone, address, codStr, weight, 1, timenow, txlogisticId, body.data.billCode,
-             khid, userid, realfbid, sortLine, sortCode, 100, 'Mới tạo', accountId ?? null]
+             khid, userid, realfbid, sortLine, sortCode, 100, 'Mới tạo', accountId ?? null,
+             xa, huyen, tinh]
         );
     } catch (dbErr) {
         console.error(`Lỗi lưu đơn J&T ${body.data.billCode} vào DB:`, dbErr.message);
@@ -373,7 +365,17 @@ async function GetBillJT(orderid, userId) {
         }
     };
 
-    if (SHIP_LABEL === 'gb') {
+    if (SHIP_LABEL === 'html') {
+        try {
+            const r = await printLabelByCode(orderid, userId);
+            if (r.success) return true;
+            if (r.status === 404) return false;
+            console.error(`❌ Lỗi in tem HTML (${orderid}): ${r.message}`);
+            return false;
+        } catch (e) {
+            console.error(`❌ Lỗi dựng tem HTML (${orderid}), chuyển sang tem J&T:`, e.message);
+        }
+    } else if (SHIP_LABEL === 'gb') {
         try {
             emitPdf(await buildGBLabelBase64(orderid));
             return true;

@@ -19,12 +19,11 @@ const ACTIVE_CARRIER = CARRIER_ALIASES[CARRIER_RAW] || 'viettel';
 if (!CARRIER_ALIASES[CARRIER_RAW]) {
     console.warn(`[CARRIER] Giá trị "${process.env.CARRIER}" không hợp lệ (chỉ nhận viettel | jt), dùng mặc định: viettel`);
 }
-// Kiểu tem ship hàng J&T: GB = tem tự tạo (shipLabelService) | JT = tem base64 lấy từ API J&T (mặc định)
-const SHIP_LABEL_ALIASES = { gb: 'gb', jt: 'jt' };
-const SHIP_LABEL_RAW = String(process.env.SHIP_LABEL || 'jt').trim().toLowerCase();
-const SHIP_LABEL = SHIP_LABEL_ALIASES[SHIP_LABEL_RAW] || 'jt';
+const SHIP_LABEL_ALIASES = { html: 'html', gb: 'gb', jt: 'jt' };
+const SHIP_LABEL_RAW = String(process.env.SHIP_LABEL || 'html').trim().toLowerCase();
+const SHIP_LABEL = SHIP_LABEL_ALIASES[SHIP_LABEL_RAW] || 'html';
 if (!SHIP_LABEL_ALIASES[SHIP_LABEL_RAW]) {
-    console.warn(`[SHIP_LABEL] Giá trị "${process.env.SHIP_LABEL}" không hợp lệ (chỉ nhận GB | JT), dùng mặc định: JT`);
+    console.warn(`[SHIP_LABEL] Giá trị "${process.env.SHIP_LABEL}" không hợp lệ (chỉ nhận HTML | GB | JT), dùng mặc định: HTML`);
 }
 const GlobalPageID = '223266991771270';
 const GlobalPageID2 = '102116919355833';

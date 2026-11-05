@@ -113,69 +113,13 @@ function LenDonKhachHang() {
             document.getElementById('COD').value = 0;
             document.getElementById('KG').value = 1;
             
-            var kgGoi = kg * 1000;
-            if (kgGoi <= 1000) kgGoi = 500;
-            else if (kgGoi <= 2000) kgGoi = 1000;
-            else if (kgGoi <= 3000) kgGoi = 1500;
-            else if (kgGoi <= 4000) kgGoi = 2000;
-            else if (kgGoi <= 6000) kgGoi = kgGoi - 2000;
-            else if (kgGoi <= 9000) kgGoi = kgGoi - 3000;
-            else if (kgGoi <= 15000) kgGoi = kgGoi - 4000;
-            else kgGoi = kgGoi - 5000;
-
-            var fbnamex = fbnameNow;
-            var html = `<html><head>
-                <style>
-                    body { width: 360px; margin: 2mm 0mm 2mm 2mm; line-height: 1.6; }
-                    table { width: 360px; font-family: "tahoma"; border-collapse: collapse; }
-                    @media print{@page {size: landscape}}
-                    *, html {margin:0;padding:0;}
-                </style>
-                </head>
-                <body>
-                <table>
-                    <tr><td colspan="2">Tỉnh/TP: <p style="font-size:14px;display:inline;font-weight: bold;">${data.tinh}</p></td></tr>
-                    <tr><td colspan="2">Quận/Huyện: <p style="font-size:13px;display:inline;font-weight: bold;">${data.huyen}</p></td></tr>
-                    <tr><td colspan="2">Phường/Xã: <p style="font-size:13px;display:inline;font-weight: bold;">${data.xa}</p></td></tr>
-                    <tr><td colspan="2" align="right"><p style="font-size:10px;display:inline;">${kgGoi / 1000} KG</p></td></tr>
-                    <tr><td colspan="2"><center><img src="${IDToBarcode(data.realorderid, 30)}"/><br><p style="font-size:10px;display:inline;vertical-align: top;">${data.realorderid}</p></center></td></tr>
-                    <tr><td colspan="2"><h5>${fbnamex} • ${phone}</h5></td></tr>
-                    <tr><td colspan="2"><p style="font-size:10px;display:inline;vertical-align: top;">${catGonChuoi(address, 60)}</p></td></tr>
-                    <tr><td><p style="font-size:10px;display:inline;vertical-align: top;">Cho xem hàng, không nhận thu 30k</p><br>
-                    <p style="font-size:10px;display:inline;">1 x Vải</p><br>
-                    <p style="font-size:18px;display:inline;">Tiền thu hộ: <b>${(+cod).toLocaleString()} đ</b></p></td>
-                    <td>${MakeQRCode(data.realorderid, "Byte")}</td></tr>
-                </table>
-                </body></html>`;
-
-            $.ajax({
-                url: "/print-order",
-                method: "POST",
-                contentType: "application/json",
-                data: JSON.stringify({
-                    userId: window.CURRENT_USER_ID,
-                    type: 'html',
-                    content: html,
-                    config: {
-                        printerName: "HPRT N41",
-                        widthMm: 150,
-                        heightMm: 100
-                    }
-                }),
-                success: function (res) {
-                    if (btn) btn.disabled = false;
-                    if (res.success) {
-                        ShowCenterToast('success', `${fbnamex} • ${data.realorderid} • ${(+cod).toLocaleString()} đ`, 4000);
-                        FillDiaChi();
-                    } else {
-                        ShowAlertModal("Máy in đang Offline!");
-                    }
-                },
-                error: function () {
-                    if (btn) btn.disabled = false;
-                    console.log("Lỗi kết nối route in");
-                }
-            });
+            if (btn) btn.disabled = false;
+            if (data.printed) {
+                ShowCenterToast('success', `${fbnameNow} • ${data.realorderid} • ${(+cod).toLocaleString()} đ`, 4000);
+            } else {
+                ShowAlertModal(`Đã lên đơn ${data.realorderid} nhưng chưa in được tem: ${data.printMessage || 'Máy in đang Offline!'}`);
+            }
+            FillDiaChi();
         },
         error: function () {
             if (btn) btn.disabled = false;

@@ -3,8 +3,7 @@ const socket = require('../../socket');
 const { createGiaBaoLabel } = require('../../services/labelService');
 const jwtAuth = require('../../middleware/jwtAuth');
 const DBConnection = require('../../configs/DBConnection');
-const { reprintBillJT } = require('../../services/jtExpressService');
-const { reprintViettelLabel } = require('../../services/viettelLabelService');
+const { printLabelByCode } = require('../../services/labelPrintService');
 
 module.exports = function registerPrintRoutes(router) {
     router.post('/api/generate-pdf', async (req, res) => {
@@ -17,21 +16,13 @@ module.exports = function registerPrintRoutes(router) {
         }
     });
 
-    // In lại tem 1 đơn: dựng tem từ bảng lendon (Viettel -> HTML, J&T -> tem GB/J&T) rồi gửi tới máy in của user.
     router.post('/reprintorder', jwtAuth, async (req, res) => {
         const code = String(req.body.realorderid || '').replace('1P1', '').trim();
         if (!/^[A-Za-z0-9_-]{4,45}$/.test(code)) {
             return res.status(400).json({ success: false, message: 'Mã đơn không hợp lệ' });
         }
         try {
-            const [rows] = await DBConnection.query(
-                'SELECT provider FROM lendon WHERE realorderid = ? OR orderid = ? LIMIT 1', [code, code]
-            );
-            if (!rows.length) return res.status(404).json({ success: false, message: 'Không tìm thấy đơn hàng' });
-
-            const r = rows[0].provider === 'J&T'
-                ? await reprintBillJT(code, req.user.id)
-                : await reprintViettelLabel(code, req.user.id);
+            const r = await printLabelByCode(code, req.user.id);
             res.status(r.success ? 200 : (r.status || 500)).json({ success: r.success, message: r.message });
         } catch (error) {
             console.error('Lỗi /reprintorder:', error.message);
