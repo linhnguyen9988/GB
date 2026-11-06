@@ -47,11 +47,9 @@
                   </h4>
                   <span class="text3"><b>ID: ADGB000.<%= user.id %></b></span>
                   <p class="text-muted font-size-sm">Admin</p>
-                  <button class="btn btn-primary" onclick="GetToken()" id="btngettoken">Get Token</button>
                   <button class="btn btn-outline-primary" onclick="OpenChangePass()">Đổi mật khẩu</button>
                   <button class="btn btn-outline-primary" onclick="GetAllAddress()">GetAllAddress</button>
                   <button class="btn btn-outline-primary" onclick="Test2()">Test2</button>
-                  <button class="btn btn-outline-primary" onclick="TokenViettel()">Token VietTel</button>
                   <button class="btn btn-outline-primary" onclick="TokenPage()">Token Page</button>
 
                 </div>
@@ -180,11 +178,345 @@
               </div>
             </div>
           </div>
+
+          <div class="card mt-3" id="viettelAccountPanel">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                <div>
+                  <h5 class="mb-1">Tài khoản Viettel Post</h5>
+                  <div class="text-muted small">Mỗi tài khoản có kho mặc định và dịch vụ chính dùng khi lên đơn.</div>
+                </div>
+                <span class="badge text-bg-light"><%= viettelAccounts.length %> tài khoản</span>
+              </div>
+              <% if (viettelAccountError) { %>
+                <div class="alert alert-warning mb-3"><%= viettelAccountError %></div>
+              <% } %>
+              <div class="row g-3" id="viettelAccountCards">
+                <% viettelAccounts.forEach(function(a) { %>
+                  <div class="col-12 col-xl-6">
+                    <div class="card h-100 border <%= Number(a.is_default) === 1 ? 'border-primary' : '' %>">
+                      <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start gap-2">
+                          <div class="min-w-0">
+                            <div class="fw-semibold text-break"><i class="bi bi-truck me-1"></i><%= a.username || ('Viettel #' + a.accountId) %></div>
+                            <div class="small text-muted">CUS_ID: <%= a.cusId %></div>
+                          </div>
+                          <% if (Number(a.is_default) === 1) { %>
+                            <span class="badge text-bg-primary">Mặc định</span>
+                          <% } %>
+                        </div>
+                        <hr>
+                        <div class="small mb-2"><strong>Kho:</strong> <%= a.warehouse_name || 'Chưa đặt tên' %></div>
+                        <div class="small text-muted mb-2"><%= a.warehouse_address || 'Chưa có địa chỉ kho' %></div>
+                        <div class="small mb-1"><strong>Dịch vụ:</strong> <%= a.order_service_name || a.order_service || 'Chưa chọn' %> (<%= a.order_service || '—' %>)</div>
+                        <div class="small text-muted mb-3"><%= Number(a.order_service_price || 0).toLocaleString('vi-VN') %> đ · <%= a.order_service_time || 'Chưa có thời gian dự kiến' %></div>
+                        <div class="d-flex flex-wrap gap-2">
+                          <button class="btn btn-sm btn-primary" type="button" data-vt-action="edit" data-account-id="<%= a.accountId %>" data-username="<%= a.username %>">Cập nhật</button>
+                          <% if (Number(a.is_default) !== 1) { %>
+                            <button class="btn btn-sm btn-outline-primary" type="button" data-vt-action="default" data-account-id="<%= a.accountId %>">Đặt mặc định</button>
+                          <% } %>
+                          <button class="btn btn-sm btn-outline-danger" type="button" data-vt-action="delete" data-account-id="<%= a.accountId %>">Xóa</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                <% }); %>
+                <div class="col-12 col-xl-6">
+                  <button type="button" class="card h-100 w-100 border border-2 border-dashed bg-body-tertiary text-secondary" style="min-height:220px" onclick="openViettelModal('add')">
+                    <span class="card-body d-flex flex-column justify-content-center align-items-center">
+                      <i class="bi bi-plus-circle" style="font-size:2.2rem"></i>
+                      <span class="fw-semibold mt-2">Thêm tài khoản Viettel</span>
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="viettelAccountModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content rounded-4">
+        <div class="modal-header">
+          <div>
+            <h5 class="modal-title mb-1" id="viettelModalTitle">Thêm tài khoản Viettel Post</h5>
+            <div class="small text-muted" id="viettelModalStepLabel">Bước 1/2 · Xác thực tài khoản</div>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+        </div>
+        <div class="modal-body">
+          <div id="viettelModalError" class="alert alert-danger d-none" role="alert"></div>
+          <section id="viettelStepCredentials">
+            <div class="mb-3">
+              <label class="form-label" for="viettelUsername">Username Viettel Post</label>
+              <input class="form-control" id="viettelUsername" autocomplete="username" placeholder="Nhập username Viettel Post">
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="viettelPassword">Mật khẩu Viettel Post</label>
+              <input class="form-control" id="viettelPassword" type="password" autocomplete="new-password" placeholder="Nhập mật khẩu Viettel Post">
+            </div>
+            <button type="button" class="btn btn-primary" id="viettelPrepareBtn" onclick="prepareViettelAccount()">
+              <span class="spinner-border spinner-border-sm me-2 d-none" id="viettelPrepareSpinner"></span>
+              Kiểm tra và tiếp tục
+            </button>
+          </section>
+          <section id="viettelStepSelection" class="d-none">
+            <div class="alert alert-success py-2"><i class="bi bi-check-circle me-1"></i>Đã xác thực và lấy token dài hạn cùng danh sách kho Viettel Post. Chọn kho để tải bảng giá.</div>
+            <div class="mb-4">
+              <label class="form-label fw-semibold" for="viettelWarehouseSelect">Kho mặc định để lên đơn</label>
+              <select class="form-select" id="viettelWarehouseSelect"></select>
+              <div class="form-text">Mỗi tài khoản cần chọn một kho mặc định (GROUPADDRESS_ID).</div>
+            </div>
+            <div class="mb-3">
+              <div class="fw-semibold mb-2">Dịch vụ chính</div>
+              <div class="small text-muted mb-2" id="viettelServiceHint">Chọn kho để hệ thống gọi API lấy bảng giá.</div>
+              <div class="row g-2" id="viettelServiceChoices"></div>
+              <div class="form-text mt-2">Dịch vụ được sắp xếp theo giá từ thấp đến cao; dịch vụ rẻ nhất sẽ được chọn sẵn.</div>
+            </div>
+            <div class="form-check mt-3">
+              <input class="form-check-input" type="checkbox" id="viettelMakeDefault">
+              <label class="form-check-label" for="viettelMakeDefault">Dùng tài khoản này làm mặc định khi lên đơn</label>
+            </div>
+          </section>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary d-none" id="viettelBackBtn" onclick="backToViettelCredentials()">Quay lại</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+          <button type="button" class="btn btn-success d-none" id="viettelSaveBtn" onclick="saveViettelAccount()">Lưu tài khoản</button>
         </div>
       </div>
     </div>
   </div>
   <script>
+    let viettelDraftId = null;
+    let viettelEditAccountId = null;
+    let viettelRateRequestSeq = 0;
+    const viettelModal = () => bootstrap.Modal.getOrCreateInstance(document.getElementById('viettelAccountModal'));
+
+    function showViettelError(message) {
+      const el = document.getElementById('viettelModalError');
+      el.textContent = message || 'Có lỗi xảy ra.';
+      el.classList.remove('d-none');
+    }
+    function clearViettelError() {
+      const el = document.getElementById('viettelModalError');
+      el.textContent = '';
+      el.classList.add('d-none');
+    }
+    function setViettelBusy(busy) {
+      document.getElementById('viettelPrepareBtn').disabled = !!busy;
+      document.getElementById('viettelPrepareSpinner').classList.toggle('d-none', !busy);
+    }
+    function openViettelModal(mode, accountId, username) {
+      viettelRateRequestSeq += 1;
+      viettelDraftId = null;
+      viettelEditAccountId = mode === 'edit' ? String(accountId) : null;
+      clearViettelError();
+      document.getElementById('viettelModalTitle').textContent = mode === 'edit' ? 'Cập nhật tài khoản Viettel Post' : 'Thêm tài khoản Viettel Post';
+      document.getElementById('viettelModalStepLabel').textContent = 'Bước 1/2 · Xác thực tài khoản';
+      document.getElementById('viettelUsername').value = username || '';
+      document.getElementById('viettelUsername').readOnly = mode === 'edit';
+      document.getElementById('viettelPassword').value = '';
+      document.getElementById('viettelPassword').placeholder = mode === 'edit' ? 'Nhập mật khẩu mới của tài khoản' : 'Nhập mật khẩu Viettel Post';
+      document.getElementById('viettelStepCredentials').classList.remove('d-none');
+      document.getElementById('viettelStepSelection').classList.add('d-none');
+      document.getElementById('viettelBackBtn').classList.add('d-none');
+      document.getElementById('viettelSaveBtn').classList.add('d-none');
+      document.getElementById('viettelSaveBtn').disabled = true;
+      document.getElementById('viettelServiceChoices').replaceChildren();
+      document.getElementById('viettelServiceHint').textContent = 'Chọn kho để hệ thống gọi API lấy bảng giá.';
+      document.getElementById('viettelWarehouseSelect').onchange = null;
+      document.getElementById('viettelPrepareBtn').classList.remove('d-none');
+      document.getElementById('viettelMakeDefault').checked = document.querySelectorAll('#viettelAccountCards [data-vt-action="edit"]').length === 0;
+      viettelModal().show();
+    }
+
+    async function viettelApi(url, options = {}) {
+      const response = await fetch(url, {
+        credentials: 'same-origin',
+        ...options,
+        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.success === false) throw new Error(result.message || 'Yêu cầu không thành công.');
+      return result;
+    }
+
+    async function prepareViettelAccount() {
+      clearViettelError();
+      const username = document.getElementById('viettelUsername').value.trim();
+      const password = document.getElementById('viettelPassword').value;
+      if (!username || !password) return showViettelError('Vui lòng nhập đầy đủ username và mật khẩu Viettel.');
+      setViettelBusy(true);
+      try {
+        const result = await viettelApi('/api/viettel/accounts/prepare', {
+          method: 'POST',
+          body: JSON.stringify({ username, password, accountId: viettelEditAccountId })
+        });
+        viettelDraftId = result.draftId;
+        document.getElementById('viettelPassword').value = '';
+        const warehouseSelect = document.getElementById('viettelWarehouseSelect');
+        warehouseSelect.replaceChildren();
+        const warehousePlaceholder = document.createElement('option');
+        warehousePlaceholder.value = '';
+        warehousePlaceholder.textContent = '-- Chọn kho mặc định để lên đơn --';
+        warehousePlaceholder.selected = true;
+        warehouseSelect.appendChild(warehousePlaceholder);
+        result.warehouses.forEach((warehouse) => {
+          const option = document.createElement('option');
+          option.value = warehouse.groupaddressId;
+          option.textContent = `${warehouse.name} · ${warehouse.address} · ${warehouse.phone} · ID ${warehouse.groupaddressId}`;
+          warehouseSelect.appendChild(option);
+        });
+
+        const serviceChoices = document.getElementById('viettelServiceChoices');
+        serviceChoices.replaceChildren();
+        document.getElementById('viettelServiceHint').textContent = 'Chọn kho mặc định để lấy bảng giá dịch vụ theo địa chỉ kho.';
+        warehouseSelect.onchange = loadViettelServices;
+
+        document.getElementById('viettelStepCredentials').classList.add('d-none');
+        document.getElementById('viettelStepSelection').classList.remove('d-none');
+        document.getElementById('viettelModalStepLabel').textContent = 'Bước 2/2 · Chọn kho và dịch vụ';
+        document.getElementById('viettelPrepareBtn').classList.add('d-none');
+        document.getElementById('viettelBackBtn').classList.remove('d-none');
+        document.getElementById('viettelSaveBtn').classList.remove('d-none');
+        document.getElementById('viettelSaveBtn').disabled = true;
+      } catch (error) {
+        showViettelError(error.message);
+      } finally {
+        setViettelBusy(false);
+      }
+    }
+
+
+    async function loadViettelServices() {
+      const warehouseId = document.getElementById('viettelWarehouseSelect').value;
+      const serviceChoices = document.getElementById('viettelServiceChoices');
+      const hint = document.getElementById('viettelServiceHint');
+      const saveButton = document.getElementById('viettelSaveBtn');
+      const requestSeq = ++viettelRateRequestSeq;
+      serviceChoices.replaceChildren();
+      saveButton.disabled = true;
+      if (!warehouseId || !viettelDraftId) {
+        hint.textContent = 'Chọn kho để hệ thống gọi API lấy bảng giá.';
+        return;
+      }
+      clearViettelError();
+      hint.textContent = 'Đang gọi Viettel Post lấy bảng giá theo địa chỉ kho...';
+      try {
+        const result = await viettelApi('/api/viettel/accounts/services', {
+          method: 'POST',
+          body: JSON.stringify({ draftId: viettelDraftId, groupaddressId: warehouseId })
+        });
+        if (requestSeq !== viettelRateRequestSeq || warehouseId !== document.getElementById('viettelWarehouseSelect').value) return;
+        result.services.forEach((service, index) => {
+          const col = document.createElement('div');
+          col.className = 'col-12 col-md-6';
+          const label = document.createElement('label');
+          label.className = 'border rounded-3 p-3 h-100 d-flex gap-2 align-items-start';
+          label.style.cursor = 'pointer';
+          const radio = document.createElement('input');
+          radio.type = 'radio';
+          radio.name = 'viettelServiceCode';
+          radio.value = service.code;
+          radio.className = 'form-check-input mt-1';
+          radio.checked = index === 0;
+          const details = document.createElement('span');
+          details.className = 'flex-grow-1';
+          const title = document.createElement('span');
+          title.className = 'd-block fw-semibold';
+          title.textContent = `${service.name} (${service.code})`;
+          const meta = document.createElement('span');
+          meta.className = 'd-block small text-muted';
+          meta.textContent = `${Number(service.price || 0).toLocaleString('vi-VN')} đ · ${service.time || 'Chưa có thời gian'}`;
+          details.append(title, meta);
+          if (index === 0) {
+            const cheapest = document.createElement('span');
+            cheapest.className = 'badge text-bg-success mt-2';
+            cheapest.textContent = 'Rẻ nhất';
+            details.appendChild(cheapest);
+            label.classList.add('border-success');
+          }
+          label.append(radio, details);
+          col.appendChild(label);
+          serviceChoices.appendChild(col);
+        });
+        hint.textContent = `Đã tải ${result.services.length} dịch vụ. Dịch vụ rẻ nhất được chọn sẵn.`;
+        saveButton.disabled = false;
+      } catch (error) {
+        if (requestSeq !== viettelRateRequestSeq) return;
+        hint.textContent = 'Không lấy được bảng giá. Hãy chọn lại kho hoặc thử lại.';
+        showViettelError(error.message);
+      }
+    }
+
+    function backToViettelCredentials() {
+      clearViettelError();
+      document.getElementById('viettelStepSelection').classList.add('d-none');
+      document.getElementById('viettelStepCredentials').classList.remove('d-none');
+      document.getElementById('viettelModalStepLabel').textContent = 'Bước 1/2 · Xác thực tài khoản';
+      document.getElementById('viettelPrepareBtn').classList.remove('d-none');
+      document.getElementById('viettelBackBtn').classList.add('d-none');
+      document.getElementById('viettelSaveBtn').classList.add('d-none');
+    }
+
+    async function saveViettelAccount() {
+      clearViettelError();
+      const selectedService = document.querySelector('input[name="viettelServiceCode"]:checked');
+      const warehouseId = document.getElementById('viettelWarehouseSelect').value;
+      if (!viettelDraftId || !warehouseId || !selectedService) return showViettelError('Vui lòng chọn kho, đợi tải bảng giá và chọn dịch vụ chính.');
+      const button = document.getElementById('viettelSaveBtn');
+      button.disabled = true;
+      button.textContent = 'Đang lưu...';
+      try {
+        await viettelApi('/api/viettel/accounts/commit', {
+          method: 'POST',
+          body: JSON.stringify({
+            draftId: viettelDraftId,
+            groupaddressId: warehouseId,
+            serviceCode: selectedService.value,
+            makeDefault: document.getElementById('viettelMakeDefault').checked
+          })
+        });
+        viettelModal().hide();
+        window.location.reload();
+      } catch (error) {
+        showViettelError(error.message);
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Lưu tài khoản';
+      }
+    }
+
+    document.getElementById('viettelAccountCards')?.addEventListener('click', function (event) {
+      const button = event.target.closest('[data-vt-action]');
+      if (!button) return;
+      const action = button.dataset.vtAction;
+      const accountId = button.dataset.accountId;
+      if (action === 'edit') openViettelModal('edit', accountId, button.dataset.username || '');
+      else if (action === 'default') setViettelDefault(accountId);
+      else if (action === 'delete') deleteViettelAccount(accountId);
+    });
+
+    async function setViettelDefault(accountId) {
+      if (!confirm('Đặt tài khoản Viettel này làm mặc định khi lên đơn?')) return;
+      try {
+        await viettelApi(`/api/viettel/accounts/${encodeURIComponent(accountId)}/default`, { method: 'POST', body: '{}' });
+        window.location.reload();
+      } catch (error) { alert(error.message); }
+    }
+
+    async function deleteViettelAccount(accountId) {
+      if (!confirm('Ẩn tài khoản Viettel này khỏi Profile? Đơn cũ vẫn giữ thông tin mã hóa để tiếp tục xử lý.')) return;
+      try {
+        await viettelApi(`/api/viettel/accounts/${encodeURIComponent(accountId)}`, { method: 'DELETE' });
+        window.location.reload();
+      } catch (error) { alert(error.message); }
+    }
+
     function PrintViettelManual() {
       var realorderid = document.getElementById("realorderid").value;
       $.ajax({
@@ -361,16 +693,6 @@
         alert("Không thể kết nối đến máy chủ in!");
       }
     }*/
-    function TokenViettel() {
-      $.ajax({
-        url: "/getvietteltoken",
-        method: "POST",
-        dataType: "JSON",
-        data: {},//test them html4
-        success: function (data) {
-          alert('done');
-        }
-      });
-    }
+
   </script>
   <%- include('footer'); -%>

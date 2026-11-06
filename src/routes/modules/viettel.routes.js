@@ -5,7 +5,8 @@ const axios = require('axios');
 const jwtAuth = require('../../middleware/jwtAuth');
 const viettelOrderEdit = require('../../services/viettelOrderEdit');
 const { CreateOrderID } = require('../../utils/orderId');
-const { GetViettelToken, PrintBillViettel } = require('../../services/viettelService');
+const { PrintBillViettel } = require('../../services/viettelService');
+const { getDefaultAccount, getAccountForOrder } = require('../../services/viettelAccountService');
 const { refreshOrderStatus } = require('../../services/viettelStatusService');
 const { suggestProvDistrict } = require('../../services/jtAddressService');
 const { printLabelByCode } = require('../../services/labelPrintService');
@@ -24,8 +25,7 @@ async function runViettelEdit(res, label, fn) {
 
 module.exports = function registerViettelRoutes(router) {
     router.post('/getvietteltoken', jwtAuth, function (req, res) {
-        GetViettelToken();
-        res.sendStatus(200);
+        res.status(410).json({ error: 'Luồng cấu hình token đã chuyển sang Profile > Tài khoản Viettel Post.' });
     });
 
     router.post('/huydonviettel', jwtAuth, async function (req, res) {
@@ -34,18 +34,14 @@ module.exports = function registerViettelRoutes(router) {
         let type = (xoa > 0) ? 11 : 4; // 4 là hủy, 11 là xóa
 
         try {
-            const data = await new Promise((resolve, reject) => {
-                DBConnection.query(`SELECT * FROM vietteltoken`, (err, rows) => {
-                    if (err) reject(err);
-                    else resolve(rows);
-                });
-            });
-
-            if (!data || data.length === 0) {
-                return res.status(404).json({ message: "Không tìm thấy Viettel token" });
-            }
-
-            const token = data[0].token;
+            const [orders] = await DBConnection.query(
+                'SELECT * FROM lendon WHERE realorderid=? AND useraccountid=? LIMIT 1',
+                [String(id), Number(req.user.id)]
+            );
+            if (!orders.length) return res.status(404).json({ message: 'Không tìm thấy đơn hàng thuộc tài khoản của bạn.' });
+            const account = await getAccountForOrder(DBConnection.promise(), orders[0]);
+            if (!account || !account.token) return res.status(404).json({ message: 'Không tìm thấy token Viettel của đơn hàng.' });
+            const token = account.token;
             const url = 'https://partner.viettelpost.vn/v2/order/UpdateOrder';
 
             const response = await axios.post(url, {
@@ -81,7 +77,7 @@ module.exports = function registerViettelRoutes(router) {
             return res.status(400).json({ success: false, message: 'Mã đơn không hợp lệ' });
         }
         try {
-            const result = await refreshOrderStatus(realorderid);
+            const result = await refreshOrderStatus(realorderid, req.user.id);
             res.json({ success: true, ...result });
         } catch (error) {
             if (error.httpStatus) {
@@ -102,18 +98,14 @@ module.exports = function registerViettelRoutes(router) {
         }
 
         try {
-            const data = await new Promise((resolve, reject) => {
-                DBConnection.query(`SELECT * FROM vietteltoken`, (err, rows) => {
-                    if (err) reject(err);
-                    else resolve(rows);
-                });
-            });
-
-            if (!data || data.length === 0) {
-                return res.status(404).json({ message: "Không tìm thấy Viettel token" });
-            }
-
-            const token = data[0].token;
+            const [orders] = await DBConnection.query(
+                'SELECT * FROM lendon WHERE realorderid=? AND useraccountid=? LIMIT 1',
+                [String(id), Number(req.user.id)]
+            );
+            if (!orders.length) return res.status(404).json({ message: 'Không tìm thấy đơn hàng thuộc tài khoản của bạn.' });
+            const account = await getAccountForOrder(DBConnection.promise(), orders[0]);
+            if (!account || !account.token) return res.status(404).json({ message: 'Không tìm thấy token Viettel của đơn hàng.' });
+            const token = account.token;
             const url = 'https://partner.viettelpost.vn/v2/order/UpdateOrder';
 
             const response = await axios.post(url, {
@@ -150,7 +142,8 @@ module.exports = function registerViettelRoutes(router) {
     router.post('/getvieteleditinfo', jwtAuth, function (req, res) {
         runViettelEdit(res, 'Lỗi getvieteleditinfo', () => viettelOrderEdit.getEditInfo({
             db: DBConnection.promise(),
-            realorderid: req.body.realorderid
+            realorderid: req.body.realorderid,
+            appUserId: req.user.id
         }));
     });
 
@@ -159,7 +152,8 @@ module.exports = function registerViettelRoutes(router) {
             db: DBConnection.promise(),
             axios,
             address: req.body.address,
-            preprocess: preprocessForViettel
+            preprocess: preprocessForViettel,
+            appUserId: req.user.id
         }));
     });
 
@@ -170,33 +164,29 @@ module.exports = function registerViettelRoutes(router) {
             axios,
             realorderid: b.realorderid,
             input: { name: b.name, phone: b.phone, address: b.address, cod: b.cod, kg: b.kg, note: b.note },
-            preprocess: preprocessForViettel
+            preprocess: preprocessForViettel,
+            appUserId: req.user.id
         }));
     });
 
-    router.post('/printviettelmanual', function (req, res) {
-        var realorderid = req.body.realorderid;
-        PrintBillViettel(realorderid);
-        res.sendStatus(200);
+    router.post('/printviettelmanual', jwtAuth, async function (req, res) {
+        const result = await PrintBillViettel(req.body.realorderid, req.user.id);
+        res.status(result.success ? 200 : 400).json(result);
     });
 
-    router.post('/checkaddress', async function (req, res) {
+    router.post('/checkaddress', jwtAuth, async function (req, res) {
         const { phone, khid, name, diachi: address, userid } = req.body;
         let xa = '', huyen = '', tinh = '';
 
         try {
-            const tokenData = await new Promise((resolve, reject) => {
-                DBConnection.query(`SELECT * FROM vietteltoken`, (err, rows) => err ? reject(err) : resolve(rows));
-            });
-
-            if (!tokenData || tokenData.length === 0) {
-                return res.json({ error: "Lỗi: Không tìm thấy token Viettel" });
+            const account = await getDefaultAccount(req.user.id);
+            if (!account || !account.token) {
+                return res.status(400).json({ error: 'Profile chưa cấu hình tài khoản Viettel mặc định.' });
             }
-
-            const token = tokenData[0].token;
+            const token = account.token;
 
             const nlpResponse = await axios.post('https://partner.viettelpost.vn/v2/order/getPriceAllNlp', {
-                "SENDER_ADDRESS": "Long Bình, biên Hòa, Đồng Nai",
+                "SENDER_ADDRESS": account.warehouse_address || "Long Bình, biên Hòa, Đồng Nai",
                 "RECEIVER_ADDRESS": preprocessForViettel(address),
                 "PRODUCT_TYPE": "HH",
                 "PRODUCT_WEIGHT": 100,
@@ -364,35 +354,32 @@ module.exports = function registerViettelRoutes(router) {
 
         cod = cod.toString().replaceAll('.', '');
         kg = parseFloat(kg) * 1000;
-
-        if (kg <= 1000) kg = 500;
-        else if (kg <= 2000) kg = 1000;
-        else if (kg <= 3000) kg = 1500;
+        //duoi 3kg -> 1kg, 4 -> 2, 5->3, 15->12
+        if (kg <= 3000) kg = 1000;
         else if (kg <= 4000) kg = 2000;
-        else if (kg <= 6000) kg = kg - 2000;
-        else if (kg <= 9000) kg = kg - 3000;
-        else if (kg <= 15000) kg = kg - 4000;
+        else if (kg <= 6000) kg = 3000;
+        else if (kg <= 7000) kg = 4000;
+        else if (kg <= 8000) kg = kg - 3000;
+        else if (kg <= 9000) kg = kg - 4000;
         else kg = kg - 5000;
 
         const typecod = (cod > 0) ? 3 : 1;
 
         try {
-            const tokenData = await new Promise((resolve, reject) => {
-                DBConnection.query(`SELECT * FROM vietteltoken`, (err, rows) => err ? reject(err) : resolve(rows));
-            });
-
-            if (!tokenData || tokenData.length === 0) return res.json({ error: 'Lỗi: Không có token' });
-
-            const { token, userid: cusid, senderphone } = tokenData[0];
+            const account = await getDefaultAccount(req.user.id);
+            if (!account || !account.token || !account.groupaddressid || !account.cusid || !account.order_service) {
+                return res.status(400).json({ error: 'Profile chưa cấu hình đủ tài khoản Viettel, kho mặc định và dịch vụ chính.' });
+            }
+            const { token, senderphone, cusid, groupaddressid } = account;
             const matuquan = CreateOrderID();
             const apiUrl = 'https://partner.viettelpost.vn/v2/order/createOrder';
 
             const response = await axios.post(apiUrl, {
                 "ORDER_NUMBER": matuquan,
-                "GROUPADDRESS_ID": 23832621,
+                "GROUPADDRESS_ID": groupaddressid,
                 "CUS_ID": cusid,
-                "SENDER_FULLNAME": "Áo dài Gia Bảo",
-                "SENDER_ADDRESS": "862, ĐƯỜNG Đoàn Văn Cự, P.Tam Hiệp, TP.Biên Hòa, T.Đồng Nai",
+                "SENDER_FULLNAME": account.warehouse_name || "Áo dài Gia Bảo",
+                "SENDER_ADDRESS": account.warehouse_address || "862, ĐƯỜNG Đoàn Văn Cự, P.Tam Hiệp, TP.Biên Hòa, T.Đồng Nai",
                 "SENDER_PHONE": senderphone,
                 "RECEIVER_FULLNAME": fbname,
                 "RECEIVER_ADDRESS": address,
@@ -405,7 +392,7 @@ module.exports = function registerViettelRoutes(router) {
                 "PRODUCT_LENGTH": 1, "PRODUCT_WIDTH": 1, "PRODUCT_HEIGHT": 1,
                 "PRODUCT_TYPE": "HH",
                 "ORDER_PAYMENT": typecod,
-                "ORDER_SERVICE": "VSL7",
+                "ORDER_SERVICE": account.order_service,
                 //"ORDER_VOUCHER": "TUHAOVN",
                 "ORDER_SERVICE_ADD": "GNG",// co the de nhieu ma, "GG1P,GNG" .....GNG la gui hang tai buu cuc
                 "ORDER_NOTE": "Ko giao được gọi shop. Cho xem hàng. Ko nhận hàng thu 30k",
@@ -448,10 +435,10 @@ module.exports = function registerViettelRoutes(router) {
             const timenow = new Date().toLocaleString("vi-VN", { timeZone: "Asia/Saigon" });
             const now = new Date();
             const userId = req.user.id;
-            const sql = SqlString.format('INSERT INTO lendon (name,phone,address,cod,kg,status,date,orderid,realorderid,khid,userid,realfbid,time,provider,useraccountid,sortcode,xa,huyen,tinh) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);',
-                [fbname, phone, address, cod, kgreal, 1, timenow, matuquan, finalRealOrderId, khid, userid, realfbid, now, 'Viettel', userId, sortCode, xa, huyen, tinh]);//dung userid
+            const sql = SqlString.format('INSERT INTO lendon (name,phone,address,cod,kg,status,date,orderid,realorderid,khid,userid,realfbid,time,provider,useraccountid,viettelaccountid,sortcode,xa,huyen,tinh) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);',
+                [fbname, phone, address, cod, kgreal, 1, timenow, matuquan, finalRealOrderId, khid, userid, realfbid, now, 'Viettel', userId, account.userid, sortCode, xa, huyen, tinh]);//useraccountid la user GB, viettelaccountid la userid Viettel Post
 
-            await DBConnection.query(sql);
+            await DBConnection.query(require('../../services/orderAuditService').withCreator(sql, req.user));
 
             let printed = false, printMessage = '';
             try {

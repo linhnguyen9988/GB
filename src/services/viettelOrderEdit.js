@@ -1,6 +1,7 @@
 'use strict';
 
 const VIETTEL_BASE = 'https://partner.viettelpost.vn';
+const { getAccountForOrder } = require('./viettelAccountService');
 const DEFAULT_ORDER_NOTE = 'Ko giao được gọi shop. Cho xem hàng. Ko nhận hàng thu 30k';
 const MAX_COD = 100000000;
 const MAX_KG = 100;
@@ -26,8 +27,8 @@ const PHASE_RANK = { full: 1, transit: 2, delivering: 3 };
 
 const FULL_CODES = new Set([-110, -109, -108, -100, 100, 102, 103, 104, 106]);
 const TRANSIT_CODES = new Set([105, 200, 300, 301, 302, 303, 400, 401, 402, 403, 509]);
-const DELIVERING_CODES = new Set([500, 508, 550, 505, 506, 507]); 
-const AMBIGUOUS_CODES = new Set([202]); 
+const DELIVERING_CODES = new Set([500, 508, 550, 505, 506, 507]);
+const AMBIGUOUS_CODES = new Set([202]);
 const HARD_FINAL = new Set([101, 107, 201, 501, 503, 504]);
 
 const BLOCKED_REASONS = new Map([
@@ -120,13 +121,12 @@ function parseKg(v) {
 
 function toViettelWeight(kgInput) {//duoi 3kg -> 1kg, 4 -> 2, 5->3, 15->12
     let kg = parseFloat(kgInput) * 1000;
-    if (kg <= 1000) kg = 500;
-    else if (kg <= 2000) kg = 1000;
-    else if (kg <= 3000) kg = 1500;
+    if (kg <= 3000) kg = 1000;
     else if (kg <= 4000) kg = 2000;
-    else if (kg <= 6000) kg = kg - 2000;
-    else if (kg <= 9000) kg = kg - 3000;
-    else if (kg <= 15000) kg = kg - 4000;
+    else if (kg <= 6000) kg = 3000;
+    else if (kg <= 7000) kg = 4000;
+    else if (kg <= 8000) kg = kg - 3000;
+    else if (kg <= 9000) kg = kg - 4000;
     else kg = kg - 5000;
     return kg;
 }
@@ -201,10 +201,10 @@ function buildEditPayload(p) {
     const v = p.values;
     return {
         "ORDER_NUMBER": p.orderNumber,
-        "GROUPADDRESS_ID": 23832621,
+        "GROUPADDRESS_ID": p.groupaddressid,
         "CUS_ID": p.cusid,
-        "SENDER_FULLNAME": "Áo dài Gia Bảo",
-        "SENDER_ADDRESS": "862, ĐƯỜNG Đoàn Văn Cự, P.Tam Hiệp, TP.Biên Hòa, T.Đồng Nai",
+        "SENDER_FULLNAME": p.warehouseName || "Áo dài Gia Bảo",
+        "SENDER_ADDRESS": p.warehouseAddress || "862, ĐƯỜNG Đoàn Văn Cự, P.Tam Hiệp, TP.Biên Hòa, T.Đồng Nai",
         "SENDER_PHONE": p.senderphone,
         "RECEIVER_FULLNAME": v.name,
         "RECEIVER_ADDRESS": p.receiverAddress,
@@ -217,7 +217,7 @@ function buildEditPayload(p) {
         "PRODUCT_LENGTH": 1, "PRODUCT_WIDTH": 1, "PRODUCT_HEIGHT": 1,
         "PRODUCT_TYPE": "HH",
         "ORDER_PAYMENT": v.cod > 0 ? 3 : 1,
-        "ORDER_SERVICE": "VSL7",
+        "ORDER_SERVICE": p.orderService,
         "ORDER_SERVICE_ADD": "GNG",
         "ORDER_NOTE": v.note,
         "MONEY_COLLECTION": v.cod,
@@ -240,19 +240,31 @@ function logViettelFailure(orderId, kind, info, payload, ctx) {
     console.error('[editOrder] ' + orderId + ' payload đã gửi (đã che PII): ' + JSON.stringify(redactPayload(payload)));
 }
 
-async function getViettelAuth(db) {
-    const [rows] = await db.query('SELECT * FROM vietteltoken');
-    if (!rows || rows.length === 0) return null;
-    return { token: rows[0].token, cusid: rows[0].userid, senderphone: rows[0].senderphone };
+async function getViettelAuth(db, appUserId, viettelAccountId) {
+    if (!appUserId) return null;
+    const account = await getAccountForOrder(db, {
+        useraccountid: appUserId,
+        viettelaccountid: viettelAccountId || null
+    });
+    if (!account || !account.token) return null;
+    return {
+        token: account.token,
+        cusid: account.cusid || account.userid,
+        groupaddressid: account.groupaddressid,
+        orderService: account.order_service,
+        senderphone: account.senderphone,
+        warehouseName: account.warehouse_name,
+        warehouseAddress: account.warehouse_address
+    };
 }
 
-async function resolveAddress(axios, token, rawAddress, preprocess) {
+async function resolveAddress(axios, token, rawAddress, preprocess, senderAddress) {
     const sent = preprocess ? preprocess(rawAddress) : rawAddress;
     const headers = { 'Content-Type': 'application/json', token };
     let body;
     try {
         const nlp = await axios.post(VIETTEL_BASE + '/v2/order/getPriceAllNlp', {
-            "SENDER_ADDRESS": "Long Bình, biên Hòa, Đồng Nai",
+            "SENDER_ADDRESS": senderAddress || "Long Bình, biên Hòa, Đồng Nai",
             "RECEIVER_ADDRESS": sent,
             "PRODUCT_TYPE": "HH",
             "PRODUCT_WEIGHT": 100,
@@ -295,15 +307,19 @@ async function hasNoteColumn(db) {
     } catch (e) { return false; }
 }
 
-async function loadOrder(db, realorderid) {
-    const [rows] = await db.query('SELECT * FROM lendon WHERE realorderid = ? LIMIT 1', [realorderid]);
+async function loadOrder(db, realorderid, appUserId) {
+    const sql = appUserId
+        ? 'SELECT * FROM lendon WHERE realorderid = ? AND useraccountid = ? LIMIT 1'
+        : 'SELECT * FROM lendon WHERE realorderid = ? LIMIT 1';
+    const params = appUserId ? [realorderid, Number(appUserId)] : [realorderid];
+    const [rows] = await db.query(sql, params);
     if (!rows || rows.length === 0) return null;
     const order = rows[0];
     let logCodes = [];
     try {
         const [logs] = await db.query('SELECT DISTINCT status_code FROM order_logs WHERE order_number = ?', [realorderid]);
         logCodes = (logs || []).map(l => Number(l.status_code));
-    } catch (e) {}
+    } catch (e) { }
     return { order, logCodes };
 }
 
@@ -319,10 +335,10 @@ function policyFor(order, logCodes, noteSupported) {
     });
 }
 
-async function getEditInfo({ db, realorderid }) {
+async function getEditInfo({ db, realorderid, appUserId }) {
     const id = cleanId(realorderid);
     if (!id) return fail(400, 'Mã đơn không hợp lệ');
-    const ctx = await loadOrder(db, id);
+    const ctx = await loadOrder(db, id, appUserId);
     if (!ctx) return fail(404, 'Không tìm thấy đơn hàng');
     const noteSupported = await hasNoteColumn(db);
     const policy = policyFor(ctx.order, ctx.logCodes, noteSupported);
@@ -344,21 +360,21 @@ async function getEditInfo({ db, realorderid }) {
     };
 }
 
-async function checkAddress({ db, axios, address, preprocess }) {
+async function checkAddress({ db, axios, address, preprocess, appUserId }) {
     const v = parseField('address', address);
     if (v.error) return fail(400, v.error);
-    const auth = await getViettelAuth(db);
-    if (!auth) return fail(500, 'Không tìm thấy token Viettel');
-    const r = await resolveAddress(axios, auth.token, v.value, preprocess);
+    const auth = await getViettelAuth(db, appUserId);
+    if (!auth) return fail(500, 'Profile chưa cấu hình tài khoản Viettel mặc định');
+    const r = await resolveAddress(axios, auth.token, v.value, preprocess, auth.warehouseAddress);
     if (!r.ok) return { status: 200, json: { success: true, ok: false, message: r.message, huyen: r.huyen || '', tinh: r.tinh || '' } };
     return { status: 200, json: { success: true, ok: true, xa: r.xa, huyen: r.huyen, tinh: r.tinh, adx: r.adx } };
 }
 
-async function editOrder({ db, axios, realorderid, input, preprocess }) {
+async function editOrder({ db, axios, realorderid, input, preprocess, appUserId }) {
     const id = cleanId(realorderid);
     if (!id) return fail(400, 'Mã đơn không hợp lệ');
 
-    const ctx = await loadOrder(db, id);
+    const ctx = await loadOrder(db, id, appUserId);
     if (!ctx) return fail(404, 'Không tìm thấy đơn hàng');
 
     const noteSupported = await hasNoteColumn(db);
@@ -373,13 +389,13 @@ async function editOrder({ db, axios, realorderid, input, preprocess }) {
     if (v.errors.length) return fail(400, v.errors.join('. '), { errors: v.errors });
     if (v.changed.length === 0) return fail(400, 'Không có thay đổi nào để lưu');
 
-    const auth = await getViettelAuth(db);
-    if (!auth) return fail(500, 'Không tìm thấy token Viettel');
+    const auth = await getViettelAuth(db, ctx.order.useraccountid, ctx.order.viettelaccountid);
+    if (!auth) return fail(500, 'Không tìm thấy tài khoản Viettel đã tạo đơn');
 
     let receiverAddress = v.values.address;
     let newUnits = null;
     if (v.changed.includes('address')) {
-        const a = await resolveAddress(axios, auth.token, v.values.address, preprocess);
+        const a = await resolveAddress(axios, auth.token, v.values.address, preprocess, auth.warehouseAddress);
         if (!a.ok) return fail(422, 'Địa chỉ chưa hợp lệ: ' + a.message);
         receiverAddress = a.sentAddress;
         newUnits = { xa: a.xa, huyen: a.huyen, tinh: a.tinh };
@@ -389,6 +405,8 @@ async function editOrder({ db, axios, realorderid, input, preprocess }) {
 
     const payload = buildEditPayload({
         orderNumber: String(ctx.order.realorderid), cusid: auth.cusid, senderphone: auth.senderphone,
+        groupaddressid: auth.groupaddressid, orderService: auth.orderService,
+        warehouseName: auth.warehouseName, warehouseAddress: auth.warehouseAddress,
         values: v.values, receiverAddress
     });
     const failCtx = 'giai đoạn=' + policy.level + ', statuscode=' + (ctx.order.statuscode === null || ctx.order.statuscode === undefined ? 'NULL' : ctx.order.statuscode) +

@@ -9,7 +9,7 @@ const publicJourneyController = require("../../controllers/publicJourneyControll
 const readcommentController = require("../../controllers/readcommentController");
 const registerController = require("../../controllers/registerController");
 const { REGISTER_PATH } = require('../../configs/constants');
-const { webAuth } = require('../../middleware/jwtAuth');
+const { webAuth, requireAdmin } = require('../../middleware/jwtAuth');
 
 module.exports = function registerPageRoutes(router) {
     router.get('/khachhang', webAuth, function (req, res) {
@@ -19,7 +19,10 @@ module.exports = function registerPageRoutes(router) {
     router.get('/readcomment', webAuth, readcommentController.handleReadComment);
 
     router.get("/", webAuth, loadcommentController.handleLoadComment);
-    router.get("/profile", webAuth, profileController.handleProfile);
+    router.get("/admin", webAuth, requireAdmin, profileController.handleProfile);
+    router.get("/admin/users", webAuth, requireAdmin, (req, res) => res.render("adminUsers", { user: req.user, registerPath: REGISTER_PATH }));
+    router.get("/profile", webAuth, require("../../controllers/personalProfileController").show);
+    router.post("/changepass", webAuth, require("../../controllers/personalProfileController").changePassword);
     router.get("/diennuoc", webAuth, dienNuocController.handleDienNuoc);
     router.get("/donhang", webAuth, orderController.handleOrder);
 
@@ -28,8 +31,8 @@ module.exports = function registerPageRoutes(router) {
     router.get("/login", loginController.checkLoggedOut, loginController.getPageLogin);
     router.post("/login", loginController.handleLogin);
 
-    router.get(REGISTER_PATH, registerController.getPageRegister);//register
-    router.post(REGISTER_PATH, auth.validateRegister, registerController.createNewUser);
+    router.get(REGISTER_PATH, webAuth, requireAdmin, registerController.getPageRegister);//register
+    router.post(REGISTER_PATH, webAuth, requireAdmin, auth.validateRegister, registerController.createNewUser);
     router.post("/logout", (req, res, next) => {
         res.clearCookie('token');
         loginController.postLogOut(req, res, next);

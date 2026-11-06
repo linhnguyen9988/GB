@@ -62,6 +62,7 @@
 <script>
   window.CURRENT_USER_ID = "<%= user.id %>";
   window.ACTIVE_CARRIER = "<%= typeof activeCarrier !== 'undefined' ? activeCarrier : 'viettel' %>";
+  function gbEscapeText(value) { const e = document.createElement('span'); e.textContent = value == null ? '' : String(value); return e.innerHTML; }
   const socket = io();
   var lockToast = 0;
 
@@ -731,7 +732,7 @@
 
         <div class="modal-body order-detail-body">
           <div class="order-detail-row order-detail-id">
-            <span class="order-detail-code" onclick="copyOrderNumber(this)"><i class="bi bi-upc"></i> ${d.realorderid}</span>
+            <span class="order-detail-code" onclick="copyOrderNumber(this)"><i class="bi bi-upc"></i> ${d.realorderid}</span><span class="order-creator ms-2">${gbEscapeText(d.created_by_username || "Chưa ghi nhận")}</span>
             ${(!motphan && canRefreshOrderStatus(d)) ? `<button type="button" class="order-refresh-btn" title="Cập nhật trạng thái từ ${d.provider === 'J&T' ? 'J&T' : 'Viettel'}" onclick="RefreshStatusInDetail(this, '${d.realorderid}', '${d.provider || ''}')"><i class="bi bi-arrow-clockwise"></i></button>` : ''}
             ${motphan ? `<span class="badge bg-secondary">${motphan}</span>` : ''}
             <span class="badge bg-${badge} order-detail-status">${d.statustext || 'Đang xử lý'}</span>

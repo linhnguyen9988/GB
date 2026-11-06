@@ -36,6 +36,9 @@ module.exports = function registerFacebookWebhook(router) {
             const newMessageData = {
                 id: id,
                 messid: messid || null,
+                client_message_id: auditActor ? auditActor.client_message_id || null : null,
+                sent_by_user_id: auditActor ? auditActor.user_id : null,
+                sent_by_username: auditActor ? auditActor.username : null,
                 phone: phone,
                 picture: picture,
                 senderId: sender,
@@ -74,6 +77,9 @@ module.exports = function registerFacebookWebhook(router) {
                 var messid = messData.mid;
                 var attachments = messData.attachments;
                 var is_echo = messData.is_echo;
+                var auditActor = null;
+                try { auditActor = await require('../../services/messageAuditService').fromEcho(messData, sender, recipient); }
+                catch (error) { console.error('[message-audit] echo lookup:', error.message); }
                 var replyToMid = (messData.reply_to && messData.reply_to.mid) ? messData.reply_to.mid : null;
                 var echo;
                 if (is_echo) {
@@ -286,12 +292,16 @@ module.exports = function registerFacebookWebhook(router) {
 
                     await new Promise((resolve) => {
                         var sqlMsg = SqlString.format(
-                            'INSERT IGNORE INTO messaging (messid,sender,recipient,message,image,template_json,time,timestamp,is_echo,reply_to_mid,reply_to_text,reply_to_image,reply_to_sender) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?);',
-                            [messid, sender, recipient, text || null, finalImageString || null, templateJson, timemess, value.timestamp, echo, replyToMid, replyToText, replyToImage, replyToSender]
+                            'INSERT IGNORE INTO messaging (messid,sender,recipient,message,image,template_json,time,timestamp,is_echo,reply_to_mid,reply_to_text,reply_to_image,reply_to_sender,sent_by_user_id,sent_by_username) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);',
+                            [messid, sender, recipient, text || null, finalImageString || null, templateJson, timemess, value.timestamp, echo, replyToMid, replyToText, replyToImage, replyToSender, auditActor ? auditActor.user_id : null, auditActor ? auditActor.username : null]
                         );
 
                         DBConnection.query(sqlMsg, async function (err, result) {
                             if (err) { console.error("Lỗi lưu tin:", err); return resolve(); }
+                            if (is_echo) {
+                                try { auditActor = await require("../../services/messageAuditService").fromEcho(messData, sender, recipient); }
+                                catch (e) { console.error("[message-audit]", e.message); }
+                            }
 
                             if (!result || result.affectedRows === 0) {
                                 console.log(`[FB webhook] Bỏ qua tin nhắn trùng, messid=${messid}`);

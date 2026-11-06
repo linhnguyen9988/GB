@@ -1,4 +1,5 @@
 'use strict';
+const { REGISTER_PATH } = require('../configs/constants');
 const registerService = require("./../services/registerService");
 const { validationResult } = require("express-validator");
 
@@ -17,7 +18,7 @@ let createNewUser = async (req, res) => {
             errorsArr.push(item.msg);
         });
         req.flash("errors", errorsArr);
-        return res.redirect("/register");
+        return res.redirect(REGISTER_PATH);
     }
 
     let newUser = {
@@ -30,7 +31,7 @@ let createNewUser = async (req, res) => {
         return res.redirect("/login");
     } catch (err) {
         req.flash("errors", err);
-        return res.redirect("/register");
+        return res.redirect(REGISTER_PATH);
     }
 };
 module.exports = {

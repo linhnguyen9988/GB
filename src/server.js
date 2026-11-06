@@ -8,7 +8,7 @@ const configViewEngine = require("./configs/viewEngine");
 const initWebRoutes = require("./routes/web");
 const bodyParser = require("body-parser");
 const cookieParser = require('cookie-parser');
-const session = require("express-session");
+const configureSession = require('./configs/session');
 const connectFlash = require("connect-flash");
 const fs = require('fs');
 const http = require('http');
@@ -58,11 +58,7 @@ app.use((req, res, next) => {
     }
 });
 app.use(cookieParser());
-app.use(session({
-    secret: process.env.SESSION_SECRET || 'secret',
-    resave: false,
-    saveUninitialized: false,
-}));
+app.use(configureSession());
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 

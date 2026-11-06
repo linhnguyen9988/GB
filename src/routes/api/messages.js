@@ -142,16 +142,14 @@ router.post('/send', auth, uploadAttachment, async (req, res) => {
 
     const token = page.accesstoken;
 
+    const messageIds = [];
     const sendMessageWithPayload = async (payload) => {
-      try {
-        const response = await axios.post(
-          `https://graph.facebook.com/v19.0/me/messages?access_token=${token}`,
-          payload
-        );
-        return { success: true, response: response.data, error: null };
-      } catch (error) {
-        return { success: false, response: null, error };
-      }
+      const result = await require('../../services/messageAuditService').send({
+        user: req.user, pageId: currentPageID, customerId: recipient, payload, clientMessageId: req.body.clientMessageId,
+        post: body => axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${token}`, body)
+      });
+      if (result.success && result.response && result.response.message_id) messageIds.push(result.response.message_id);
+      return result;
     };
 
     const getRecentCommentIds = async (userId) => {
@@ -300,7 +298,7 @@ router.post('/send', auth, uploadAttachment, async (req, res) => {
 
     const directResult = await sendDirect(attachmentId, attachmentType, message);
     if (directResult.success) {
-      return res.json({ success: true, message: 'Gửi thành công.' });
+      return res.json({ messageIds, success: true, message: 'Gửi thành công.' });
     }
 
     let imageSent = directResult.imageSent;
@@ -320,7 +318,7 @@ router.post('/send', auth, uploadAttachment, async (req, res) => {
 
     const overallOk = (!attachmentId || imageSent) && (!message || textSent);
     if (overallOk) {
-      return res.json({ success: true, message: 'Gửi thành công.' });
+      return res.json({ messageIds, success: true, message: 'Gửi thành công.' });
     }
 
     const failedParts = [];
@@ -331,6 +329,7 @@ router.post('/send', auth, uploadAttachment, async (req, res) => {
       : 'Không thể gửi tin nhắn.';
 
     return res.status(400).json({
+      messageIds,
       success: false,
       error: reason,
       imageSent,

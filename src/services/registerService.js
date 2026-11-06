@@ -10,6 +10,7 @@ let createNewUser = (data) => {
         } else {
             let salt = bcrypt.genSaltSync(10);
             let userItem = {
+                role: 'staff',
                 fullname: data.fullname,
                 username: data.username,
                 password: bcrypt.hashSync(data.password, salt),

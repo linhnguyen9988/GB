@@ -13,7 +13,7 @@ const { getPageToken } = require('../../services/pageTokenService');
 const { getRecentCommentIdsFromDB } = require('../../services/commentService');
 
 module.exports = function registerMessagesRoutes(router) {
-    router.post('/api/send-message', (req, res) => {
+    router.post('/api/send-message', require('../../middleware/jwtAuth'), (req, res) => {
         upload.single('image')(req, res, async (err) => {
             if (err) {
                 console.error('Lỗi khi upload file:', err.message);
@@ -25,16 +25,14 @@ module.exports = function registerMessagesRoutes(router) {
             let attachmentId = null;
             let attachmentType = 'image';
             let token = await getPageToken(currentPageID);
+            const messageIds = [];
             const sendMessageWithPayload = async (payload) => {
-                try {
-                    const response = await axios.post(
-                        `https://graph.facebook.com/v19.0/me/messages?access_token=${token}`,
-                        payload
-                    );
-                    return { success: true, response: response.data, error: null };
-                } catch (error) {
-                    return { success: false, response: null, error: error };
-                }
+                const result = await require('../../services/messageAuditService').send({
+                    user: req.user, pageId: currentPageID, customerId, payload, clientMessageId: req.body.clientMessageId,
+                    post: body => axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${token}`, body)
+                });
+                if (result.success && result.response && result.response.message_id) messageIds.push(result.response.message_id);
+                return result;
             };
 
             const sendDirectMessage = async (imageContent, textContent, mediaType) => {
@@ -217,11 +215,12 @@ module.exports = function registerMessagesRoutes(router) {
                     }
                 }
                 if (!attachmentId && !message) {
-                    return res.json({ success: true, message: "Không có nội dung để gửi." });
+                    return res.json({ messageIds, success: true, message: "Không có nội dung để gửi." });
                 }
                 const directMessageResult = await sendDirectMessage(attachmentId, message, attachmentType);
                 if (directMessageResult.success) {
                     return res.json({
+                        messageIds,
                         success: true,
                         message: directMessageResult.message,
                         imageSent: !attachmentId || directMessageResult.imageSent,
@@ -251,6 +250,7 @@ module.exports = function registerMessagesRoutes(router) {
                 const overallOk = (!attachmentId || imageSent) && (!message || textSent);
                 if (overallOk) {
                     return res.json({
+                        messageIds,
                         success: true,
                         message: privateReplyRan ? privateReplyResult.message : directMessageResult.message,
                         imageSent,
@@ -268,7 +268,7 @@ module.exports = function registerMessagesRoutes(router) {
                     : (failedParts.length ? `Không thể gửi ${failedParts.join(' và ')}.` : 'Không thể gửi tin nhắn.');
 
                 return res.status(400).json({
-                    success: false,
+                    messageIds, success: false,
                     error: reason,
                     imageSent,
                     textSent
@@ -283,7 +283,7 @@ module.exports = function registerMessagesRoutes(router) {
     router.get('/api/last-messages', async (req, res) => {
         const sqlQuery = `
     SELECT 
-    t1.messid, t1.sender, t1.recipient, t1.message, t1.time, t1.timestamp, t1.image, t1.template_json, t1.is_echo, 
+    t1.messid, t1.sender, t1.recipient, t1.message, t1.time, t1.timestamp, t1.image, t1.template_json, t1.is_echo, t1.sent_by_user_id, t1.sent_by_username,
     k.fbname AS ten_khach, k.label AS label, k.note AS note, k.id AS khid
 FROM messaging t1
 INNER JOIN (

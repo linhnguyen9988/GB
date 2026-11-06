@@ -3,10 +3,11 @@ const DBConnection = require("../../configs/DBConnection");
 const SqlString = require('sqlstring');
 const axios = require('axios');
 const jwtAuth = require('../../middleware/jwtAuth');
+const { getDefaultAccount } = require('../../services/viettelAccountService');
 const { applyAddressFixes, cleanSearchTerm, normalizeSQL } = require('../../utils/address');
 
 module.exports = function registerOrderRoutes(router) {
-    router.post('/getdiachilendon', async function (req, response) {
+    router.post('/getdiachilendon', jwtAuth, async function (req, response) {
         const phone = req.body.phone;
         const userid = req.body.userid || '';
 
@@ -30,16 +31,14 @@ module.exports = function registerOrderRoutes(router) {
             const missingAddresses = addressData.filter(item => !item.xa);
             if (missingAddresses.length === 0) return;
 
-            const tokenData = await new Promise((resolve) => {
-                DBConnection.query(`SELECT token FROM vietteltoken LIMIT 1`, (err, res) => resolve(res));
-            });
-            if (!tokenData || tokenData.length === 0) return;
-            const token = tokenData[0].token;
+            const account = await getDefaultAccount(req.user.id);
+            if (!account || !account.token) return;
+            const token = account.token;
 
             for (const item of missingAddresses) {
                 try {
                     const nlpRes = await axios.post('https://partner.viettelpost.vn/v2/order/getPriceAllNlp', {
-                        "SENDER_ADDRESS": "Long Bình, biên Hòa, Đồng Nai",
+                        "SENDER_ADDRESS": account.warehouse_address || "Long Bình, biên Hòa, Đồng Nai",
                         "RECEIVER_ADDRESS": item.address,
                         "PRODUCT_TYPE": "HH",
                         "PRODUCT_WEIGHT": 100,

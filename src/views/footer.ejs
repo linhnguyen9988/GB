@@ -122,7 +122,9 @@
   const PULL_THRESHOLD = 80;
   function findRowByMsgId(msgId) {
     if (!msgId || !modalMessagesContainer) return null;
-    return modalMessagesContainer.querySelector(`[data-msg-id="${CSS.escape(String(msgId))}"]`);
+    const direct = modalMessagesContainer.querySelector(`[data-msg-id="${CSS.escape(String(msgId))}"]`);
+    const local = messengerIds.get(String(msgId));
+    return direct || (local ? modalMessagesContainer.querySelector(`[data-local-id="${CSS.escape(local)}"]`) : null);
   }
 
   function buildReactionsHtml(reactions) {
@@ -192,27 +194,27 @@
       scrollToRowAndHighlight(targetRow);
     }
   }
-  const recentlySentByMe = [];
-  const RECENT_SENT_TTL_MS = 20000;
-  function trackSentByMe(text, hasImage, localId) {
-    recentlySentByMe.push({ text: text || null, hasImage: !!hasImage, localId: localId, time: Date.now() });
+  const messengerIds = new Map();
+  const knownLocalMessages = new Set();
+  const renderingMids = new Set();
+  const renderingLocals = new Set();
+  function registerLocalMessage(id) {
+    knownLocalMessages.add(id);
+    if (knownLocalMessages.size > 2000) knownLocalMessages.delete(knownLocalMessages.values().next().value);
   }
-  function consumeIfSentByMe(text, hasImage) {
-    const now = Date.now();
-    for (let i = 0; i < recentlySentByMe.length; i++) {
-      const entry = recentlySentByMe[i];
-      if (now - entry.time > RECENT_SENT_TTL_MS) continue;
-      const textMatch = hasImage ? true : (entry.text === (text || null));
-      const imageMatch = hasImage ? entry.hasImage : true;
-      if (textMatch && imageMatch) {
-        recentlySentByMe.splice(i, 1);
-        return entry.localId || true;
-      }
-    }
-    for (let i = recentlySentByMe.length - 1; i >= 0; i--) {
-      if (now - recentlySentByMe[i].time > RECENT_SENT_TTL_MS) recentlySentByMe.splice(i, 1);
-    }
-    return false;
+  function linkMessengerId(mid, localId) {
+    if (!mid || !localId || !knownLocalMessages.has(localId)) return false;
+    const duplicate = modalMessagesContainer && modalMessagesContainer.querySelector(`[data-msg-id="${CSS.escape(String(mid))}"]`);
+    const own = modalMessagesContainer && modalMessagesContainer.querySelector(`[data-local-id="${CSS.escape(localId)}"]`);
+    if (!own && !renderingLocals.has(localId)) return false;
+    // An echo may already have rendered while the HTTP response was in flight.
+    if (duplicate && duplicate !== own) duplicate.remove();
+    messengerIds.set(String(mid), localId);
+    if (messengerIds.size > 4000) messengerIds.delete(messengerIds.keys().next().value);
+    return true;
+  }
+  function reconcileSendResponse(localId, data) {
+    (data.messageIds || []).forEach(mid => linkMessengerId(mid, localId));
   }
 
   const PendingMessages = (function () {
@@ -492,7 +494,7 @@
       }
 
       const formattedTime = formatTimestamp(msg.time);
-      const timestampHtml = `<span class="message-timestamp">${formattedTime}</span>`;
+      const timestampHtml = `<span class="message-timestamp">${formattedTime}${isPageSender ? " · " + gbEscapeText(msg.sent_by_username || "Chưa ghi nhận") : ""}</span>`;
 
       let textContentHtml = '';
       if (msg.message) {
@@ -663,14 +665,26 @@
     }
 
     async function addMessageToContainer(msg) {
+      if (msg.messid && (findRowByMsgId(msg.messid) || renderingMids.has(String(msg.messid)))) return findRowByMsgId(msg.messid);
+      if (msg.messid) renderingMids.add(String(msg.messid));
+      if (msg.localId) renderingLocals.add(msg.localId);
       const firstChild = modalMessagesContainer.firstElementChild;
       let shouldShowAvatar = true;
       if (firstChild && firstChild.dataset.sender === msg.sender) {
         shouldShowAvatar = false;
       }
 
-      const messageRow = await renderMessage(msg, shouldShowAvatar);
-      modalMessagesContainer.appendChild(messageRow);
+      let messageRow;
+      try {
+        messageRow = await renderMessage(msg, shouldShowAvatar);
+        const existing = msg.messid && findRowByMsgId(msg.messid);
+        if (existing) return existing;
+        if (msg.messid && messengerIds.has(String(msg.messid)) && renderingLocals.has(messengerIds.get(String(msg.messid)))) return null;
+        modalMessagesContainer.appendChild(messageRow);
+      } finally {
+        if (msg.messid) renderingMids.delete(String(msg.messid));
+        if (msg.localId) renderingLocals.delete(msg.localId);
+      }
 
       safeScrollToBottom();
 
@@ -755,6 +769,7 @@
       pending.forEach(async (entry) => {
         if (findMessageRowByLocalId(entry.localId)) return;
         const imageFile = pendingImageFiles.get(entry.localId) || null;
+        registerLocalMessage(entry.localId);
         const tempMessage = {
           sender: currentPageID,
           message: entry.message || null,
@@ -793,6 +808,8 @@
       }
 
       const formData = new FormData();
+      registerLocalMessage(localId);
+      formData.append('clientMessageId', localId);
       formData.append('customerId', currentCustomerId);
       formData.append('currentPageID', currentPageID);
       if (textToSend) formData.append('message', textToSend);
@@ -801,6 +818,7 @@
       try {
         const response = await fetch('/api/send-message', { method: 'POST', body: formData });
         const data = await response.json();
+        reconcileSendResponse(localId, data);
         const ok = !!data.success;
         const imagePartSent = entry.imagePartSent || (entry.hasImage ? !!data.imageSent : true);
         const textPartSent = entry.textPartSent || (entry.message ? !!data.textSent : true);
@@ -841,10 +859,14 @@
       }
 
       const sortedMessages = messages.sort((a, b) => new Date(a.time) - new Date(b.time));
+      const batchIds = new Set();
       const senderOfOldestExistingMessage = modalMessagesContainer.firstElementChild ? modalMessagesContainer.firstElementChild.dataset.sender : null;
 
       for (let i = 0; i < sortedMessages.length; i++) {
         const msg = sortedMessages[i];
+        if (msg.messid && batchIds.has(String(msg.messid))) continue;
+        if (msg.messid) batchIds.add(String(msg.messid));
+        if (msg.messid && findRowByMsgId(msg.messid)) continue;
         let shouldShowAvatar = true;
         if (i > 0) {
           if (sortedMessages[i - 1].sender === msg.sender) {
@@ -856,6 +878,7 @@
           }
         }
         const messageRow = await renderMessage(msg, shouldShowAvatar);
+        if (msg.messid && findRowByMsgId(msg.messid)) continue;
         messageFragment.appendChild(messageRow);
 
         const images = messageRow.querySelectorAll('img.message-image');
@@ -867,6 +890,10 @@
         });
       }
 
+      // A realtime bubble may have arrived while history media was being rendered.
+      Array.from(messageFragment.children).forEach(row => {
+        if (row.dataset.msgId && findRowByMsgId(row.dataset.msgId)) row.remove();
+      });
       modalMessagesContainer.prepend(messageFragment);
       if (loadMoreBtn) {
         modalMessagesContainer.prepend(loadMoreBtn);
@@ -978,7 +1005,8 @@
         for (const msg of sortedMessages) {
           const shouldShowAvatar = previousSender !== msg.sender;
           const messageRow = await renderMessage(msg, shouldShowAvatar);
-          messageFragment.appendChild(messageRow);
+          if (msg.messid && findRowByMsgId(msg.messid)) continue;
+        messageFragment.appendChild(messageRow);
           previousSender = msg.sender;
 
           const images = messageRow.querySelectorAll('img.message-image');
@@ -1079,12 +1107,7 @@
       const messageText = messageInput.value.trim();
       if (!messageText && !currentImageFile) return;
       const localId = 'local_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-      if (messageText) {
-        trackSentByMe(messageText, false, localId);
-      }
-      if (currentImageFile) {
-        trackSentByMe(null, true, localId);
-      }
+      registerLocalMessage(localId);
       const tempMessageText = messageInput.value;
       const tempImageFile = currentImageFile;
 
@@ -1108,6 +1131,8 @@
       });
 
       const formData = new FormData();
+      registerLocalMessage(localId);
+      formData.append('clientMessageId', localId);
       formData.append('customerId', currentCustomerId);
       formData.append('currentPageID', currentPageID);
       if (tempMessageText) formData.append('message', tempMessageText);
@@ -1119,6 +1144,7 @@
         image: tempImageFile ? createAndTrackBlobUrl(tempImageFile) : null,
         fileType: tempImageFile ? tempImageFile.type : null,
         time: Date.now(),
+        sent_by_username: <%- JSON.stringify(typeof user !== 'undefined' && user && user.username ? user.username : null).replace(/</g, '\\u003c') %>,
         localId: localId
       };
 
@@ -1137,7 +1163,8 @@
         .then(response => response.json())
         .then(data => {
           const row = findMessageRowByLocalId(localId);
-          const ok = !!data.success;
+          reconcileSendResponse(localId, data);
+        const ok = !!data.success;
           const imagePartSent = tempImageFile ? !!data.imageSent : true;
           const textPartSent = tempMessageText ? !!data.textSent : true;
 
@@ -1539,7 +1566,20 @@
       }
     });
 
+    function updateAuditLabel(data) {
+      const row = findRowByMsgId(data.messid);
+      const time = row && row.querySelector('.message-timestamp');
+      if (time && data.sent_by_username) {
+        if (!time.dataset.baseTime) time.dataset.baseTime = time.textContent.split(' · ')[0];
+        time.textContent = time.dataset.baseTime + ' · ' + data.sent_by_username;
+      }
+    }
+    socket.on('message-audit', data => {
+      if (String(data.sent_by_user_id) === String(window.CURRENT_USER_ID)) linkMessengerId(data.messid, data.client_message_id);
+      updateAuditLabel(data);
+    });
     socket.on('new-message', (data) => {
+      updateAuditLabel(data);
       var toastduration = 4000;
       if (lockToast != 0) {
         toastduration = 999999;
@@ -1611,19 +1651,9 @@
         return;
       }
 
-      let ownLocalId = null;
-      if (data.senderId == GlobalPageID || data.senderId == GlobalPageID2) {
-        const hasImage = !!(data.messageImg && data.messageImg.trim());
-        const matched = consumeIfSentByMe(data.messageText, hasImage);
-        if (matched) {
-          ownLocalId = typeof matched === 'string' ? matched : null;
-          if (ownLocalId && data.messid) {
-            const ownRow = findMessageRowByLocalId(ownLocalId);
-            if (ownRow) ownRow.dataset.msgId = data.messid;
-          }
-          return;
-        }
-      }
+      if (String(data.sent_by_user_id) === String(window.CURRENT_USER_ID) &&
+          linkMessengerId(data.messid, data.client_message_id)) return;
+      if (data.messid && renderingMids.has(String(data.messid))) return;
       if (customerIdx == data.senderId || data.recipientId == customerIdx) {
         let contentMess = data.messageText;
         let urlx = null;
@@ -1653,6 +1683,7 @@
         });
         const newMess = {
           sender: data.senderId,
+          sent_by_username: data.sent_by_username || null,
           message: contentMess || null,
           image: urlx,
           fileType: type,

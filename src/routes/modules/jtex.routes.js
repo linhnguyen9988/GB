@@ -4,7 +4,7 @@ const { CancelOrderJT, GetBillJT, reprintBillJT, createJTOrder, refreshJTStatus 
 
 module.exports = function registerJtexRoutes(router) {
     router.post('/pushorderjtex', jwtAuth, async function (req, res) {
-        const result = await createJTOrder({ ...req.body, accountId: req.user.id });
+        const result = await createJTOrder({ ...req.body, accountId: req.user.id, actor: req.user });
         if (!result.success) return res.json({ success: false, message: result.message });
 
         await GetBillJT(result.txlogisticId, req.user.id);
@@ -16,7 +16,6 @@ module.exports = function registerJtexRoutes(router) {
         });
     });
 
-    // In lại tem J&T: orderid = mã vận đơn hoặc mã đơn nội bộ. Tem gửi tới máy in của user, không in trên server.
     router.post('/printjtex', jwtAuth, async function (req, res) {
         const orderid = String(req.body.orderid || '').trim();
         if (!orderid) return res.status(400).json({ success: false, message: 'Thiếu mã đơn' });

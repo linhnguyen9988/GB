@@ -243,8 +243,8 @@ async function createPartReturnOrder(billCode) {
     try {
         await DBConnection.query(
             `INSERT INTO lendon
-                (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, sortline, sortcode, statuscode, statustext, useraccountid, last_update)
-             SELECT p.name, p.phone, p.address, 0, p.kg, p.status, p.date, CONCAT(p.orderid, '-001'), ?, p.khid, p.userid, p.realfbid, NOW(), 'J&T', p.sortline, p.sortcode, 116, 'Đang chuyển hoàn', p.useraccountid, NOW()
+                (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, sortline, sortcode, statuscode, statustext, useraccountid, last_update, created_by_user_id, created_by_username)
+             SELECT p.name, p.phone, p.address, 0, p.kg, p.status, p.date, CONCAT(p.orderid, '-001'), ?, p.khid, p.userid, p.realfbid, NOW(), 'J&T', p.sortline, p.sortcode, 116, 'Đang chuyển hoàn', p.useraccountid, NOW(), p.created_by_user_id, p.created_by_username
                FROM lendon p
               WHERE p.realorderid = ? AND p.provider = 'J&T'
                 AND NOT EXISTS (SELECT 1 FROM lendon c WHERE c.realorderid = ?)
@@ -257,8 +257,9 @@ async function createPartReturnOrder(billCode) {
 }
 
 async function createJTOrder(input) {
-    let { fbname, address, phone, cod, kg, khid, userid, realfbid, tinh, huyen, xa, accountId } = input || {};
+    let { fbname, address, phone, cod, kg, khid, userid, realfbid, tinh, huyen, xa, accountId, actor } = input || {};
 
+    if (!actor || !actor.id || !actor.username) return { success: false, message: 'Thiếu nhân viên tạo đơn' };
     if (!xa) return { success: false, message: 'Check địa chỉ trước' };
     if (!fbname || !phone || !address) return { success: false, message: 'Thiếu thông tin người nhận!' };
 
@@ -307,11 +308,11 @@ async function createJTOrder(input) {
     try {
         await DBConnection.query(
             `INSERT INTO lendon
-                (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, sortline, sortcode, statuscode, statustext, useraccountid, last_update, xa, huyen, tinh)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'J&T', ?, ?, ?, ?, ?, NOW(), ?, ?, ?)`,
+                (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, sortline, sortcode, statuscode, statustext, useraccountid, last_update, xa, huyen, tinh, created_by_user_id, created_by_username)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'J&T', ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?)`,
             [fbname, phone, address, codStr, weight, 1, timenow, txlogisticId, body.data.billCode,
              khid, userid, realfbid, sortLine, sortCode, 100, 'Mới tạo', accountId ?? null,
-             xa, huyen, tinh]
+             xa, huyen, tinh, actor.id, actor.username]
         );
     } catch (dbErr) {
         console.error(`Lỗi lưu đơn J&T ${body.data.billCode} vào DB:`, dbErr.message);

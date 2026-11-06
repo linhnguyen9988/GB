@@ -2,6 +2,7 @@
 const router = require('express').Router();
 const db = require('../../configs/DBConnection');
 const auth = require('../../middleware/jwtAuth');
+const { getAccountForOrder } = require('../../services/viettelAccountService');
 
 router.get('/', auth, async (req, res) => {
   const { status, search, fromDate, limit = 50, offset = 0 } = req.query;
@@ -147,16 +148,21 @@ router.get('/call-log/:orderNumber', auth, async (req, res) => {
     const orderNumber = req.params.orderNumber;
     if (!orderNumber) return res.status(400).json({ error: 'Thiếu mã vận đơn' });
 
-    const [[tokenRow]] = await db.query('SELECT token FROM vietteltoken LIMIT 1');
-    if (!tokenRow?.token) {
-      return res.status(400).json({ error: 'Chưa có token Viettel Post' });
+    const [[order]] = await db.query(
+      'SELECT * FROM lendon WHERE realorderid=? AND useraccountid=? LIMIT 1',
+      [orderNumber, Number(req.user.id)]
+    );
+    if (!order) return res.status(404).json({ error: 'Không tìm thấy đơn hàng thuộc tài khoản của bạn' });
+    const account = await getAccountForOrder(db, order);
+    if (!account?.token) {
+      return res.status(400).json({ error: 'Không tìm thấy token Viettel của đơn hàng' });
     }
 
     const response = await axios.get('https://partner.viettelpost.vn/v2/order/call-log', {
       params: { orderNumber },
       headers: {
         accept: '*/*',
-        Token: tokenRow.token,
+        Token: account.token,
       },
       timeout: 10000,
     });
@@ -212,14 +218,14 @@ router.post('/', auth, async (req, res) => {
     for (const o of orders) {
       const [result] = await db.query(
         `INSERT INTO lendon
-           (name, phone, address, cod, statuscode, statustext, date, khid, userid, time, last_update, useraccountid)
-         VALUES (?, ?, ?, ?, 0, 'Chờ lấy hàng', ?, ?, ?, NOW(), NOW(), ?)`,
+           (name, phone, address, cod, statuscode, statustext, date, khid, userid, time, last_update, useraccountid, created_by_user_id, created_by_username)
+         VALUES (?, ?, ?, ?, 0, 'Chờ lấy hàng', ?, ?, ?, NOW(), NOW(), ?, ?, ?)`,
         [
           o.customerName, o.phone, o.address,
           parseInt(o.price) || 0,
           new Date().toLocaleDateString('vi-VN'),
           o.khid || 0, o.userId || '',
-          req.user?.id ?? null
+          req.user.id, req.user.id, req.user.username
         ]
       );
       created.push(result.insertId);
@@ -233,7 +239,7 @@ router.post('/', auth, async (req, res) => {
 router.post('/push-jt', auth, async (req, res) => {
   const { createJTOrder, GetBillJT } = require('../../services/jtExpressService');
   try {
-    const result = await createJTOrder({ ...req.body, accountId: req.user?.id ?? null });
+    const result = await createJTOrder({ ...req.body, accountId: req.user.id, actor: req.user });
     if (!result.success) return res.json({ success: false, message: result.message });
 
     GetBillJT(result.txlogisticId, req.user?.id ?? req.body.userid).catch(() => {});

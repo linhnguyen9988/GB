@@ -22,7 +22,7 @@ let handleLogin = async (req, res) => {
     try {
         const user = await loginService.handleLogin(req.body.username, req.body.password);
 
-        const payload = { id: user.id, username: user.username };
+        const payload = { id: user.id, username: user.username, auth_version: user.auth_version || 0 };
         const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 
         res.cookie(COOKIE_NAME, token, {

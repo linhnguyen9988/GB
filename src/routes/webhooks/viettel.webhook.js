@@ -95,15 +95,15 @@ module.exports = function registerViettelWebhook(router) {
                     const base = baseRows[0];
                     const timenow = new Date().toLocaleString("vi-VN", { timeZone: "Asia/Saigon" });
                     await db.query(
-                        `INSERT INTO lendon (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, statuscode, statustext, reason_code, pod_images, last_update)
-                 VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, NOW())`,
+                        `INSERT INTO lendon (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, statuscode, statustext, reason_code, pod_images, last_update, created_by_user_id, created_by_username)
+                 VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, NOW(), ?, ?)`,
                         [
                             base.name, base.phone, base.address,
                             base.kg, 1, timenow,
                             orderNumber, orderNumber,
                             base.khid, base.userid, base.realfbid,
                             base.provider || 'Viettel',
-                            status, statustext, reasonCode, podImagesJson
+                            status, statustext, reasonCode, podImagesJson, base.created_by_user_id, base.created_by_username
                         ]
                     );
                     //console.log(`[1P1] Tạo đơn hoàn 1 phần mới: ${orderNumber} từ đơn gốc ${baseOrderNumber}`);

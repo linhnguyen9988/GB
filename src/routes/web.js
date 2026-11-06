@@ -1,5 +1,6 @@
 ﻿'use strict';
 const express = require("express");
+require("../services/sharedViettelAccounts");
 
 require('../configs/processHandlers');
 require('../services/browserService');
@@ -8,6 +9,7 @@ const registerMessagesRoutes = require('./modules/messages.routes');
 const registerNotificationRoutes = require('./modules/notification.routes');
 const registerPrintRoutes = require('./modules/print.routes');
 const registerViettelRoutes = require('./modules/viettel.routes');
+const registerViettelAccountRoutes = require('./modules/viettelAccount.routes');
 const registerOrderRoutes = require('./modules/order.routes');
 const registerJtAddressRoutes = require('./modules/jtaddress.routes');
 const registerJtexRoutes = require('./modules/jtex.routes');
@@ -33,10 +35,12 @@ let initWebRoutes = (app) => {
     registerStreamlabsWebhook(router);
     registerStreamlabsAlertWebhook(router);
 
+    router.use(require('../middleware/routePermissions'));
     registerMessagesRoutes(router);
     registerNotificationRoutes(router);
     registerPrintRoutes(router);
     registerViettelRoutes(router);
+    registerViettelAccountRoutes(router);
     registerJtexRoutes(router);
     registerOrderRoutes(router);
     registerJtAddressRoutes(router);

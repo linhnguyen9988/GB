@@ -1,6 +1,7 @@
 'use strict';
 const DBConnection = require('../configs/DBConnection');
 const axios = require('axios');
+const { getAccountForOrder } = require('./viettelAccountService');
 
 const VIETTEL_DETAIL_URL = 'https://partner.viettelpost.vn/v2/order/detail-v2';
 
@@ -42,17 +43,17 @@ class StatusRefreshError extends Error {
     }
 }
 
-async function fetchViettelOrderStatus(orderNumber) {
-    const [tokens] = await DBConnection.query('SELECT token FROM vietteltoken LIMIT 1');
-    if (!tokens.length || !tokens[0].token) {
-        throw new StatusRefreshError('Không tìm thấy Viettel token', 404);
+async function fetchViettelOrderStatus(order) {
+    const account = await getAccountForOrder(DBConnection.promise(), order);
+    if (!account || !account.token) {
+        throw new StatusRefreshError('Không tìm thấy token của tài khoản Viettel đã tạo đơn', 404);
     }
 
     let response;
     try {
         response = await axios.get(VIETTEL_DETAIL_URL, {
-            params: { o: orderNumber },
-            headers: { accept: '*/*', Token: tokens[0].token },
+            params: { o: order.realorderid },
+            headers: { accept: '*/*', Token: account.token },
             timeout: 10000,
             validateStatus: () => true
         });
@@ -64,7 +65,7 @@ async function fetchViettelOrderStatus(orderNumber) {
     const body = response.data;
     if (response.status !== 200 || !body || body.error || !body.data) {
         const apiMessage = body && body.message ? String(body.message).slice(0, 200) : `HTTP ${response.status}`;
-        console.error('[viettel-status] Viettel trả lỗi cho đơn', orderNumber, '-', apiMessage);
+        console.error('[viettel-status] Viettel trả lỗi cho đơn', order.realorderid, '-', apiMessage);
         throw new StatusRefreshError('Viettel không trả về trạng thái đơn: ' + apiMessage, 502);
     }
 
@@ -80,15 +81,16 @@ function getStatusText(statusCode) {
     return STATUS_MAP[code] || `Trạng thái ${code}`;
 }
 
-async function refreshOrderStatus(orderNumber) {
-    const cached = recentResults.get(orderNumber);
+async function refreshOrderStatus(orderNumber, appUserId) {
+    const cacheKey = String(appUserId) + ':' + String(orderNumber);
+    const cached = recentResults.get(cacheKey);
     if (cached && Date.now() - cached.at < COOLDOWN_MS) {
         return { ...cached.result, cached: true };
     }
 
     const [orders] = await DBConnection.query(
-        'SELECT realorderid, provider, statuscode, statustext FROM lendon WHERE realorderid = ? LIMIT 1',
-        [orderNumber]);
+        'SELECT * FROM lendon WHERE realorderid = ? AND useraccountid = ? LIMIT 1',
+        [orderNumber, Number(appUserId)]);
     if (!orders.length) throw new StatusRefreshError('Không tìm thấy đơn hàng', 404);
 
     const order = orders[0];
@@ -104,7 +106,7 @@ async function refreshOrderStatus(orderNumber) {
         return { statuscode: current, statustext: order.statustext, changed: false, isFinal: true };
     }
 
-    let status = await fetchViettelOrderStatus(orderNumber);
+    let status = await fetchViettelOrderStatus(order);
     if (status === -108) status = 100;
 
     let result;
@@ -113,14 +115,14 @@ async function refreshOrderStatus(orderNumber) {
     } else {
         const statustext = getStatusText(status);
         await DBConnection.query(
-            'UPDATE lendon SET statuscode = ?, statustext = ?, last_update = NOW() WHERE realorderid = ?',
-            [status, statustext, orderNumber]);
+            'UPDATE lendon SET statuscode = ?, statustext = ?, last_update = NOW() WHERE realorderid = ? AND useraccountid = ?',
+            [status, statustext, orderNumber, Number(appUserId)]);
         console.log(`[viettel-status] Đơn ${orderNumber}: ${current} -> ${status} (${statustext})`);
         result = { statuscode: status, statustext, changed: true, isFinal: FINAL_STATUSES.has(status) };
     }
 
     if (recentResults.size > 500) recentResults.clear();
-    recentResults.set(orderNumber, { at: Date.now(), result });
+    recentResults.set(cacheKey, { at: Date.now(), result });
     return result;
 }
 

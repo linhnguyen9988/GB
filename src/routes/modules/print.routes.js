@@ -40,6 +40,7 @@ module.exports = function registerPrintRoutes(router) {
     router.post('/print-order', (req, res) => {
         const io = socket.getIo();
         const { userId, type, content, config } = req.body;
+        if (req.user.role !== 'admin' && String(userId) !== String(req.user.id)) return res.status(403).json({ success: false, message: 'Không được in tới tài khoản khác' });
 
         if (!userId || !content) {
             return res.status(400).json({ success: false, message: "Thiếu dữ liệu in" });

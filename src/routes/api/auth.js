@@ -9,57 +9,34 @@ const { apiAuth } = require('../../middleware/jwtAuth');
 router.post('/login', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password)
-    return res.status(400).json({ message: 'Thiếu username hoặc password' });
+    return res.status(400).json({ message: 'Thiáº¿u username hoáº·c password' });
 
   try {
     const [[user]] = await db.query(
       'SELECT * FROM users WHERE username = ?', [username]
     );
     if (!user)
-      return res.status(401).json({ message: 'Tài khoản không tồn tại' });
+      return res.status(401).json({ message: 'TÃ i khoáº£n khÃ´ng tá»“n táº¡i' });
 
     const valid = await bcrypt.compare(password, user.password);
     if (!valid)
-      return res.status(401).json({ message: 'Mật khẩu không đúng' });
+      return res.status(401).json({ message: 'Máº­t kháº©u khÃ´ng Ä‘Ãºng' });
 
     const token = jwt.sign(
-      { id: user.id, username: user.username },
+      { id: user.id, username: user.username, auth_version: user.auth_version || 0 },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN }
     );
 
     res.json({
       token,
-      user: { id: user.id, username: user.username, fullname: user.fullname }
+      user: { id: user.id, username: user.username, fullname: user.fullname, role: user.role }
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.post('/change-password', apiAuth, async (req, res) => {
-  const { oldPassword, newPassword } = req.body;
-  if (!oldPassword || !newPassword)
-    return res.status(400).json({ success: false, message: 'Thiếu thông tin' });
-
-  try {
-    const [[user]] = await db.query(
-      'SELECT password FROM users WHERE id = ?', [req.user.id]
-    );
-    if (!user)
-      return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản' });
-
-    const match = await bcrypt.compare(oldPassword, user.password);
-    if (!match)
-      return res.json({ success: false, message: 'Mật khẩu hiện tại không đúng' });
-
-    const hashed = await bcrypt.hash(newPassword, 10);
-    await db.query('UPDATE users SET password = ? WHERE id = ?', [hashed, req.user.id]);
-
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
-  }
-});
+router.post('/change-password', apiAuth, require('../../controllers/personalProfileController').changePassword);
 
 module.exports = router;

@@ -306,16 +306,6 @@ function UpdateComment(openmess) {
     });
 }
 
-function GetViettelToken() {
-    $.ajax({
-        url: "/getvietteltoken",
-        method: "POST",
-        dataType: "JSON",
-        success: function () {
-            ShowCenterToast('success', 'Đã cập nhật mã đẩy đơn mới nhất.', 3000);
-        }
-    });
-}
 function InItKeys() {
     var t = $('#comment_table').DataTable();
     t.on('key', function (e, datatable, keyCode, cell, originalEvent) {

@@ -1,102 +1,47 @@
 'use strict';
-const DBConnection = require("../configs/DBConnection");
-const SqlString = require('sqlstring');
-const axios = require('axios');
+const DBConnection = require('../configs/DBConnection');
 const request = require('request');
-const { VIETTEL_PASSWORD, VIETTEL_USERNAME } = require('../configs/constants');
 const { getBrowser } = require('./browserService');
+const { getAccountForOrder } = require('./viettelAccountService');
 
-function PrintBillViettel(realorderid) {//chi dung cho don day tu API, don tao bang tay ko in dc
-    DBConnection.query(` SELECT * FROM vietteltoken`,
-        async function (error, data) {
-            if (data.length > 0) {
-                var token = data[0].token;
-                var expiration = data[0].expiration;
-                var query = 'https://partner.viettelpost.vn/v2/order/printing-code';
-                request({
-                    url: encodeURI(query),
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'token': token
-                    },
-                    body: JSON.stringify({
-                        "EXPIRY_TIME": expiration, "ORDER_ARRAY": [realorderid]//het han nam 2028
-                    })
-
-                }, async function (error, response, bodyx) {
-                    var body = JSON.parse(bodyx.replaceAll(" ", "").replaceAll(/\n/g, " "));
-                    const printcode = body.message;
-                    if (body.error == true) {
-                        console.log('Don nay ko len bang API')
-                        return;
-                    }
-                    const browser = await getBrowser();
-                    const page2 = await browser.newPage();
-                    await page2.bringToFront();
-                    await page2.goto(`https://digitalize.viettelpost.vn/DigitalizePrint/report.do?type=100&bill=${printcode}&showPostage=1`);
-                    await page2.evaluate(() => { window.print(); })
-                    setTimeout(() => {
-                        page2.close();
-                    }, 500);
-                });
-            }
-        });
-}
-
-async function GetViettelToken() {
-    const loginUrl = 'https://partner.viettelpost.vn/v2/user/Login';
-    const ownerConnectUrl = 'https://partner.viettelpost.vn/v2/user/ownerconnect';
-
-    const credentials = {
-        "USERNAME": VIETTEL_USERNAME,
-        "PASSWORD": VIETTEL_PASSWORD
-    };
-
+async function PrintBillViettel(realorderid, appUserId) {
     try {
-        const loginRes = await axios.post(loginUrl, credentials, {
-            headers: { 'Content-Type': 'application/json' }
-        });
+        const [orders] = await DBConnection.query(
+            'SELECT * FROM lendon WHERE (realorderid = ? OR orderid = ?) AND useraccountid = ? LIMIT 1',
+            [String(realorderid || ''), String(realorderid || ''), Number(appUserId)]
+        );
+        if (!orders.length) return { success: false, message: 'Không tìm thấy đơn hàng.' };
+        const account = await getAccountForOrder(DBConnection.promise(), orders[0]);
+        if (!account || !account.token) return { success: false, message: 'Không tìm thấy token của tài khoản Viettel đã tạo đơn.' };
 
-        const loginData = loginRes.data;
-
-        if (loginRes.status === 200 && loginData.data && loginData.data.token) {
-            console.log('Đã có token tạm, đang lấy token dài hạn...');
-            const tokenRes = await axios.post(ownerConnectUrl, credentials, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'token': loginData.data.token
-                }
+        const query = 'https://partner.viettelpost.vn/v2/order/printing-code';
+        const result = await new Promise((resolve, reject) => {
+            request({
+                url: query,
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', token: account.token },
+                body: JSON.stringify({ EXPIRY_TIME: account.expiration, ORDER_ARRAY: [orders[0].realorderid] })
+            }, (error, response, body) => {
+                if (error) return reject(error);
+                try { resolve(JSON.parse(String(body || '').replace(/\u00a0/g, ' ').replace(/\n/g, ' '))); }
+                catch (parseError) { reject(parseError); }
             });
-
-            const bodytoken = tokenRes.data;
-
-            if (bodytoken.status === 200) {
-                const vtoken = SqlString.format(
-                    'INSERT IGNORE INTO vietteltoken (userid, token, expiration) VALUES(?,?,?) ON DUPLICATE KEY UPDATE token=?, expiration=?;',
-                    [bodytoken.data.userId, bodytoken.data.token, bodytoken.data.expired, bodytoken.data.token, bodytoken.data.expired]
-                );
-
-                try {
-                    await DBConnection.query(vtoken);
-                    console.log('Cập nhật Viettel Token thành công!');
-                } catch (sqlError) {
-                    console.error('ERROR: SQL ERROR', sqlError.message);
-                }
-            } else {
-                console.log('Lỗi lấy token dài hạn:', bodytoken.message || bodytoken);
-            }
-        } else {
-            console.log('Đăng nhập thất bại:', loginData);
+        });
+        if (result.error) return { success: false, message: result.message || 'Viettel không cấp mã in cho đơn này.' };
+        const browser = await getBrowser();
+        const page = await browser.newPage();
+        try {
+            await page.bringToFront();
+            await page.goto(`https://digitalize.viettelpost.vn/DigitalizePrint/report.do?type=100&bill=${encodeURIComponent(result.message)}&showPostage=1`);
+            await page.evaluate(() => window.print());
+        } finally {
+            setTimeout(() => page.close().catch(() => {}), 500);
         }
-
+        return { success: true };
     } catch (error) {
-        if (error.response) {
-            console.error('Lỗi API Viettel:', error.response.data);
-        } else {
-            console.error('Lỗi kết nối:', error.message);
-        }
+        console.error('Lỗi in bill Viettel:', error.message);
+        return { success: false, message: 'Không thể in bill Viettel.' };
     }
 }
 
-module.exports = { PrintBillViettel, GetViettelToken };
+module.exports = { PrintBillViettel };
