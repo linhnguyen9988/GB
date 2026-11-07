@@ -2,6 +2,7 @@
 
 const jwtAuth = require('../../middleware/jwtAuth');
 const accounts = require('../../services/viettelAccountService');
+const shipping = require('../../services/shippingAccounts');
 
 module.exports = function registerViettelAccountRoutes(router) {
     router.get('/api/viettel/accounts', jwtAuth, async (req, res) => {
@@ -64,7 +65,7 @@ module.exports = function registerViettelAccountRoutes(router) {
 
     router.post('/api/viettel/accounts/:accountId/default', jwtAuth, async (req, res) => {
         try {
-            await accounts.setDefaultAccount(req.user.id, req.params.accountId);
+            await shipping.setDefault('viettel', req.params.accountId);
             res.json({ success: true, message: 'Đã đặt tài khoản Viettel mặc định.' });
         } catch (error) {
             res.status(400).json({ success: false, message: error.message });

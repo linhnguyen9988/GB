@@ -1,0 +1,24 @@
+<section class="card mt-3" aria-labelledby="shippingAccountsTitle">
+  <div class="card-body">
+    <h5 id="shippingAccountsTitle">Tài khoản lên đơn mặc định</h5>
+    <p class="small text-body-secondary" id="shippingCurrent">Đang tải cấu hình vận chuyển…</p>
+    <form id="shippingDefaultForm" method="post">
+      <label for="shippingAccount" class="form-label">Tài khoản dùng chung khi lên đơn</label>
+      <div class="input-group">
+        <select id="shippingAccount" class="form-select" required disabled></select>
+        <button class="btn btn-primary" type="submit" disabled>Lưu mặc định</button>
+      </div>
+    </form>
+    <hr>
+    <h6>Tài khoản J&T Express</h6>
+    <form id="shippingJTForm" method="post">
+      <label for="shippingCustomerCode" class="form-label">CustomerCode</label>
+      <div class="input-group">
+        <input id="shippingCustomerCode" class="form-control" maxlength="64" pattern="[A-Za-z0-9_\-]+" autocomplete="off" required>
+        <button class="btn btn-outline-primary" type="submit">Lưu tài khoản</button>
+      </div>
+    </form>
+    <p class="small mt-3 mb-0" id="shippingAccountsStatus" role="status" aria-live="polite"></p>
+  </div>
+</section>
+<script src="/js/shipping-accounts.js" defer></script>

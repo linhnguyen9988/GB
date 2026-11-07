@@ -10,8 +10,20 @@ const readcommentController = require("../../controllers/readcommentController")
 const registerController = require("../../controllers/registerController");
 const { REGISTER_PATH } = require('../../configs/constants');
 const { webAuth, requireAdmin } = require('../../middleware/jwtAuth');
+const shipping = require('../../services/shippingAccounts');
 
 module.exports = function registerPageRoutes(router) {
+    router.use(async (req, res, next) => {
+        if (req.method !== 'GET' || !req.user) return next();
+        try {
+            res.locals.activeCarrier = (await shipping.getDefault())?.carrier || null;
+        } catch (error) {
+            console.error('Lỗi đọc hãng lên đơn mặc định:', error.code || error.message);
+            res.locals.activeCarrier = null;
+        }
+        next();
+    });
+
     router.get('/khachhang', webAuth, function (req, res) {
         res.render('khachhang', { user: req.user });
     });

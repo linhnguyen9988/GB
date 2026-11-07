@@ -41,13 +41,14 @@ async function printLabelByCode(code, userId) {
     if (!code) return { success: false, status: 400, message: 'Thiếu mã đơn' };
 
     const order = await loadLabelOrder(code);
-    if (!order) return { success: false, status: 404, message: 'Không tìm thấy đơn hàng' };
-    if (!isPrinterOnline(userId)) return { success: false, status: 404, message: 'Máy in Offline' };
+    if (!order) return { success: false, status: 404, printStatus: 'order_not_found', message: 'Không tìm thấy đơn hàng' };
+    if (!isPrinterOnline(userId)) return { success: false, status: 404, printStatus: 'printer_unavailable', message: 'Chưa thấy kết nối nhận lệnh in cho tài khoản này' };
 
     const { html, config } = await renderLabel(order);
-    sendHtml(userId, html, config);
+    if (!sendHtml(userId, html, config)) return { success: false, status: 404, printStatus: 'printer_unavailable', message: 'Kết nối nhận lệnh in đã ngắt trước khi gửi tem' };
     return {
         success: true,
+        printStatus: 'dispatched',
         message: order.approx ? 'Đã gửi lệnh in (tỉnh/huyện/xã suy từ địa chỉ, hãy kiểm tra tem)' : 'Đã gửi lệnh in'
     };
 }

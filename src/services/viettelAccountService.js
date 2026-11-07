@@ -393,6 +393,14 @@ async function getAccountForOrder(db, order) {
     return getDefaultAccount(order.useraccountid);
 }
 
+async function getActiveAccountById(accountId) {
+    const [[row]] = await DBConnection.query(
+        `SELECT ${ACCOUNT_RUNTIME_COLUMNS} FROM vietteltoken WHERE userid = ? AND is_active = 1`,
+        [accountId]
+    );
+    return hydrateAccount(row);
+}
+
 async function setDefaultAccount(appUserId, accountId) {
     const appId = Number(appUserId);
     const conn = await DBConnection.getConnection();
@@ -419,6 +427,10 @@ async function deleteAccount(appUserId, accountId) {
     const conn = await DBConnection.getConnection();
     try {
         await conn.beginTransaction();
+        const [[selected]] = await conn.query('SELECT carrier, account_id FROM shipping_default WHERE id = 1 FOR UPDATE');
+        if (selected?.carrier === 'viettel' && String(selected.account_id) === String(accountId)) {
+            throw new Error('Hãy chọn tài khoản lên đơn mặc định khác trước khi ẩn tài khoản này.');
+        }
         const [rows] = await conn.execute(
             'SELECT is_default FROM vietteltoken WHERE app_user_id=? AND userid=? AND is_active=1 LIMIT 1 FOR UPDATE',
             [appId, String(accountId)]
@@ -457,6 +469,7 @@ module.exports = {
     listAccounts,
     getDefaultAccount,
     getAccountForOrder,
+    getActiveAccountById,
     setDefaultAccount,
     deleteAccount,
     encryptSecret,

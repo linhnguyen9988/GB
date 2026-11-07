@@ -8,7 +8,15 @@ function isPrinterOnline(userId) {
 }
 
 function sendHtml(userId, html, config) {
-    socket.getIo().to(`USER_ROOM_${userId}`).emit('print-now', { type: 'html', html, config });
+    return dispatchPrint(userId, { type: 'html', html, config });
 }
 
-module.exports = { isPrinterOnline, sendHtml };
+function dispatchPrint(userId, payload) {
+    const io = socket.getIo();
+    const room = `USER_ROOM_${userId}`;
+    if (!userId || !io.sockets.adapter.rooms.get(room)?.size) return false;
+    io.to(room).emit('print-now', payload);
+    return true;
+}
+
+module.exports = { isPrinterOnline, sendHtml, dispatchPrint };

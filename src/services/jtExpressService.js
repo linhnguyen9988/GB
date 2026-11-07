@@ -1,55 +1,41 @@
 'use strict';
 const DBConnection = require("../configs/DBConnection");
 const axios = require('axios');
-const qs = require('qs');
-const socket = require('../socket');
+const shipping = require('./shippingAccounts');
 const { JT_API_ACCOUNT, JT_CUSTOMER_CODE, JT_PASSWORD, JT_PKEY, SHIP_LABEL } = require('../configs/constants');
 const { md5ToBase64 } = require('../utils/crypto');
-const { isPrinterOnline } = require('./printAgent');
-const { printLabelByCode, resolveAdminUnits, stripJtCode } = require('./labelPrintService');
+const { isPrinterOnline, dispatchPrint } = require('./printAgent');
+const { printLabelByCode } = require('./labelPrintService');
+
+async function loadJTOrder(code) {
+    const [[order]] = await DBConnection.query(
+        "SELECT orderid, jtaccountid FROM lendon WHERE (orderid = ? OR realorderid = ?) AND provider = 'J&T' LIMIT 1",
+        [code, code]
+    );
+    return order;
+}
+
+async function accountForJTOrder(order) {
+    if (order.jtaccountid != null) return shipping.getJTAccount(order.jtaccountid);
+    // Orders created before this migration used the legacy .env account.
+    return { customerCode: JT_CUSTOMER_CODE, password: JT_PASSWORD };
+}
 
 async function CancelOrderJT(orderid) {
-    const pkey = JT_PKEY;
-    const apiAccount = JT_API_ACCOUNT;
-    const oderjson = JSON.stringify({
-        "customerCode": JT_CUSTOMER_CODE,
-        "password": JT_PASSWORD,
-        "txlogisticId": orderid,
-        "reason": "Shop hủy đơn"
-    });
-
-    const digest = md5ToBase64(oderjson + pkey);
-    const query = 'https://ylopenapi.jtexpress.vn/webopenplatformapi/api/order/cancelOrder';
-
     try {
-        const response = await axios({
-            method: 'post',
-            url: query,
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'apiAccount': apiAccount,
-                'digest': digest,
-                'timestamp': new Date().getTime().toString()
-            },
-            data: qs.stringify({
-                'bizContent': oderjson
-            })
-        });
-
-        const body = response.data;
-
-        if (body.msg === 'success') {
-            const info = `Shop hủy đơn: ${body.data.billCode} -> ${body.data.txlogisticId}`;
-            console.log(info);
-            return info;
-        } else {
-            console.log(body.msg);
-            return body.msg;
-        }
-
+        const order = await loadJTOrder(String(orderid || '').trim());
+        if (!order) return { success: false, message: 'Không tìm thấy đơn J&T này' };
+        const account = await accountForJTOrder(order);
+        const body = await jtPost('/order/cancelOrder', {
+            txlogisticId: order.orderid,
+            reason: 'Shop hủy đơn'
+        }, account);
+        if (body?.msg === 'success') return { success: true, message: 'J&T đã xác nhận hủy đơn' };
+        return { success: false, message: body?.message || body?.msg || 'J&T chưa xác nhận hủy đơn' };
     } catch (error) {
-        console.error('Lỗi khi gọi API J&T:', error.message);
-        return 'Lỗi kết nối API';
+        console.error('Lỗi hủy đơn J&T:', error.message);
+        const detail = error.response?.data?.message || error.response?.data?.msg || error.message;
+        return { success: false, message: 'Không hủy được đơn J&T: ' + detail };
     }
 }
 
@@ -80,8 +66,10 @@ function httpError(status, message) {
     return e;
 }
 
-async function jtPost(apiPath, biz, timeout = 5000) {
-    const json = JSON.stringify({ customerCode: JT_CUSTOMER_CODE, password: JT_PASSWORD, ...biz });
+async function jtPost(apiPath, biz, account, timeout = 5000) {
+    if (!JT_API_ACCOUNT || !JT_PKEY) throw new Error('Thiếu JT_API_ACCOUNT hoặc JT_PKEY trên máy chủ GB.');
+    if (!account?.customerCode || !account.password) throw new Error('Thiếu thông tin xác thực J&T của đơn hàng.');
+    const json = JSON.stringify({ customerCode: account.customerCode, password: account.password, ...biz });
     const params = new URLSearchParams();
     params.append('bizContent', json);
     const response = await axios.post(JT_BASE + apiPath, params, {
@@ -243,8 +231,8 @@ async function createPartReturnOrder(billCode) {
     try {
         await DBConnection.query(
             `INSERT INTO lendon
-                (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, sortline, sortcode, statuscode, statustext, useraccountid, last_update, created_by_user_id, created_by_username)
-             SELECT p.name, p.phone, p.address, 0, p.kg, p.status, p.date, CONCAT(p.orderid, '-001'), ?, p.khid, p.userid, p.realfbid, NOW(), 'J&T', p.sortline, p.sortcode, 116, 'Đang chuyển hoàn', p.useraccountid, NOW(), p.created_by_user_id, p.created_by_username
+                (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, sortline, sortcode, statuscode, statustext, useraccountid, last_update, created_by_user_id, created_by_username, jtaccountid)
+             SELECT p.name, p.phone, p.address, 0, p.kg, p.status, p.date, CONCAT(p.orderid, '-001'), ?, p.khid, p.userid, p.realfbid, NOW(), 'J&T', p.sortline, p.sortcode, 116, 'Đang chuyển hoàn', p.useraccountid, NOW(), p.created_by_user_id, p.created_by_username, p.jtaccountid
                FROM lendon p
               WHERE p.realorderid = ? AND p.provider = 'J&T'
                 AND NOT EXISTS (SELECT 1 FROM lendon c WHERE c.realorderid = ?)
@@ -260,7 +248,7 @@ async function createJTOrder(input) {
     let { fbname, address, phone, cod, kg, khid, userid, realfbid, tinh, huyen, xa, accountId, actor } = input || {};
 
     if (!actor || !actor.id || !actor.username) return { success: false, message: 'Thiếu nhân viên tạo đơn' };
-    if (!xa) return { success: false, message: 'Check địa chỉ trước' };
+    if (!xa) return { success: false, stage: 'validation', message: 'Chưa có xã/phường J&T. Vui lòng kiểm tra lại địa chỉ.' };
     if (!fbname || !phone || !address) return { success: false, message: 'Thiếu thông tin người nhận!' };
 
     const codStr = normalizeMoney(cod);
@@ -269,6 +257,14 @@ async function createJTOrder(input) {
     const productName = JT_PRODUCT_NAME;
     const txlogisticId = 'DH' + Date.now();
     const timenow = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Saigon' });
+
+    let account;
+    try {
+        account = await shipping.getJTAccount(await shipping.requireDefault('jt'));
+    } catch (error) {
+        if (!error.shippingConfiguration) throw error;
+        return { success: false, stage: 'configuration', message: error.message };
+    }
 
     let body;
     try {
@@ -292,14 +288,20 @@ async function createJTOrder(input) {
             englishName: 'none',
             packageInfo: { weight, length: 10, width: 10, height: 10, volume: '10' },
             items: [{ itemName: productName, englishName: 'None', number: 1, itemValue: codStr }]
-        }, 5000);
+        }, account);
     } catch (error) {
         console.error('Lỗi Create Order J&T:', error.message);
-        return { success: false, message: 'Lỗi hệ thống: ' + error.message };
+        const detail = error.response?.data?.message || error.response?.data?.msg || error.message;
+        return { success: false, stage: 'carrier_request', message: 'Không hoàn tất yêu cầu tạo đơn J&T: ' + detail, txlogisticId };
     }
 
-    if (!body || body.msg !== 'success' || !body.data) {
-        return { success: false, message: 'J&T từ chối: ' + (body && body.msg) };
+    if (!body || body.msg !== 'success') {
+        const detail = body?.message || body?.msg || 'Không có chi tiết trong phản hồi';
+        const code = typeof body?.code === 'string' || typeof body?.code === 'number' ? ` [${body.code}]` : '';
+        return { success: false, stage: 'carrier_response', message: `J&T từ chối tạo đơn${code}: ${detail}`, txlogisticId };
+    }
+    if (!body.data?.billCode) {
+        return { success: false, stage: 'carrier_response', message: 'J&T báo thành công nhưng chưa trả mã vận đơn. Kiểm tra đơn trên J&T trước khi gửi lại.', txlogisticId };
     }
 
     const sortLine = String(body.data.sortLine || '').slice(0, 45) || null;
@@ -308,15 +310,16 @@ async function createJTOrder(input) {
     try {
         await DBConnection.query(
             `INSERT INTO lendon
-                (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, sortline, sortcode, statuscode, statustext, useraccountid, last_update, xa, huyen, tinh, created_by_user_id, created_by_username)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'J&T', ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?)`,
+                (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, sortline, sortcode, statuscode, statustext, useraccountid, last_update, xa, huyen, tinh, created_by_user_id, created_by_username, jtaccountid)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'J&T', ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?)`,
             [fbname, phone, address, codStr, weight, 1, timenow, txlogisticId, body.data.billCode,
              khid, userid, realfbid, sortLine, sortCode, 100, 'Mới tạo', accountId ?? null,
-             xa, huyen, tinh, actor.id, actor.username]
+             xa, huyen, tinh, actor.id, actor.username, account.id]
         );
     } catch (dbErr) {
         console.error(`Lỗi lưu đơn J&T ${body.data.billCode} vào DB:`, dbErr.message);
-        return { success: false, message: `Đã tạo đơn J&T ${body.data.billCode} nhưng lưu hệ thống lỗi: ${dbErr.message}` };
+        const reason = dbErr.code ? ` (${dbErr.code})` : '';
+        return { success: false, stage: 'save_order', order_created: true, order_code: body.data.billCode, txlogisticId, message: `J&T đã cấp mã ${body.data.billCode}, nhưng GB chưa lưu được đơn${reason}. Kiểm tra đơn này trước khi tạo lại.` };
     }
 
     return {
@@ -329,65 +332,54 @@ async function createJTOrder(input) {
     };
 }
 
-async function GetBillJT(orderid, userId) {
-    const io = socket.getIo();
-    const emitPdf = (base64) => {
-        if (io && userId) {
-            io.to(`USER_ROOM_${userId}`).emit("print-now", {
-                type: 'pdf',
-                base64,
-                config: { printerName: "HPRT N41", widthMm: 80, heightMm: 80 }
-            });
-        }
-    };
-
-    if (SHIP_LABEL === 'gb') {
-        try {
-            const r = await printLabelByCode(orderid, userId);
-            if (r.success) return true;
-            if (r.status === 404) return false;
-            console.error(`❌ Lỗi in tem HTML (${orderid}): ${r.message}`);
-            return false;
-        } catch (e) {
-            console.error(`❌ Lỗi dựng tem HTML (${orderid}):`, e.message);
-            return false;
-        }
+async function dispatchJTLabel(orderid, userId) {
+    const unavailable = { success: false, status: 404, printStatus: 'printer_unavailable', message: 'Chưa thấy kết nối nhận lệnh in cho tài khoản này' };
+    let online;
+    try { online = isPrinterOnline(userId); }
+    catch (error) {
+        console.error('Lỗi kết nối dịch vụ in J&T:', error.message);
+        return { success: false, status: 503, printStatus: 'print_service_unavailable', message: 'Dịch vụ gửi lệnh in chưa sẵn sàng' };
     }
-
+    if (!online) return unavailable;
     try {
-        const body = await jtPost('/order/printOrder', { txlogisticId: orderid }, 5000);
-        if (body.msg === 'success' && body.data?.base64EncodeContent) {
-            emitPdf(body.data.base64EncodeContent);
-            return true;
+        if (SHIP_LABEL === 'gb') return await printLabelByCode(orderid, userId);
+        const order = await loadJTOrder(orderid);
+        if (!order) return { success: false, status: 404, printStatus: 'order_not_found', message: 'Không tìm thấy đơn J&T này' };
+        const account = await accountForJTOrder(order);
+        const body = await jtPost('/order/printOrder', { txlogisticId: order.orderid }, account);
+        if (body?.msg === 'success' && body.data?.base64EncodeContent) {
+            if (!dispatchPrint(userId, {
+                type: 'pdf', base64: body.data.base64EncodeContent,
+                config: { printerName: 'HPRT N41', widthMm: 80, heightMm: 80 }
+            })) return unavailable;
+            return { success: true, printStatus: 'dispatched', message: 'Đã gửi lệnh in tem J&T' };
         }
-        console.error(`❌ Lỗi lấy bill J&T (${orderid}):`, body.msg);
-        return false;
+        console.error(`Lỗi lấy tem J&T (${orderid}):`, body?.msg || 'Thiếu PDF');
+        return { success: false, status: 502, printStatus: 'label_error', message: 'J&T chưa trả về file tem' };
     } catch (error) {
-        console.error(`❌ Lỗi kết nối lấy bill J&T:`, error.message);
-        return false;
+        console.error(`Lỗi xử lý tem J&T (${orderid}):`, error.message);
+        return { success: false, status: 502, printStatus: 'label_error', message: 'Không thể chuẩn bị hoặc gửi tem J&T. Hãy thử in lại.' };
     }
+}
+
+async function GetBillJT(orderid, userId) {
+    return (await dispatchJTLabel(orderid, userId)).success;
 }
 
 async function reprintBillJT(code, userId) {
     code = String(code || '').trim();
     if (!code) return { success: false, status: 400, message: 'Thiếu mã đơn' };
 
-    const [rows] = await DBConnection.query(
-        "SELECT orderid FROM lendon WHERE (orderid = ? OR realorderid = ?) AND provider = 'J&T' LIMIT 1",
-        [code, code]
-    );
-    if (!rows.length) return { success: false, status: 404, message: 'Không tìm thấy đơn J&T này' };
-
-    if (!isPrinterOnline(userId)) return { success: false, status: 404, message: 'Máy in Offline' };
-
-    const ok = await GetBillJT(rows[0].orderid, userId);
-    return ok
-        ? { success: true, message: 'Đã gửi lệnh in lại' }
-        : { success: false, status: 502, message: 'Không tạo được tem J&T, thử lại sau' };
+    const order = await loadJTOrder(code);
+    if (!order) return { success: false, status: 404, message: 'Không tìm thấy đơn J&T này' };
+    return dispatchJTLabel(order.orderid, userId);
 }
 
 async function traceJT(billCode) {
-    const body = await jtPost('/logistics/trace', { billCodes: billCode, txlogisticId: '' }, 10000);
+    const order = await loadJTOrder(billCode);
+    if (!order) return { ok: false, message: 'Không tìm thấy đơn J&T này' };
+    const account = await accountForJTOrder(order);
+    const body = await jtPost('/logistics/trace', { billCodes: billCode, txlogisticId: '' }, account, 10000);
     if (body.code !== '1' || !Array.isArray(body.data) || body.data.length === 0) {
         return { ok: false, message: body.msg || 'J&T chưa có dữ liệu hành trình cho đơn này!' };
     }
@@ -450,7 +442,7 @@ async function refreshJTStatus(billCode) {
 }
 
 module.exports = {
-    CancelOrderJT, GetBillJT, reprintBillJT,
+    CancelOrderJT, GetBillJT, dispatchJTLabel, reprintBillJT,
     createJTOrder, traceJT, refreshJTStatus,
     JT_FINAL_CODES, jtHasSigpic, isPartReturnBill, eventCode, toWaybillRow, toEpoch,
     insertWaybillIfNew, latestStoredScanEpoch, applyJTStatus, createPartReturnOrder

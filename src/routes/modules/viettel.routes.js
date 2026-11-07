@@ -4,10 +4,11 @@ const SqlString = require('sqlstring');
 const axios = require('axios');
 const jwtAuth = require('../../middleware/jwtAuth');
 const { toViettelWeightGrams } = require('../../utils/viettelWeight');
+const shipping = require('../../services/shippingAccounts');
 const viettelOrderEdit = require('../../services/viettelOrderEdit');
 const { CreateOrderID } = require('../../utils/orderId');
 const { PrintBillViettel } = require('../../services/viettelService');
-const { getDefaultAccount, getAccountForOrder } = require('../../services/viettelAccountService');
+const { getActiveAccountById, getAccountForOrder } = require('../../services/viettelAccountService');
 const { refreshOrderStatus } = require('../../services/viettelStatusService');
 const { suggestProvDistrict } = require('../../services/jtAddressService');
 const { printLabelByCode } = require('../../services/labelPrintService');
@@ -40,6 +41,9 @@ module.exports = function registerViettelRoutes(router) {
                 [String(id), Number(req.user.id)]
             );
             if (!orders.length) return res.status(404).json({ message: 'Không tìm thấy đơn hàng thuộc tài khoản của bạn.' });
+            if ((orders[0].provider || 'Viettel') !== 'Viettel') {
+                return res.status(409).json({ message: 'Đơn này không thuộc Viettel. Hãy tải lại trang và dùng nút hủy đúng hãng.' });
+            }
             const account = await getAccountForOrder(DBConnection.promise(), orders[0]);
             if (!account || !account.token) return res.status(404).json({ message: 'Không tìm thấy token Viettel của đơn hàng.' });
             const token = account.token;
@@ -180,7 +184,7 @@ module.exports = function registerViettelRoutes(router) {
         let xa = '', huyen = '', tinh = '';
 
         try {
-            const account = await getDefaultAccount(req.user.id);
+            const account = await shipping.getViettelAddressAccount(req.user.id);
             if (!account || !account.token) {
                 return res.status(400).json({ error: 'Profile chưa cấu hình tài khoản Viettel mặc định.' });
             }
@@ -360,7 +364,8 @@ module.exports = function registerViettelRoutes(router) {
         const typecod = (cod > 0) ? 3 : 1;
 
         try {
-            const account = await getDefaultAccount(req.user.id);
+            const selectedId = await shipping.requireDefault('viettel');
+            const account = await getActiveAccountById(selectedId);
             if (!account || !account.token || !account.groupaddressid || !account.cusid || !account.order_service) {
                 return res.status(400).json({ error: 'Profile chưa cấu hình đủ tài khoản Viettel, kho mặc định và dịch vụ chính.' });
             }
@@ -455,6 +460,7 @@ module.exports = function registerViettelRoutes(router) {
             });
 
         } catch (error) {
+            if (error.shippingConfiguration) return res.json({ error: error.message });
             console.error('Lỗi Create Order:', error.message);
             res.json({ error: 'Lỗi hệ thống: ' + error.message });
         }

@@ -179,6 +179,8 @@
             </div>
           </div>
 
+          <%- include('shippingAccounts'); -%>
+
           <div class="card mt-3" id="viettelAccountPanel">
             <div class="card-body">
               <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
@@ -194,16 +196,13 @@
               <div class="row g-3" id="viettelAccountCards">
                 <% viettelAccounts.forEach(function(a) { %>
                   <div class="col-12 col-xl-6">
-                    <div class="card h-100 border <%= Number(a.is_default) === 1 ? 'border-primary' : '' %>">
+                    <div class="card h-100 border">
                       <div class="card-body">
                         <div class="d-flex justify-content-between align-items-start gap-2">
                           <div class="min-w-0">
                             <div class="fw-semibold text-break"><i class="bi bi-truck me-1"></i><%= a.username || ('Viettel #' + a.accountId) %></div>
                             <div class="small text-muted">CUS_ID: <%= a.cusId %></div>
                           </div>
-                          <% if (Number(a.is_default) === 1) { %>
-                            <span class="badge text-bg-primary">Mặc định</span>
-                          <% } %>
                         </div>
                         <hr>
                         <div class="small mb-2"><strong>Kho:</strong> <%= a.warehouse_name || 'Chưa đặt tên' %></div>
@@ -212,9 +211,6 @@
                         <div class="small text-muted mb-3"><%= Number(a.order_service_price || 0).toLocaleString('vi-VN') %> đ · <%= a.order_service_time || 'Chưa có thời gian dự kiến' %></div>
                         <div class="d-flex flex-wrap gap-2">
                           <button class="btn btn-sm btn-primary" type="button" data-vt-action="edit" data-account-id="<%= a.accountId %>" data-username="<%= a.username %>">Cập nhật</button>
-                          <% if (Number(a.is_default) !== 1) { %>
-                            <button class="btn btn-sm btn-outline-primary" type="button" data-vt-action="default" data-account-id="<%= a.accountId %>">Đặt mặc định</button>
-                          <% } %>
                           <button class="btn btn-sm btn-outline-danger" type="button" data-vt-action="delete" data-account-id="<%= a.accountId %>">Xóa</button>
                         </div>
                       </div>
@@ -276,10 +272,6 @@
               <div class="row g-2" id="viettelServiceChoices"></div>
               <div class="form-text mt-2">Dịch vụ được sắp xếp theo giá từ thấp đến cao; dịch vụ rẻ nhất sẽ được chọn sẵn.</div>
             </div>
-            <div class="form-check mt-3">
-              <input class="form-check-input" type="checkbox" id="viettelMakeDefault">
-              <label class="form-check-label" for="viettelMakeDefault">Dùng tài khoản này làm mặc định khi lên đơn</label>
-            </div>
           </section>
         </div>
         <div class="modal-footer">
@@ -330,7 +322,6 @@
       document.getElementById('viettelServiceHint').textContent = 'Chọn kho để hệ thống gọi API lấy bảng giá.';
       document.getElementById('viettelWarehouseSelect').onchange = null;
       document.getElementById('viettelPrepareBtn').classList.remove('d-none');
-      document.getElementById('viettelMakeDefault').checked = document.querySelectorAll('#viettelAccountCards [data-vt-action="edit"]').length === 0;
       viettelModal().show();
     }
 
@@ -477,8 +468,7 @@
           body: JSON.stringify({
             draftId: viettelDraftId,
             groupaddressId: warehouseId,
-            serviceCode: selectedService.value,
-            makeDefault: document.getElementById('viettelMakeDefault').checked
+            serviceCode: selectedService.value
           })
         });
         viettelModal().hide();
@@ -497,17 +487,8 @@
       const action = button.dataset.vtAction;
       const accountId = button.dataset.accountId;
       if (action === 'edit') openViettelModal('edit', accountId, button.dataset.username || '');
-      else if (action === 'default') setViettelDefault(accountId);
       else if (action === 'delete') deleteViettelAccount(accountId);
     });
-
-    async function setViettelDefault(accountId) {
-      if (!confirm('Đặt tài khoản Viettel này làm mặc định khi lên đơn?')) return;
-      try {
-        await viettelApi(`/api/viettel/accounts/${encodeURIComponent(accountId)}/default`, { method: 'POST', body: '{}' });
-        window.location.reload();
-      } catch (error) { alert(error.message); }
-    }
 
     async function deleteViettelAccount(accountId) {
       if (!confirm('Ẩn tài khoản Viettel này khỏi Profile? Đơn cũ vẫn giữ thông tin mã hóa để tiếp tục xử lý.')) return;

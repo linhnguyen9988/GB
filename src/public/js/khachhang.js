@@ -48,6 +48,7 @@ function handleInLaiDon() {
 }
 
 function LenDonKhachHang() {
+    if (!window.ACTIVE_CARRIER) return ShowCenterToast('warning', 'Chưa chọn tài khoản lên đơn mặc định trong trang quản trị.', 5000);
     if (window.ACTIVE_CARRIER === 'jt') return LenDonKhachHangJT();
 
     var btn = document.getElementById('btnlendonkh');
@@ -107,7 +108,7 @@ function LenDonKhachHang() {
         success: function (data) {
             if (data.hasOwnProperty('error')) {
                 if (btn) btn.disabled = false;
-                ShowCenterToast('danger', 'Lỗi lên đơn', data.error, 4000);
+                ShowCenterToast('danger', gbEscapeText(data.error), 5000);
                 return;
             }
             document.getElementById('COD').value = 0;
@@ -203,15 +204,19 @@ function LenDonKhachHangJT() {
             if (data.success) {
                 document.getElementById('COD').value = 0;
                 document.getElementById('KG').value = 1;
-                ShowCenterToast('success', `${fbnameNow} • ${data.order_code} • ${(+cod).toLocaleString()} đ`, 4000);
+                if (data.printDispatched === false) {
+                    ShowCenterToast('warning', gbEscapeText(`Đã lên đơn J&T ${data.order_code}. ${data.printMessage || 'Chưa gửi được lệnh in.'} Bạn có thể in lại từ danh sách đơn.`), 5000);
+                } else {
+                    ShowCenterToast('success', `${fbnameNow} • ${data.order_code} • ${(+cod).toLocaleString()} đ`, 4000);
+                }
                 FillDiaChi();
             } else {
-                ShowCenterToast('danger', 'Lỗi lên đơn', data.message, 4000);
+                ShowCenterToast(data.order_created ? 'warning' : 'danger', gbEscapeText(data.message || 'Không tạo được đơn J&T.'), 5000);
             }
         },
-        error: function () {
+        error: function (xhr) {
             if (btn) btn.disabled = false;
-            ShowCenterToast('danger', 'Không thể tạo đơn, kiểm tra lại kết nối', 4000);
+            ShowCenterToast('danger', gbEscapeText(xhr.responseJSON?.message || 'Không nhận được phản hồi. Kiểm tra đơn J&T trước khi gửi lại.'), 5000);
         }
     });
 }
@@ -225,7 +230,7 @@ function LenDonKhachHangJT() {
         btn.type = 'button';
         btn.id = 'btnlendonkh';
         btn.className = 'btn btn-success';
-        var carrierName = window.ACTIVE_CARRIER === 'jt' ? 'J&amp;T' : 'Viettel';
+        var carrierName = window.ACTIVE_CARRIER === 'jt' ? 'J&amp;T' : window.ACTIVE_CARRIER === 'viettel' ? 'Viettel' : 'Lên đơn';
         btn.title = 'Lên đơn ' + carrierName.replace('&amp;', '&');
         btn.innerHTML = '<i class="bi bi-box-seam"></i> ' + carrierName;
         btn.onclick = LenDonKhachHang;

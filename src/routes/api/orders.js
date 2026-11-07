@@ -237,19 +237,16 @@ router.post('/', auth, async (req, res) => {
 });
 
 router.post('/push-jt', auth, async (req, res) => {
-  const { createJTOrder, GetBillJT } = require('../../services/jtExpressService');
+  const { createJTOrder, dispatchJTLabel } = require('../../services/jtExpressService');
   try {
     const result = await createJTOrder({ ...req.body, accountId: req.user.id, actor: req.user });
-    if (!result.success) return res.json({ success: false, message: result.message });
+    if (!result.success) return res.json(result);
 
-    GetBillJT(result.txlogisticId, req.user?.id ?? req.body.userid).catch(() => {});
+    Promise.resolve().then(() => dispatchJTLabel(result.txlogisticId, req.user.id)).then(print => {
+      if (!print.success) console.warn(`J&T ${result.order_code}: ${print.printStatus} — ${print.message}`);
+    }).catch(error => console.error('Lỗi gửi tem J&T (API):', error.message));
 
-    return res.json({
-      success: true,
-      message: result.message,
-      order_code: result.order_code,
-      sort_line: result.sort_line,
-    });
+    return res.json({ ...result, printStatus: 'pending' });
   } catch (error) {
     console.error('Lỗi Create Order J&T (API):', error.message);
     return res.json({ success: false, message: 'Lỗi hệ thống: ' + error.message });

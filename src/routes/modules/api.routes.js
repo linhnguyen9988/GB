@@ -12,6 +12,7 @@ const apiLucky = require('../api/lucky');
 module.exports = function registerApiRoutes(app) {
     app.use('/api/auth', apiAuth);
     app.use('/api', require('../../middleware/jwtAuth'));
+    app.use('/api/shipping', require('../api/shipping'));
     app.use('/api/admin', require('../../routes/api/admin'));
     app.use('/api/dashboard', apiDashboard);
     app.use('/api/messages', apiMessages);

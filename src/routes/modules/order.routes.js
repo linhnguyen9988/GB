@@ -3,7 +3,7 @@ const DBConnection = require("../../configs/DBConnection");
 const SqlString = require('sqlstring');
 const axios = require('axios');
 const jwtAuth = require('../../middleware/jwtAuth');
-const { getDefaultAccount } = require('../../services/viettelAccountService');
+const { getViettelAddressAccount } = require('../../services/shippingAccounts');
 const { applyAddressFixes, cleanSearchTerm, normalizeSQL } = require('../../utils/address');
 
 module.exports = function registerOrderRoutes(router) {
@@ -31,7 +31,7 @@ module.exports = function registerOrderRoutes(router) {
             const missingAddresses = addressData.filter(item => !item.xa);
             if (missingAddresses.length === 0) return;
 
-            const account = await getDefaultAccount(req.user.id);
+            const account = await getViettelAddressAccount(req.user.id);
             if (!account || !account.token) return;
             const token = account.token;
 

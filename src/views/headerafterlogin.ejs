@@ -61,7 +61,7 @@
 
 <script>
   window.CURRENT_USER_ID = "<%= user.id %>";
-  window.ACTIVE_CARRIER = "<%= typeof activeCarrier !== 'undefined' ? activeCarrier : 'viettel' %>";
+  window.ACTIVE_CARRIER = <%- JSON.stringify(typeof activeCarrier !== 'undefined' && ['jt', 'viettel'].includes(activeCarrier) ? activeCarrier : null) %>;
   function gbEscapeText(value) { const e = document.createElement('span'); e.textContent = value == null ? '' : String(value); return e.innerHTML; }
   const socket = io();
   var lockToast = 0;
@@ -564,6 +564,23 @@
     });
   }
 
+  function CancelJTOrder(mavandon) {
+    $.ajax({
+      url: '/cancelorderjt',
+      method: 'POST',
+      data: { orderid: mavandon },
+      dataType: 'JSON',
+      success: function (data) {
+        const message = data.message || 'J&T chưa xác nhận hủy đơn';
+        ShowCenterToast(data.success ? 'success' : 'danger', gbEscapeText(mavandon + ' · ' + message), 5000);
+      },
+      error: function (xhr) {
+        const message = xhr.responseJSON?.message || 'Chưa nhận được phản hồi hủy đơn từ GB.';
+        ShowCenterToast('danger', gbEscapeText(mavandon + ' · ' + message), 5000);
+      }
+    });
+  }
+
   // type: 1-Duyệt đơn hàng, 2-Duyệt hoàn, 3-Phát tiếp
   function CapNhatDonViettel(mavandon, type, label) {
     document.getElementById("notetoshow").insertAdjacentHTML("afterend",
@@ -696,14 +713,17 @@
         var status = d.statuscode;
         var badge = statusBadgeClass(status);
         var button = '';
+        const isJT = d.provider === 'J&T';
+        const isViettel = !d.provider || d.provider === 'Viettel';
 
-        if (Number(status) === 505) {
+        if (isViettel && Number(status) === 505) {
           button += `<button type="button" class="btn btn-outline-success" onclick="CapNhatDonViettel('${realorderid}', 3, 'phát tiếp')" data-bs-dismiss="modal"><i class="bi bi-arrow-repeat"></i> Phát tiếp</button>`;
           button += `<button type="button" class="btn btn-outline-danger" onclick="CapNhatDonViettel('${realorderid}', 2, 'duyệt hoàn')" data-bs-dismiss="modal"><i class="bi bi-box-arrow-in-left"></i> Duyệt hoàn</button>`;
         }
 
-        if (status < 105) {
-          button += `<button type="button" class="btn btn-outline-danger" onclick="CancelViettelOrder('${realorderid}')" data-bs-dismiss="modal"><i class="bi bi-x-circle"></i> Hủy đơn</button>`;
+        if (/^[A-Za-z0-9_-]{1,45}$/.test(realorderid) && (isJT || isViettel) && status < 105) {
+          const cancel = isJT ? 'CancelJTOrder' : 'CancelViettelOrder';
+          button += `<button type="button" class="btn btn-outline-danger" onclick="${cancel}('${realorderid}')" data-bs-dismiss="modal"><i class="bi bi-x-circle"></i> Hủy đơn</button>`;
         }
 
         var noEditStatuses = [101, 107, 201, 503, 510, 501, 504, 502, 515, 551];
@@ -712,7 +732,7 @@
         }
 
         var partialApproveStatuses = [202, 500, 505, 506, 507, 508, 509, 550];
-        if (partialApproveStatuses.includes(Number(status))) {
+        if (isViettel && partialApproveStatuses.includes(Number(status))) {
           button += `<button type="button" class="btn btn-outline-primary" onclick="CapNhatDonViettel('${realorderid}', 1, 'duyệt 1 phần')" data-bs-dismiss="modal"><i class="bi bi-check2-circle"></i> Duyệt 1 phần</button>`;
         }
         document.getElementById("notetoshow").insertAdjacentHTML("afterend",
@@ -1296,6 +1316,7 @@
   }
 
   function PushOrder() {
+    if (!window.ACTIVE_CARRIER) return ShowCenterToast('warning', 'Chưa chọn tài khoản lên đơn mặc định trong trang quản trị.', 5000);
     if (window.ACTIVE_CARRIER === 'jt') PushJTOrder();
     else PushViettelOrder();
   }
@@ -1366,14 +1387,18 @@
       success: function (data) {
         pushBtn.disabled = false;
         if (data.success) {
-          ShowAlertModal('✅ J&T: ' + data.order_code);
+          if (data.printDispatched === false) {
+            ShowCenterToast('warning', gbEscapeText(`Đã lên đơn J&T ${data.order_code}. ${data.printMessage || 'Chưa gửi được lệnh in.'} Bạn có thể in lại từ danh sách đơn.`), 5000);
+          } else {
+            ShowAlertModal('✅ J&T: ' + data.order_code);
+          }
         } else {
-          ShowAlertModal('❌ ' + data.message);
+          ShowCenterToast(data.order_created ? 'warning' : 'danger', gbEscapeText(data.message || 'Không tạo được đơn J&T.'), 5000);
         }
       },
-      error: function () {
+      error: function (xhr) {
         pushBtn.disabled = false;
-        ShowAlertModal('Lỗi kết nối server');
+        ShowCenterToast('danger', gbEscapeText(xhr.responseJSON?.message || 'Không nhận được phản hồi. Kiểm tra đơn J&T trước khi gửi lại.'), 5000);
       }
     });
   }
@@ -1915,7 +1940,7 @@
                   <span class="input-group-text qr-ig-icon"><i class="bi bi-coin"></i></span>
                   <input type="text" pattern="[0-9]+" inputmode="numeric" id="CODX" placeholder="COD" class="form-control" value="0" onfocus="SelectX(this)" onkeyup="onlyNumberAmount(this)">
                   <input type="text" pattern="[0-9]+" inputmode="numeric" id="SOKG" placeholder="KG" class="form-control" style="max-width:70px" value="1" onfocus="SelectX(this)" onkeyup="onlyNumberAmount(this)">
-                  <button type="button" id="pushviettelorder" class="btn btn-success" onclick="PushOrder()" title="Lên đơn ${window.ACTIVE_CARRIER === 'jt' ? 'J&T' : 'Viettel'}"><i class="bi bi-box-seam"></i> ${window.ACTIVE_CARRIER === 'jt' ? 'J&amp;T' : 'Viettel'}</button>
+                  <button type="button" id="pushviettelorder" class="btn btn-success" onclick="PushOrder()" title="Lên đơn ${window.ACTIVE_CARRIER === 'jt' ? 'J&T' : window.ACTIVE_CARRIER === 'viettel' ? 'Viettel' : ''}"><i class="bi bi-box-seam"></i> ${window.ACTIVE_CARRIER === 'jt' ? 'J&amp;T' : window.ACTIVE_CARRIER === 'viettel' ? 'Viettel' : 'Lên đơn'}</button>
                 </div>
               </div>
               <select id="diachilendonviettel" class="form-select qr-select mb-2"></select>
