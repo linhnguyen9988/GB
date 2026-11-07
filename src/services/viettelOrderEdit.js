@@ -1,5 +1,6 @@
 'use strict';
 
+const { toViettelWeightGrams: toViettelWeight } = require('../utils/viettelWeight');
 const VIETTEL_BASE = 'https://partner.viettelpost.vn';
 const { getAccountForOrder } = require('./viettelAccountService');
 const DEFAULT_ORDER_NOTE = 'Ko giao được gọi shop. Cho xem hàng. Ko nhận hàng thu 30k';
@@ -119,17 +120,6 @@ function parseKg(v) {
     return { value: Math.round(n * 100) / 100 };
 }
 
-function toViettelWeight(kgInput) {//duoi 3kg -> 1kg, 4 -> 2, 5->3, 15->12
-    let kg = parseFloat(kgInput) * 1000;
-    if (kg <= 3000) kg = 1000;
-    else if (kg <= 4000) kg = 2000;
-    else if (kg <= 6000) kg = 3000;
-    else if (kg <= 7000) kg = 4000;
-    else if (kg <= 8000) kg = kg - 3000;
-    else if (kg <= 9000) kg = kg - 4000;
-    else kg = kg - 5000;
-    return kg;
-}
 
 function parseField(field, raw) {
     switch (field) {

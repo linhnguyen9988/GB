@@ -3,6 +3,7 @@ const DBConnection = require("../../configs/DBConnection");
 const SqlString = require('sqlstring');
 const axios = require('axios');
 const jwtAuth = require('../../middleware/jwtAuth');
+const { toViettelWeightGrams } = require('../../utils/viettelWeight');
 const viettelOrderEdit = require('../../services/viettelOrderEdit');
 const { CreateOrderID } = require('../../utils/orderId');
 const { PrintBillViettel } = require('../../services/viettelService');
@@ -353,15 +354,8 @@ module.exports = function registerViettelRoutes(router) {
         if (address.length < 10) return res.json({ error: 'Chưa có địa chỉ' });
 
         cod = cod.toString().replaceAll('.', '');
-        kg = parseFloat(kg) * 1000;
-        //duoi 3kg -> 1kg, 4 -> 2, 5->3, 15->12
-        if (kg <= 3000) kg = 1000;
-        else if (kg <= 4000) kg = 2000;
-        else if (kg <= 6000) kg = 3000;
-        else if (kg <= 7000) kg = 4000;
-        else if (kg <= 8000) kg = kg - 3000;
-        else if (kg <= 9000) kg = kg - 4000;
-        else kg = kg - 5000;
+        try { kg = toViettelWeightGrams(kgreal); }
+        catch (error) { return res.status(400).json({ error: error.message }); }
 
         const typecod = (cod > 0) ? 3 : 1;
 

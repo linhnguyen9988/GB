@@ -1,5 +1,6 @@
 'use strict';
 const bwipjs = require('bwip-js');
+const { toViettelWeightGrams: billedGram } = require('../utils/viettelWeight');
 const PDFDocument = require('pdfkit');
 const path = require('path');
 const { JT_SENDER, JT_ORDER_NOTE, JT_PRODUCT_NAME } = require('../configs/jtLabelConfig');
@@ -24,18 +25,6 @@ function catGonChuoi(chuoi, doDaiToiDa) {
     return chuoi.length <= doDaiToiDa ? chuoi : chuoi.substring(0, doDaiToiDa) + '...';
 }
 
-function billedGram(kg) {
-    let g = (Number(kg) > 0 ? Number(kg) : 1) * 1000;
-    if (g <= 1000) g = 500;
-    else if (g <= 2000) g = 1000;
-    else if (g <= 3000) g = 1500;
-    else if (g <= 4000) g = 2000;
-    else if (g <= 6000) g = g - 2000;
-    else if (g <= 9000) g = g - 3000;
-    else if (g <= 15000) g = g - 4000;
-    else g = g - 5000;
-    return g;
-}
 
 async function viettelBarcodeImg(code) {
     const buf = await bwipjs.toBuffer({ bcid: 'code128', text: code, scale: 2, height: 8, includetext: false, paddingwidth: 5, paddingheight: 0, backgroundcolor: 'FFFFFF' });
