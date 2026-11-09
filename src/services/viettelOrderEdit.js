@@ -157,7 +157,7 @@ function normalizeOriginal(order, noteSupported) {
         phone: normalizePhone(order.phone),
         address: cleanText(order.address).replace(/\s+/g, ' '),
         cod: Number(order.cod) || 0,
-        kg: Number(order.kg) || 0,
+        kg: Number(order.viettel_input_kg ?? order.kg) || 0,
         note: noteSupported && order.ordernote !== null && order.ordernote !== undefined
             ? cleanText(order.ordernote) : DEFAULT_ORDER_NOTE
     };
@@ -422,7 +422,7 @@ async function editOrder({ db, axios, realorderid, input, preprocess, appUserId 
     }
 
     const dbSet = {};
-    const colOf = { name: 'name', phone: 'phone', address: 'address', cod: 'cod', kg: 'kg', note: 'ordernote' };
+    const colOf = { name: 'name', phone: 'phone', address: 'address', cod: 'cod', kg: 'viettel_input_kg', note: 'ordernote' };
     v.changed.forEach(f => { dbSet[colOf[f]] = v.values[f]; });
     const vo = body.data || {};
     const warnings = [];
@@ -432,7 +432,15 @@ async function editOrder({ db, axios, realorderid, input, preprocess, appUserId 
         warnings.push('Viettel không trả về Xã/Phường cho địa chỉ mới, hãy kiểm tra lại trên Viettel.');
     }
     try {
-        await db.query('UPDATE lendon SET ?, last_update = NOW() WHERE realorderid = ?', [dbSet, ctx.order.realorderid]);
+        if (v.changed.includes('kg')) {
+            await db.query(
+                `UPDATE lendon SET ?, kg = CASE WHEN viettel_weight_status_at <=> ? THEN ? ELSE kg END,
+                     last_update = NOW() WHERE realorderid = ?`,
+                [dbSet, ctx.order.viettel_weight_status_at ?? null, payload.PRODUCT_WEIGHT / 1000, ctx.order.realorderid]
+            );
+        } else {
+            await db.query('UPDATE lendon SET ?, last_update = NOW() WHERE realorderid = ?', [dbSet, ctx.order.realorderid]);
+        }
     } catch (e) {
         console.error('[editOrder] Viettel đã sửa nhưng lưu DB lỗi:', e.message);
         warnings.push('Đã sửa trên Viettel nhưng lưu vào hệ thống bị lỗi, dữ liệu tại đây có thể chưa khớp.');

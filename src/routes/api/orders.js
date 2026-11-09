@@ -111,10 +111,11 @@ router.get('/logs/:orderNumber', auth, async (req, res) => {
 
     let rows = [];
     if (provider === 'J&T') {
-      const sigCol = (await require('../../services/jtExpressService').jtHasSigpic()) ? ', sigpic' : '';
+      const { jtHasSigpic, formatJTScanTime } = require('../../services/jtExpressService');
+      const sigCol = (await jtHasSigpic()) ? ', sigpic' : '';
       [rows] = await db.query(
         `SELECT
-           scantime        AS status_date_raw,
+           CAST(scantime AS CHAR) AS status_date_raw,
            scantypename    AS status_name,
            CONCAT_WS(', ', NULLIF(scanward,''), NULLIF(scancity,''), NULLIF(scanprov,'')) AS location,
            scanbyname      AS employee_name,
@@ -124,9 +125,10 @@ router.get('/logs/:orderNumber', auth, async (req, res) => {
            scantypecode    AS status_code${sigCol}
          FROM jtwaybill
          WHERE billcode = ?
-         ORDER BY scantime DESC`,
+         ORDER BY REPLACE(CAST(scantime AS CHAR), 'T', ' ') DESC`,
         [orderNumber]
       );
+      for (const row of rows) row.status_date_raw = formatJTScanTime(row.status_date_raw) || row.status_date_raw;
     } else {
       [rows] = await db.query(
         `SELECT * FROM order_logs

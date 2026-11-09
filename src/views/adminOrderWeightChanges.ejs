@@ -1,0 +1,105 @@
+<%- include('headerafterlogin'); -%>
+
+<%
+const kgFormat = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 6 });
+const changeFormat = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 6, signDisplay: 'exceptZero' });
+const dateFormat = new Intl.DateTimeFormat('vi-VN', {
+    dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Ho_Chi_Minh'
+});
+%>
+<main class="container-xl py-4">
+    <a href="/admin" class="btn btn-sm btn-outline-secondary mb-3">← Quản trị</a>
+    <h1 class="h3 mb-2">Đối chiếu cân nặng</h1>
+    <p class="text-body-secondary mb-4">
+        So sánh số ký gửi hãng với số ký hiện tại. Với đơn J&amp;T nhập 3 kg và gửi 2 kg,
+        đơn sẽ hiện nếu J&amp;T báo lại 3 kg hoặc một mức khác 2 kg.
+    </p>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <form action="/admin/order-weight-changes" method="get" class="row g-3 align-items-end">
+                <div class="col-12 col-md-4">
+                    <label for="weight-search" class="form-label">Mã đơn hoặc mã vận đơn</label>
+                    <input id="weight-search" name="search" class="form-control" maxlength="64" placeholder="Không bắt buộc" value="<%= search %>">
+                </div>
+                <div class="col-6 col-md-3">
+                    <label for="weight-period" class="form-label">Cập nhật đơn</label>
+                    <select id="weight-period" name="period" class="form-select">
+                        <option value="recent" <%= allTime ? '' : 'selected' %>>10 ngày gần nhất</option>
+                        <option value="all" <%= allTime ? 'selected' : '' %>>Tất cả thời gian</option>
+                    </select>
+                </div>
+                <div class="col-6 col-md-3">
+                    <label for="weight-carrier" class="form-label">Đơn vị vận chuyển</label>
+                    <select id="weight-carrier" name="carrier" class="form-select">
+                        <option value="">Tất cả</option>
+                        <option value="jt" <%= carrier === 'jt' ? 'selected' : '' %>>J&amp;T</option>
+                        <option value="viettel" <%= carrier === 'viettel' ? 'selected' : '' %>>Viettel Post</option>
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary">Lọc đơn</button>
+                </div>
+            </form>
+        </div>
+
+        <% if (error) { %>
+            <div class="alert alert-danger mx-3" role="alert"><%= error %></div>
+        <% } else if (orders.length === 0) { %>
+            <p class="text-body-secondary border-top mb-0 p-4">Không có đơn chênh lệch cân nặng <%= !allTime && page === 1 && !carrier && !search ? 'trong 10 ngày gần nhất.' : 'khớp với bộ lọc trên trang này.' %></p>
+        <% } else { %>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <caption class="visually-hidden">Đơn hàng có chênh lệch cân nặng</caption>
+                    <thead class="table-light">
+                        <tr>
+                            <th scope="col" class="ps-3">Mã vận đơn</th>
+                            <th scope="col">Hãng</th>
+                            <th scope="col" class="text-end text-nowrap">Số ký gửi hãng</th>
+                            <th scope="col" class="text-end text-nowrap">Hiện tại</th>
+                            <th scope="col" class="text-end text-nowrap">Chênh lệch</th>
+                            <th scope="col">Trạng thái</th>
+                            <th scope="col" class="pe-3 text-nowrap">Cập nhật đơn</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% for (const order of orders) {
+                            const original = Number(order.original_kg);
+                            const declared = Number(order.declared_kg);
+                            const current = Number(order.kg);
+                            const updated = order.updated_at ? new Date(order.updated_at) : null;
+                        %>
+                            <tr>
+                                <th scope="row" class="ps-3">
+                                    <span class="text-nowrap"><%= order.realorderid || order.orderid %></span>
+                                    <% if (order.name) { %><small class="d-block fw-normal text-body-secondary"><%= order.name %></small><% } %>
+                                </th>
+                                <td class="text-nowrap"><%= order.provider === 'J&T' ? 'J&T' : 'Viettel Post' %></td>
+                                <td class="text-end text-nowrap">
+                                    <%= kgFormat.format(declared) %> kg
+                                    <% if (declared !== original) { %>
+                                        <small class="d-block text-body-secondary">Nhập <%= kgFormat.format(original) %> kg</small>
+                                    <% } %>
+                                </td>
+                                <td class="text-end text-nowrap fw-semibold"><%= kgFormat.format(current) %> kg</td>
+                                <td class="text-end text-nowrap"><%= changeFormat.format(current - declared) %> kg</td>
+                                <td><%= order.statustext || '—' %></td>
+                                <td class="pe-3 text-nowrap"><%= updated && Number.isFinite(updated.getTime()) ? dateFormat.format(updated) : '—' %></td>
+                            </tr>
+                        <% } %>
+                    </tbody>
+                </table>
+            </div>
+        <% } %>
+
+        <% if (!error && (previous || next)) { %>
+            <nav class="card-footer d-flex justify-content-between align-items-center" aria-label="Trang kết quả">
+                <% if (previous) { %><a class="btn btn-sm btn-outline-secondary" href="<%= previous %>">← Trước</a><% } else { %><span></span><% } %>
+                <span class="small text-body-secondary">Trang <%= page %></span>
+                <% if (next) { %><a class="btn btn-sm btn-outline-secondary" href="<%= next %>">Sau →</a><% } else { %><span></span><% } %>
+            </nav>
+        <% } %>
+    </div>
+</main>
+
+<%- include('footer'); -%>

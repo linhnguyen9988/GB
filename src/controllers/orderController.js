@@ -16,15 +16,21 @@ let handleOrder = async (req, res) => {
 
         const finalStartDate = start_date || defaultStart;
         const finalEndDate = end_date || defaultEnd;
-        let sql = "SELECT l.*, k.pageid FROM lendon l INNER JOIN khachhang k ON l.userid = k.userid WHERE DATE(l.time) BETWEEN ? AND ?";
+        let sql = `SELECT l.*, COALESCE(k.pageid, (
+                    SELECT legacy.pageid FROM khachhang legacy
+                    WHERE legacy.userid = l.userid ORDER BY legacy.id DESC LIMIT 1
+                )) AS pageid
+                FROM lendon l
+                LEFT JOIN khachhang k ON k.id = l.khid
+                WHERE DATE(l.time) BETWEEN ? AND ?`;
         let params = [finalStartDate, finalEndDate];
 
         if (search.trim() !== "") {
-            sql += " AND realorderid LIKE ?";
+            sql += " AND l.realorderid LIKE ?";
             params.push(`%${search}%`);
         }
 
-        sql += " ORDER BY time DESC";
+        sql += " ORDER BY l.time DESC";
 
         const [rows] = await db.execute(sql, params); 
 

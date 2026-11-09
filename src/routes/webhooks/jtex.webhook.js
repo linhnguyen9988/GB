@@ -2,8 +2,8 @@
 const DBConnection = require("../../configs/DBConnection");
 const { sendFcmToUser } = require('../fcm');
 const {
-    jtHasSigpic, isPartReturnBill, eventCode, toWaybillRow, toEpoch,
-    insertWaybillIfNew, latestStoredScanEpoch, applyJTStatus, createPartReturnOrder
+    jtHasSigpic, isPartReturnBill, eventCode, toWaybillRow, toEpoch, readJTDetails,
+    insertWaybillIfNew, readStoredJTWaybill, latestStoredScanEpoch, lockJTOrder, applyJTStatus, createPartReturnOrder
 } = require('../../services/jtExpressService');
 
 const JT_NOTIFY_CODES = new Set([116, 117, 118, 120]);
@@ -34,56 +34,62 @@ async function notifyShop(db, billCode, scanCode, statusText, issueText) {
     });
 }
 
+async function storeFeedback(data) {
+    const billCode = String(data?.billCode ?? '').trim();
+    const events = readJTDetails(data?.details);
+    if (!/^[A-Za-z0-9_-]{1,45}$/.test(billCode) || !events.length) {
+        throw new Error('Webhook J&T thiếu mã vận đơn hoặc mốc hành trình');
+    }
+    const newest = events[events.length - 1];
+    const withSig = await jtHasSigpic();
+    const conn = await DBConnection.getConnection();
+    try {
+        await conn.beginTransaction();
+        await lockJTOrder(conn, billCode);
+        const previous = await readStoredJTWaybill(conn, billCode, withSig);
+        const storedNewest = latestStoredScanEpoch(previous);
+
+        const partSign = Number(newest.partSign ?? data.partSign ?? 0);
+        if (partSign === 1 && !isPartReturnBill(billCode)) {
+            await createPartReturnOrder(billCode, conn);
+        }
+        let latestIssue;
+        for (const event of events) {
+            latestIssue = await insertWaybillIfNew(conn, toWaybillRow(billCode, event), withSig);
+        }
+
+        const stale = storedNewest !== null && toEpoch(newest.scanTime) < storedNewest;
+        const status = stale ? null : await applyJTStatus(billCode, newest, conn, latestIssue);
+        await conn.commit();
+        return { billCode, scanCode: eventCode(newest), status };
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    } finally {
+        conn.release();
+    }
+}
+
 module.exports = function registerJtexWebhook(router) {
     router.post('/jtex', async function (req, res) {
-        res.json({ "code": "1", "msg": "success", "data": null });
-
+        let result;
         try {
-            const { bizContent } = req.body;
-            if (!bizContent) return;
-
+            const { bizContent } = req.body || {};
             const data = typeof bizContent === 'string' ? JSON.parse(bizContent) : bizContent;
-            const billCode = data.billCode;
-            const events = Array.isArray(data.details) ? data.details.filter(Boolean) : [];
-            if (!billCode || events.length === 0) return;
-
-            const db = DBConnection.promise();
-
-            events.sort((a, b) => (toEpoch(a.scanTime) || 0) - (toEpoch(b.scanTime) || 0));
-            const newest = events[events.length - 1];
-            const scanCode = eventCode(newest);
-
-            const partSign = Number(newest.partSign ?? data.partSign ?? 0);
-            if (partSign === 1 && !isPartReturnBill(billCode)) {
-                await createPartReturnOrder(billCode);
-            }
-
-            const storedNewestEpoch = await latestStoredScanEpoch(billCode);
-
-            const withSig = await jtHasSigpic();
-            for (const ev of events) {
-                await insertWaybillIfNew(db, toWaybillRow(billCode, ev), withSig);
-            }
-
-            const newestEpoch = toEpoch(newest.scanTime);
-            const isStale = storedNewestEpoch !== null && newestEpoch !== null && newestEpoch < storedNewestEpoch;
-            if (isStale) return;
-
-            const st = await applyJTStatus(billCode, newest);
-            if (!st.found) {
-                console.warn(`[Webhook J&T] KHÔNG TÌM THẤY đơn hàng. Bill: ${billCode}`);
-                return;
-            }
-
-            if (st.applied && JT_NOTIFY_CODES.has(scanCode)) {
-                try {
-                    await notifyShop(db, billCode, scanCode, st.statustext, st.issue);
-                } catch (notiError) {
-                    console.error('[J&T FCM] Lỗi gửi notification:', notiError.message);
-                }
-            }
+            result = await storeFeedback(data);
         } catch (error) {
-            console.error('Lỗi Webhook J&T:', error);
+            console.error('Lỗi lưu webhook J&T:', error.message);
+            return res.json({ code: '0', msg: 'Không lưu được hành trình J&T', data: null });
+        }
+        res.json({ code: '1', msg: 'success', data: null });
+
+        const { billCode, scanCode, status } = result;
+        if (status?.applied && JT_NOTIFY_CODES.has(scanCode)) {
+            try {
+                await notifyShop(DBConnection.promise(), billCode, scanCode, status.statustext, status.issue);
+            } catch (error) {
+                console.error('[J&T FCM] Lỗi gửi notification:', error.message);
+            }
         }
     });
 };

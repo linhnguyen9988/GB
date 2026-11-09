@@ -58,7 +58,7 @@ async function renderViettelHtml(o) {
                     <tr><td colspan="2">Tỉnh/TP: <p style="font-size:14px;display:inline;font-weight: bold;">${escapeHtml(tinhSort)}</p></td></tr>
                     <tr><td colspan="2">Quận/Huyện: <p style="font-size:13px;display:inline;font-weight: bold;">${escapeHtml(o.huyen)}</p></td></tr>
                     <tr><td colspan="2">Phường/Xã: <p style="font-size:13px;display:inline;font-weight: bold;">${escapeHtml(o.xa)}</p></td></tr>
-                    <tr><td colspan="2" align="right"><p style="font-size:10px;display:inline;">${billedGram(o.kg) / 1000} KG</p></td></tr>
+                    <tr><td colspan="2" align="right"><p style="font-size:10px;display:inline;">${billedGram(o.viettel_input_kg ?? o.kg) / 1000} KG</p></td></tr>
                     <tr><td colspan="2"><center>${barcode}<br><p style="font-size:10px;display:inline;vertical-align: top;">${escapeHtml(code)}</p></center></td></tr>
                     <tr><td colspan="2"><h5>${escapeHtml(o.name)} • ${escapeHtml(o.phone)}</h5></td></tr>
                     <tr><td colspan="2"><p style="font-size:10px;display:inline;vertical-align: top;">${escapeHtml(catGonChuoi(o.address, 60))}</p></td></tr>

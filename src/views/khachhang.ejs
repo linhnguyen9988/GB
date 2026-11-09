@@ -68,6 +68,7 @@
                                             <span class="input-group-text" id="basic-addon2">Đ</span>
                                             <input type="text" pattern="[0-9]+" inputmode="numeric" id="KG"
                                                 class="form-control input-sm" width="20px" min="0" max="50"
+                                                value="<%= typeof activeCarrier !== 'undefined' && activeCarrier === 'jt' ? 2 : 1 %>"
                                                 onfocus="SelectX(this)">
                                             <span class="input-group-text" id="labelkg">KG</span>
                                         </div>
@@ -165,5 +166,5 @@
                 </div>
             </div>
         </div>
-        <script src="/js/khachhang.js"></script>
+        <script src="/js/khachhang.js?v=20261109-order-toast"></script>
         <%- include('footer'); -%>

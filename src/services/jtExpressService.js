@@ -108,32 +108,54 @@ function jtTypeName(code, name) {
     return n;
 }
 
-function jtPics(d) {
-    d = d || {};
-    const urls = [];
-    const addLoose = v => {
-        if (Array.isArray(v)) v.forEach(addLoose);
-        else if (typeof v === 'string' && v.trim() !== '') urls.push(v.trim());
-    };
-    const addStrict = v => {
-        if (Array.isArray(v)) v.forEach(addStrict);
-        else if (typeof v === 'string') v.split(/,(?=https?:\/\/)/i).map(x => x.trim()).forEach(u => { if (/^https?:\/\//i.test(u)) urls.push(u); });
-    };
-    addLoose(d.pictureUrl);
-    addLoose(d.sigPicUrl);
-    for (const [k, v] of Object.entries(d)) {
-        if (k === 'pictureUrl' || k === 'sigPicUrl') continue;
-        if (/pic|image|img|photo/i.test(k)) addStrict(v);
+function mergeJTPictures(...values) {
+    const urls = new Set();
+    function add(value) {
+        if (Array.isArray(value)) {
+            value.forEach(add);
+            return;
+        }
+        if (typeof value !== 'string') return;
+        const text = value.trim();
+        if (text.startsWith('[')) {
+            try { add(JSON.parse(text)); } catch (_) {}
+            return;
+        }
+        for (const url of text.split(/,\s*(?=https?:\/\/)/i)) {
+            const candidate = url.trim();
+            if (/^https?:\/\/[^\s"'<>]+$/i.test(candidate)) urls.add(candidate);
+        }
     }
-    const uniq = [...new Set(urls)];
-    return uniq.length ? JSON.stringify(uniq) : null;
+    values.forEach(add);
+    return urls.size ? JSON.stringify([...urls]) : null;
 }
 
+const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+
 function toEpoch(v) {
-    if (!v) return null;
-    if (v instanceof Date) return v.getTime();
-    const t = new Date(String(v).replace(' ', 'T')).getTime();
-    return Number.isNaN(t) ? null : t;
+    if (v instanceof Date) return Number.isFinite(v.getTime()) ? v.getTime() : null;
+    const match = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})(\.\d{1,3})?(Z|[+-]\d{2}:?\d{2})?$/i.exec(String(v || '').trim());
+    if (!match) return null;
+    const [, day, clock, fraction = '', zone = '+07:00'] = match;
+    const calendar = `${day}T${clock}`;
+    const utc = Date.parse(calendar + 'Z');
+    if (!Number.isFinite(utc) || new Date(utc).toISOString().slice(0, 19) !== calendar) return null;
+    const epoch = Date.parse(calendar + fraction + zone);
+    return Number.isFinite(epoch) ? epoch : null;
+}
+
+function formatJTScanTime(value) {
+    const epoch = toEpoch(value);
+    if (epoch === null) return null;
+    return new Date(epoch + VN_OFFSET_MS).toISOString().slice(0, 19).replace('T', ' ');
+}
+
+function readJTDetails(details) {
+    const events = Array.isArray(details) ? details : details && typeof details === 'object' ? [details] : [];
+    if (events.some(event => !event || toEpoch(event.scanTime) === null)) {
+        throw new Error('J&T trả mốc hành trình có thời gian không hợp lệ');
+    }
+    return [...events].sort((a, b) => toEpoch(a.scanTime) - toEpoch(b.scanTime));
 }
 
 function toWaybillRow(billCode, d) {
@@ -141,6 +163,10 @@ function toWaybillRow(billCode, d) {
     let typeName = jtTypeName(code, d.scanTypeName);
     if (code === 110 && /^TTKT/i.test(String(d.scanNetworkName || ''))) typeName = 'Hàng đến TTKT';
     const phone = d.staffContact || d.scanByContact || null;
+    const reasons = code === 118 || code === 120
+        ? [d.abnormalPieceName, d.reason, d.desc] : [d.reason, d.abnormalPieceName, d.desc];
+    const issue = reasons.map(value => typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '')
+        .find(Boolean);
     return {
         billcode: billCode,
         scanbycode: d.scanByCode || null,
@@ -150,11 +176,12 @@ function toWaybillRow(billCode, d) {
         scancity: d.scanNetworkCity || null,
         scanprov: d.scanNetworkProvince || null,
         scanpost: d.scanNetworkName || null,
-        scantime: d.scanTime || null,
+        scantime: formatJTScanTime(d.scanTime),
         scantypename: typeName,
-        issuename: d.reason || d.abnormalPieceName || null,
+        issuename: issue ? issue.slice(0, 255) : null,
         scantypecode: code || null,
-        sigpic: jtPics(d)
+        // Trace uses pictureUrl and status feedback uses sigPicUrl.
+        sigpic: mergeJTPictures(d.pictureUrl, d.sigPicUrl)
     };
 }
 
@@ -170,51 +197,87 @@ async function jtHasSigpic() {
     return _sigpicCache.value;
 }
 
-async function insertWaybillIfNew(conn, r, withSig) {
-    const cols = ['billcode', 'scanbycode', 'scanbycontact', 'scanbyname', 'scanward', 'scancity', 'scanprov', 'scanpost', 'scantime', 'scantypename', 'issuename', 'scantypecode'];
-    const vals = [r.billcode, r.scanbycode, r.scanbycontact, r.scanbyname, r.scanward, r.scancity, r.scanprov, r.scanpost, r.scantime, r.scantypename, r.issuename, r.scantypecode];
-    if (withSig) { cols.push('sigpic'); vals.push(r.sigpic); }
-    const [res] = await conn.query(
-        `INSERT INTO jtwaybill (${cols.join(',')})
-         SELECT ${cols.map(() => '?').join(',')} FROM DUAL
-         WHERE NOT EXISTS (SELECT 1 FROM jtwaybill WHERE billcode = ? AND scantime <=> ? AND scantypecode <=> ?)`,
-        [...vals, r.billcode, r.scantime, r.scantypecode]
+async function insertWaybill(conn, row, withSig) {
+    const { sigpic, ...fields } = row;
+    if (withSig) fields.sigpic = sigpic;
+    else if (sigpic) throw new Error('Thiếu cột jtwaybill.sigpic để lưu ảnh POD');
+    await conn.query('INSERT INTO jtwaybill SET ?', [fields]);
+}
+
+async function insertWaybillIfNew(conn, row, withSig) {
+    const match = `billcode = ? AND REPLACE(CAST(scantime AS CHAR), 'T', ' ') <=> ? AND scantypecode <=> ? AND scanpost <=> ?`;
+    const params = [row.billcode, row.scantime, row.scantypecode, row.scanpost];
+    const [existing] = await conn.query(
+        `SELECT issuename${withSig ? ', sigpic' : ''} FROM jtwaybill WHERE ${match}`, params
     );
-    if (withSig && r.sigpic && res.affectedRows === 0) {
-        await conn.query(
-            `UPDATE jtwaybill SET sigpic = ?
-             WHERE billcode = ? AND scantime <=> ? AND scantypecode <=> ? AND (sigpic IS NULL OR sigpic = '')`,
-            [r.sigpic, r.billcode, r.scantime, r.scantypecode]
-        );
+    if (!existing.length) {
+        await insertWaybill(conn, row, withSig);
+        return row.issuename;
     }
-    return res.affectedRows;
+
+    const updates = {};
+    if (row.issuename && existing.some(item => item.issuename !== row.issuename)) {
+        updates.issuename = row.issuename;
+    }
+    if (row.sigpic) {
+        if (!withSig) throw new Error('Thiếu cột jtwaybill.sigpic để lưu ảnh POD');
+        const pictures = mergeJTPictures(...existing.map(item => item.sigpic), row.sigpic);
+        if (existing.some(item => item.sigpic !== pictures)) updates.sigpic = pictures;
+    }
+    if (Object.keys(updates).length) {
+        await conn.query(`UPDATE jtwaybill SET ? WHERE ${match}`, [updates, ...params]);
+    }
+    return row.issuename || existing.find(item => item.issuename)?.issuename || null;
 }
 
-async function latestStoredScanEpoch(billCode) {
-    const [rows] = await DBConnection.query('SELECT MAX(scantime) AS m FROM jtwaybill WHERE billcode = ?', [billCode]);
-    return toEpoch(rows[0] && rows[0].m);
+async function readStoredJTWaybill(conn, billCode, withSig) {
+    const [rows] = await conn.query(
+        `SELECT CAST(scantime AS CHAR) AS scantime, scantypecode, scanpost, issuename${withSig ? ', sigpic' : ''}
+         FROM jtwaybill WHERE billcode = ?`, [billCode]
+    );
+    return rows;
 }
 
-async function applyJTStatus(billCode, ev) {
+function waybillEventKey(row) {
+    return JSON.stringify([formatJTScanTime(row.scantime), String(row.scantypecode ?? ''), row.scanpost || '']);
+}
+
+function latestStoredScanEpoch(rows) {
+    let latest = null;
+    for (const row of rows) {
+        const epoch = toEpoch(row.scantime);
+        if (epoch !== null && (latest === null || epoch > latest)) latest = epoch;
+    }
+    return latest;
+}
+
+async function lockJTOrder(conn, billCode) {
+    const [[order]] = await conn.query("SELECT statuscode FROM lendon WHERE realorderid = ? AND provider = 'J&T' LIMIT 1 FOR UPDATE", [billCode]);
+    return order;
+}
+
+async function applyJTStatus(billCode, ev, conn, storedIssue) {
     const code = eventCode(ev);
-    if (!JT_KNOWN_CODES.includes(code)) return { applied: false, found: false };
-
-    const [prevRows] = await DBConnection.query('SELECT statuscode FROM lendon WHERE realorderid = ? LIMIT 1', [billCode]);
+    const [prevRows] = await conn.query("SELECT statuscode FROM lendon WHERE realorderid = ? AND provider = 'J&T' LIMIT 1", [billCode]);
     if (!prevRows.length) return { applied: false, found: false };
+    if (!JT_KNOWN_CODES.includes(code)) return { applied: false, found: true };
 
     const row = toWaybillRow(billCode, ev);
-    const w = Number(ev.weight);
+    const rawWeight = ev.weight;
+    const w = typeof rawWeight === 'number' || typeof rawWeight === 'string' ? Number(rawWeight) : NaN;
     const weight = Number.isFinite(w) && w > 0 ? w : null;
     const issue = (code === 118 || code === 120)
-        ? String(ev.abnormalPieceName || ev.reason || ev.desc || 'Kiện vấn đề').slice(0, 255)
+        ? (storedIssue || row.issuename || 'Kiện vấn đề')
         : null;
     const terminal = JT_FINAL_CODES.includes(code);
 
-    const [res] = await DBConnection.query(
+    const [res] = await conn.query(
         `UPDATE lendon
-            SET statuscode = ?, statustext = ?, issue = ?, kg = COALESCE(?, kg), last_update = NOW()
-          WHERE realorderid = ?${terminal ? '' : ` AND statuscode NOT IN (${JT_FINAL_CODES.join(',')})`}`,
-        [code, row.scantypename, issue, weight, billCode]
+            SET statuscode = ?, statustext = ?, issue = ?, kg = COALESCE(?, kg),
+                jt_weight_reported = CASE WHEN ? IS NULL THEN jt_weight_reported ELSE 1 END,
+                last_update = NOW()
+          WHERE realorderid = ? AND provider = 'J&T'${terminal ? '' : ` AND statuscode NOT IN (${JT_FINAL_CODES.join(',')})`}`,
+        [code, row.scantypename, issue, weight, weight, billCode]
     );
     return {
         applied: res.affectedRows > 0,
@@ -226,22 +289,18 @@ async function applyJTStatus(billCode, ev) {
     };
 }
 
-async function createPartReturnOrder(billCode) {
+async function createPartReturnOrder(billCode, conn) {
     const child = billCode + '-001';
-    try {
-        await DBConnection.query(
-            `INSERT INTO lendon
-                (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, sortline, sortcode, statuscode, statustext, useraccountid, last_update, created_by_user_id, created_by_username, jtaccountid)
-             SELECT p.name, p.phone, p.address, 0, p.kg, p.status, p.date, CONCAT(p.orderid, '-001'), ?, p.khid, p.userid, p.realfbid, NOW(), 'J&T', p.sortline, p.sortcode, 116, 'Đang chuyển hoàn', p.useraccountid, NOW(), p.created_by_user_id, p.created_by_username, p.jtaccountid
+    await conn.query(
+        `INSERT INTO lendon
+                (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, sortline, sortcode, statuscode, statustext, useraccountid, last_update, created_by_user_id, created_by_username, jtaccountid, original_kg)
+             SELECT p.name, p.phone, p.address, 0, p.kg, p.status, p.date, CONCAT(p.orderid, '-001'), ?, p.khid, p.userid, p.realfbid, NOW(), 'J&T', p.sortline, p.sortcode, 116, 'Đang chuyển hoàn', p.useraccountid, NOW(), p.created_by_user_id, p.created_by_username, p.jtaccountid, p.original_kg
                FROM lendon p
               WHERE p.realorderid = ? AND p.provider = 'J&T'
                 AND NOT EXISTS (SELECT 1 FROM lendon c WHERE c.realorderid = ?)
               LIMIT 1`,
-            [child, billCode, child]
-        );
-    } catch (e) {
-        console.error('[J&T] Lỗi tạo đơn hoàn 1 phần:', e.message);
-    }
+        [child, billCode, child]
+    );
 }
 
 async function createJTOrder(input) {
@@ -252,6 +311,8 @@ async function createJTOrder(input) {
     if (!fbname || !phone || !address) return { success: false, message: 'Thiếu thông tin người nhận!' };
 
     const codStr = normalizeMoney(cod);
+    const hasCod = Number(codStr) > 0;
+    const goodsValue = hasCod ? codStr : '100000';
     const weight = parseFloat(kg) || 1;
     const note = JT_ORDER_NOTE;
     const productName = JT_PRODUCT_NAME;
@@ -273,7 +334,7 @@ async function createJTOrder(input) {
             productType: 'EXPRESS',
             orderType: '1',
             serviceType: '1',
-            partSign: 1,
+            partSign: Number(codStr) > 0 ? 1 : 0,
             deliveryType: '1',
             totalQuantity: 1,
             isCallBeforeReturn: 1,
@@ -281,13 +342,13 @@ async function createJTOrder(input) {
             receiver: { name: fbname, mobile: phone, prov: tinh, city: huyen, area: xa, address },
             payType: 'PP_PM',
             goodsType: 'bm000010',
-            goodsValue: codStr,
-            codMoney: codStr,
-            itemsValue: codStr,
+            goodsValue,
+            ...(hasCod ? { codMoney: codStr } : {}),
+            itemsValue: goodsValue,
             remark: note,
             englishName: 'none',
-            packageInfo: { weight, length: 10, width: 10, height: 10, volume: '10' },
-            items: [{ itemName: productName, englishName: 'None', number: 1, itemValue: codStr }]
+            packageInfo: { weight: weight === 3 ? 2 : weight, length: 10, width: 10, height: 10, volume: '10' },
+            items: [{ itemName: productName, englishName: 'None', number: 1, itemValue: goodsValue }]
         }, account);
     } catch (error) {
         console.error('Lỗi Create Order J&T:', error.message);
@@ -310,11 +371,11 @@ async function createJTOrder(input) {
     try {
         await DBConnection.query(
             `INSERT INTO lendon
-                (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, sortline, sortcode, statuscode, statustext, useraccountid, last_update, xa, huyen, tinh, created_by_user_id, created_by_username, jtaccountid)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'J&T', ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?)`,
+                (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, sortline, sortcode, statuscode, statustext, useraccountid, last_update, xa, huyen, tinh, created_by_user_id, created_by_username, jtaccountid, original_kg)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'J&T', ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?)`,
             [fbname, phone, address, codStr, weight, 1, timenow, txlogisticId, body.data.billCode,
              khid, userid, realfbid, sortLine, sortCode, 100, 'Mới tạo', accountId ?? null,
-             xa, huyen, tinh, actor.id, actor.username, account.id]
+             xa, huyen, tinh, actor.id, actor.username, account.id, weight]
         );
     } catch (dbErr) {
         console.error(`Lỗi lưu đơn J&T ${body.data.billCode} vào DB:`, dbErr.message);
@@ -380,70 +441,79 @@ async function traceJT(billCode) {
     if (!order) return { ok: false, message: 'Không tìm thấy đơn J&T này' };
     const account = await accountForJTOrder(order);
     const body = await jtPost('/logistics/trace', { billCodes: billCode, txlogisticId: '' }, account, 10000);
-    if (body.code !== '1' || !Array.isArray(body.data) || body.data.length === 0) {
-        return { ok: false, message: body.msg || 'J&T chưa có dữ liệu hành trình cho đơn này!' };
+    if (String(body?.code) !== '1') {
+        return { ok: false, message: body?.msg || 'J&T chưa trả hành trình cho đơn này.' };
     }
-    const trace = body.data.find(d => d.billCode === billCode) || body.data[0];
-    const details = Array.isArray(trace.details) ? trace.details : [];
+    const shipments = Array.isArray(body.data) ? body.data : [body.data];
+    const trace = shipments.find(item => String(item?.billCode ?? '') === billCode);
+    const details = readJTDetails(trace?.details);
     if (details.length === 0) return { ok: false, message: 'Chưa có hành trình chi tiết cho đơn này.' };
-    const sortedAsc = [...details].sort((a, b) => (toEpoch(a.scanTime) || 0) - (toEpoch(b.scanTime) || 0));
-    return { ok: true, details: sortedAsc };
+    return { ok: true, details };
 }
 
 async function refreshJTStatus(billCode) {
     billCode = String(billCode || '').trim();
-    const [orders] = await DBConnection.query(
-        "SELECT statuscode FROM lendon WHERE realorderid = ? AND provider = 'J&T' LIMIT 1", [billCode]
-    );
-    if (!orders.length) throw httpError(404, 'Không tìm thấy đơn J&T này');
-
     let trace;
     try {
         trace = await traceJT(billCode);
-    } catch (e) {
-        console.error('Lỗi Trace J&T:', e.message);
-        throw httpError(502, 'Không kết nối được J&T, thử lại sau');
+    } catch (error) {
+        console.error('Lỗi Trace J&T:', error.message);
+        throw httpError(502, 'Không tải được hành trình hợp lệ từ J&T. Hành trình hiện tại vẫn được giữ.');
     }
     if (!trace.ok) throw httpError(404, trace.message);
 
     const withSig = await jtHasSigpic();
+    const newest = trace.details[trace.details.length - 1];
+    const rows = trace.details.map(event => toWaybillRow(billCode, event));
+    if (!withSig && rows.some(row => row.sigpic)) {
+        throw httpError(503, 'Thiếu cột jtwaybill.sigpic để lưu ảnh POD. Hành trình hiện tại vẫn được giữ.');
+    }
     const conn = await DBConnection.getConnection();
     try {
         await conn.beginTransaction();
-        const oldPics = new Map();
-        if (withSig) {
-            const [old] = await conn.query('SELECT scantime, scantypecode, sigpic FROM jtwaybill WHERE billcode = ?', [billCode]);
-            old.forEach(o => { if (o.sigpic) oldPics.set(`${toEpoch(o.scantime)}|${o.scantypecode}`, o.sigpic); });
+        if (!await lockJTOrder(conn, billCode)) throw httpError(404, 'Không tìm thấy đơn J&T này');
+        const oldRows = await readStoredJTWaybill(conn, billCode, withSig);
+        const storedNewest = latestStoredScanEpoch(oldRows);
+        if (storedNewest !== null && toEpoch(newest.scanTime) < storedNewest) {
+            throw httpError(409, 'J&T chưa trả về mốc mới nhất đang có. Hãy tải lại hành trình sau.');
+        }
+        const oldEvents = new Map();
+        for (const row of oldRows) {
+            const key = waybillEventKey(row);
+            const previous = oldEvents.get(key);
+            oldEvents.set(key, {
+                issue: row.issuename || previous?.issue,
+                pictures: mergeJTPictures(previous?.pictures, row.sigpic)
+            });
         }
         await conn.query('DELETE FROM jtwaybill WHERE billcode = ?', [billCode]);
-        for (const ev of trace.details) {
-            const row = toWaybillRow(billCode, ev);
-            if (withSig && !row.sigpic) row.sigpic = oldPics.get(`${toEpoch(row.scantime)}|${row.scantypecode}`) || null;
-            await insertWaybillIfNew(conn, row, withSig);
+        for (const row of rows) {
+            const previous = oldEvents.get(waybillEventKey(row));
+            row.sigpic = mergeJTPictures(row.sigpic, previous?.pictures);
+            row.issuename = row.issuename || previous?.issue || null;
+            await insertWaybill(conn, row, withSig);
         }
+        const st = await applyJTStatus(billCode, newest, conn, rows[rows.length - 1].issuename);
+        const [[after]] = await conn.query("SELECT statuscode, statustext FROM lendon WHERE realorderid = ? AND provider = 'J&T' LIMIT 1", [billCode]);
         await conn.commit();
-    } catch (e) {
+        return {
+            changed: !!st.changed,
+            statuscode: Number(after.statuscode),
+            statustext: after.statustext,
+            isFinal: JT_FINAL_CODES.includes(Number(after.statuscode)),
+            logCount: rows.length
+        };
+    } catch (error) {
         await conn.rollback();
-        throw e;
+        throw error;
     } finally {
         conn.release();
     }
-
-    const newest = trace.details[trace.details.length - 1];
-    const st = await applyJTStatus(billCode, newest);
-    const [after] = await DBConnection.query('SELECT statuscode, statustext FROM lendon WHERE realorderid = ? LIMIT 1', [billCode]);
-    const code = Number(after[0].statuscode);
-    return {
-        changed: !!st.changed,
-        statuscode: code,
-        statustext: after[0].statustext,
-        isFinal: JT_FINAL_CODES.includes(code)
-    };
 }
 
 module.exports = {
     CancelOrderJT, GetBillJT, dispatchJTLabel, reprintBillJT,
     createJTOrder, traceJT, refreshJTStatus,
-    JT_FINAL_CODES, jtHasSigpic, isPartReturnBill, eventCode, toWaybillRow, toEpoch,
-    insertWaybillIfNew, latestStoredScanEpoch, applyJTStatus, createPartReturnOrder
+    JT_FINAL_CODES, jtHasSigpic, isPartReturnBill, eventCode, toWaybillRow, toEpoch, formatJTScanTime, readJTDetails,
+    insertWaybillIfNew, readStoredJTWaybill, latestStoredScanEpoch, lockJTOrder, applyJTStatus, createPartReturnOrder
 };

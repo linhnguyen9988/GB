@@ -24,7 +24,7 @@
   <link rel="stylesheet" href="/css/label.css">
   <link rel="stylesheet" href="/css/pane.css">
   <script src="/js/bs5utils.js"></script>
-  <script src="/js/orderstatusrefresh.js"></script>
+  <script src="/js/orderstatusrefresh.js?v=20261109-jt-issue"></script>
   <script src="/js/editorderviettel.js"></script>
   <script src="/js/theme-toggle.js"></script>
 
@@ -634,7 +634,7 @@
       200: 'info', 201: 'info', 202: 'info', 300: 'info', 400: 'info', 401: 'info', 402: 'info', 403: 'info', 509: 'info',
       500: 'primary', 508: 'primary', 550: 'primary',
       501: 'success',
-      505: 'warning', 506: 'warning', 507: 'warning',
+      118: 'warning', 120: 'warning', 505: 'warning', 506: 'warning', 507: 'warning',
       515: 'danger', 551: 'danger',
       504: 'danger'
     };
@@ -714,6 +714,7 @@
         var badge = statusBadgeClass(status);
         var button = '';
         const isJT = d.provider === 'J&T';
+        const issue = getJTOrderIssue(d);
         const isViettel = !d.provider || d.provider === 'Viettel';
 
         if (isViettel && Number(status) === 505) {
@@ -757,6 +758,7 @@
             ${motphan ? `<span class="badge bg-secondary">${motphan}</span>` : ''}
             <span class="badge bg-${badge} order-detail-status">${d.statustext || 'Đang xử lý'}</span>
           </div>
+          <div class="small text-warning-emphasis mb-2 order-detail-issue" ${issue ? '' : 'hidden'}>${gbEscapeText(issue)}</div>
 
           <div class="order-detail-grid">
             <div class="order-detail-item">
@@ -765,7 +767,7 @@
             </div>
             <div class="order-detail-item">
               <i class="bi bi-aspect-ratio"></i>
-              <div><span class="order-detail-label">Khối lượng</span><span class="order-detail-value">${d.kg} Kg</span></div>
+              <div><span class="order-detail-label">Khối lượng</span><span class="order-detail-value order-detail-weight">${formatOrderDetailWeight(d)}</span></div>
             </div>
             <div class="order-detail-item order-detail-item-wide">
               <i class="bi bi-chat-dots"></i>
@@ -872,6 +874,8 @@
     currentTrackingOrderNumber = orderNumber;
 
     document.getElementById('header-order-number').innerText = orderNumber;
+    document.getElementById('header-order-weight').textContent = '—';
+    document.getElementById('header-order-issue').hidden = true;
     document.getElementById('header-customer-name').innerText = customerName || 'Khách hàng';
 
     const avatarImg = document.getElementById('header-customer-avatar');
@@ -929,7 +933,10 @@
             try { pics = log.sigpic ? JSON.parse(log.sigpic) : []; } catch (e) { pics = []; }
             pics = (Array.isArray(pics) ? pics : []).filter(u => /^https?:\/\//i.test(u));
             const picsHtml = pics.length
-              ? `<div class="d-flex flex-wrap gap-1 mt-2">${pics.map(u => `<a href="${u}" target="_blank" rel="noopener"><img src="${u}" loading="lazy" style="width:64px;height:64px;object-fit:cover;border-radius:6px"></a>`).join('')}</div>`
+              ? `<div class="d-flex flex-wrap gap-1 mt-2">${pics.map(u => {
+                  const url = gbEscapeText(u).replace(/"/g, '&quot;');
+                  return `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" loading="lazy" style="width:64px;height:64px;object-fit:cover;border-radius:6px"></a>`;
+                }).join('')}</div>`
               : '';
 
             html += `
@@ -939,7 +946,7 @@
                         <div class="card-location">📍 ${log.location || 'Đang cập nhật...'}</div>
                         ${log.employee_name ? `<a href="tel:${phone}" class="shipper-tag"><b>${log.employee_name}</b>&nbsp;${phone ? '- ' + phone : ''}</a>` : ''}
                         <div style="font-size: 0.8rem; color: #28a745; margin-top: 5px; font-weight: 600;">💰 COD: ${formattedCOD}</div>
-                        ${log.note ? `<div class="text-muted mt-1" style="font-size:0.8rem">📝 ${log.note}</div>` : ''}
+                        ${log.note ? `<div class="text-muted mt-1" style="font-size:0.8rem">📝 ${gbEscapeText(log.note)}</div>` : ''}
                         ${picsHtml}
                     </div>`;
           });
@@ -1328,7 +1335,8 @@
     var selectedOpt = add.options[add.selectedIndex];
     var address = selectedOpt.text.replace(/^[✅⚠️🔄❌]\s*/, '');
     var cod = document.getElementById("CODX").value;
-    var kg = document.getElementById("SOKG").value;
+    var kgInput = document.getElementById("SOKG");
+    var kg = kgInput.value;
 
     var xa = selectedOpt.dataset.xa || '';
     var huyen = selectedOpt.dataset.huyen || '';
@@ -1360,7 +1368,7 @@
       return;
     }
     if (cod == '' || cod < 0) cod = 0;
-    if (kg == '' || kg < 0) kg = 1;
+    if (!isNumeric(kg) || kg <= 0) kg = Number(kgInput.defaultValue);
 
     cod = cod.toString().replaceAll('.', '');
     kg = parseFloat(kg);
@@ -1387,10 +1395,11 @@
       success: function (data) {
         pushBtn.disabled = false;
         if (data.success) {
+          kgInput.value = kgInput.defaultValue;
           if (data.printDispatched === false) {
             ShowCenterToast('warning', gbEscapeText(`Đã lên đơn J&T ${data.order_code}. ${data.printMessage || 'Chưa gửi được lệnh in.'} Bạn có thể in lại từ danh sách đơn.`), 5000);
           } else {
-            ShowAlertModal('✅ J&T: ' + data.order_code);
+            ShowCenterToast('success', gbEscapeText('Đã lên đơn J&T ' + data.order_code), 5000);
           }
         } else {
           ShowCenterToast(data.order_created ? 'warning' : 'danger', gbEscapeText(data.message || 'Không tạo được đơn J&T.'), 5000);
@@ -1408,7 +1417,8 @@
     var add = document.getElementById("diachilendonviettel");
     var address = add.options[add.selectedIndex].text.replace(/^[✅⚠️🔄❌]\s*/, '');
     var cod = document.getElementById("CODX").value;
-    var kg = document.getElementById("SOKG").value;
+    var kgInput = document.getElementById("SOKG");
+    var kg = kgInput.value;
 
     if (phone.length != 10 && phone.substring(0, 2) != '02') {
       ShowAlertModal('Sai SDT');
@@ -1421,9 +1431,7 @@
     if (cod == '' || cod < 0) {
       cod = 0;
     }
-    if (kg == '' || kg < 0) {
-      kg = 2;
-    }
+    if (!isNumeric(kg) || kg <= 0) kg = Number(kgInput.defaultValue);
 
     var fbnameSend = fbnamex, khidSend = khid, useridSend = userid, realidSend = realid;
     if (!fbnameSend || !useridSend) {
@@ -1447,8 +1455,10 @@
         document.getElementById("pushviettelorder").disabled = false;
         $('#qrresult').empty();
         document.getElementById("video-container").style.display = "block";
-        if (!data.printed) {
-          ShowAlertModal('Đã lên đơn ' + data.realorderid + ' nhưng chưa in được tem: ' + (data.printMessage || 'Máy in đang Offline!') + '\nVào danh sách đơn để in lại.');
+        if (data.printed) {
+          ShowCenterToast('success', gbEscapeText('Đã lên đơn Viettel ' + data.realorderid), 5000);
+        } else {
+          ShowCenterToast('warning', gbEscapeText('Đã lên đơn Viettel ' + data.realorderid + '. ' + (data.printMessage || 'Chưa gửi được lệnh in.') + ' Bạn có thể in lại từ danh sách đơn.'), 5000);
         }
       }
     });
@@ -1939,7 +1949,7 @@
                 <div class="input-group">
                   <span class="input-group-text qr-ig-icon"><i class="bi bi-coin"></i></span>
                   <input type="text" pattern="[0-9]+" inputmode="numeric" id="CODX" placeholder="COD" class="form-control" value="0" onfocus="SelectX(this)" onkeyup="onlyNumberAmount(this)">
-                  <input type="text" pattern="[0-9]+" inputmode="numeric" id="SOKG" placeholder="KG" class="form-control" style="max-width:70px" value="1" onfocus="SelectX(this)" onkeyup="onlyNumberAmount(this)">
+                  <input type="text" pattern="[0-9]+" inputmode="numeric" id="SOKG" placeholder="KG" class="form-control" style="max-width:70px" value="${window.ACTIVE_CARRIER === 'jt' ? 2 : 1}" onfocus="SelectX(this)" onkeyup="onlyNumberAmount(this)">
                   <button type="button" id="pushviettelorder" class="btn btn-success" onclick="PushOrder()" title="Lên đơn ${window.ACTIVE_CARRIER === 'jt' ? 'J&T' : window.ACTIVE_CARRIER === 'viettel' ? 'Viettel' : ''}"><i class="bi bi-box-seam"></i> ${window.ACTIVE_CARRIER === 'jt' ? 'J&amp;T' : window.ACTIVE_CARRIER === 'viettel' ? 'Viettel' : 'Lên đơn'}</button>
                 </div>
               </div>
@@ -2382,6 +2392,11 @@
                 <button type="button" id="header-order-refresh" class="order-refresh-btn d-none" title="Cập nhật trạng thái từ Viettel" onclick="RefreshStatusInTracking(this)"><i class="bi bi-arrow-clockwise"></i></button>
               </div>
             </div>
+            <div class="small mt-1">
+              <span class="text-muted">Khối lượng</span>
+              <span id="header-order-weight" class="fw-semibold">—</span>
+            </div>
+            <div id="header-order-issue" class="small text-warning-emphasis mt-1" hidden></div>
           </div>
           <ul class="nav nav-tabs tracking-tabs px-3" id="trackingTabs">
             <li class="nav-item">

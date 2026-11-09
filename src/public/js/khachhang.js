@@ -55,7 +55,8 @@ function LenDonKhachHang() {
     var phone = document.getElementById('userphone').value.trim();
     var add = document.getElementById('diachilendon');
     var cod = document.getElementById('COD').value.replace(/\./g, '').replace(/,/g, '').trim();
-    var kg = document.getElementById('KG').value;
+    var kgInput = document.getElementById('KG');
+    var kg = kgInput.value;
     var realfbidEl = document.getElementById('realfbid');
     var realfbid = realfbidEl ? realfbidEl.value : '';
 
@@ -74,7 +75,7 @@ function LenDonKhachHang() {
         return;
     }
     if (!isNumeric(cod) || cod < 0) cod = 0;
-    if (!isNumeric(kg) || kg <= 0) kg = 2;
+    if (!isNumeric(kg) || kg <= 0) kg = Number(kgInput.defaultValue);
 
     var fbnameNow = (document.getElementById('fbname').value || '').trim();
     var useridNow = document.getElementById('userid').value;
@@ -112,13 +113,13 @@ function LenDonKhachHang() {
                 return;
             }
             document.getElementById('COD').value = 0;
-            document.getElementById('KG').value = 1;
+            kgInput.value = kgInput.defaultValue;
             
             if (btn) btn.disabled = false;
             if (data.printed) {
                 ShowCenterToast('success', `${fbnameNow} • ${data.realorderid} • ${(+cod).toLocaleString()} đ`, 4000);
             } else {
-                ShowAlertModal(`Đã lên đơn ${data.realorderid} nhưng chưa in được tem: ${data.printMessage || 'Máy in đang Offline!'}`);
+                ShowCenterToast('warning', gbEscapeText(`Đã lên đơn Viettel ${data.realorderid}. ${data.printMessage || 'Chưa gửi được lệnh in.'} Bạn có thể in lại từ danh sách đơn.`), 5000);
             }
             FillDiaChi();
         },
@@ -134,7 +135,8 @@ function LenDonKhachHangJT() {
     var phone = document.getElementById('userphone').value.trim();
     var add = document.getElementById('diachilendon');
     var cod = document.getElementById('COD').value.replace(/\./g, '').replace(/,/g, '').trim();
-    var kg = document.getElementById('KG').value;
+    var kgInput = document.getElementById('KG');
+    var kg = kgInput.value;
     var realfbidEl = document.getElementById('realfbid');
     var realfbid = realfbidEl ? realfbidEl.value : '';
 
@@ -165,7 +167,7 @@ function LenDonKhachHangJT() {
         return;
     }
     if (!isNumeric(cod) || cod < 0) cod = 0;
-    if (!isNumeric(kg) || kg <= 0) kg = 1;
+    if (!isNumeric(kg) || kg <= 0) kg = Number(kgInput.defaultValue);
 
     var fbnameNow = (document.getElementById('fbname').value || '').trim();
     var useridNow = document.getElementById('userid').value;
@@ -203,7 +205,7 @@ function LenDonKhachHangJT() {
             if (btn) btn.disabled = false;
             if (data.success) {
                 document.getElementById('COD').value = 0;
-                document.getElementById('KG').value = 1;
+                kgInput.value = kgInput.defaultValue;
                 if (data.printDispatched === false) {
                     ShowCenterToast('warning', gbEscapeText(`Đã lên đơn J&T ${data.order_code}. ${data.printMessage || 'Chưa gửi được lệnh in.'} Bạn có thể in lại từ danh sách đơn.`), 5000);
                 } else {
@@ -444,7 +446,8 @@ function InItKeys() {
         document.getElementById("realfbid").value = x[12];
         document.getElementById("userid").value = x[0];
         //document.getElementById("COD").value = 0;
-        document.getElementById("KG").value = 1;
+        var kgInput = document.getElementById("KG");
+        kgInput.value = kgInput.defaultValue;
         if (x[15] == 1) {
             document.getElementById("checknote").checked = true;
             ShowImportant('Quan trọng', x[6]);

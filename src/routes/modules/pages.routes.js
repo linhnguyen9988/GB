@@ -33,6 +33,7 @@ module.exports = function registerPageRoutes(router) {
     router.get("/", webAuth, loadcommentController.handleLoadComment);
     router.get("/admin", webAuth, requireAdmin, profileController.handleProfile);
     router.get("/admin/users", webAuth, requireAdmin, (req, res) => res.render("adminUsers", { user: req.user, registerPath: REGISTER_PATH }));
+    router.get("/admin/order-weight-changes", webAuth, requireAdmin, require("../../controllers/orderWeightChangesController").show);
     router.get("/profile", webAuth, require("../../controllers/personalProfileController").show);
     router.post('/profile/info', webAuth, require('../../controllers/personalProfileController').updateProfile);
     router.post('/profile/revoke-sessions', webAuth, require('../../controllers/personalProfileController').revokeSessions);

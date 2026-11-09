@@ -434,8 +434,10 @@ module.exports = function registerViettelRoutes(router) {
             const timenow = new Date().toLocaleString("vi-VN", { timeZone: "Asia/Saigon" });
             const now = new Date();
             const userId = req.user.id;
-            const sql = SqlString.format('INSERT INTO lendon (name,phone,address,cod,kg,status,date,orderid,realorderid,khid,userid,realfbid,time,provider,useraccountid,viettelaccountid,sortcode,xa,huyen,tinh) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);',
-                [fbname, phone, address, cod, kgreal, 1, timenow, matuquan, finalRealOrderId, khid, userid, realfbid, now, 'Viettel', userId, account.userid, sortCode, xa, huyen, tinh]);//useraccountid la user GB, viettelaccountid la userid Viettel Post
+            const declaredKg = kg / 1000;
+            const sql = SqlString.format('INSERT INTO lendon (name,phone,address,cod,kg,status,date,orderid,realorderid,khid,userid,realfbid,time,provider,useraccountid,viettelaccountid,sortcode,xa,huyen,tinh,original_kg,viettel_input_kg) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);',
+                [fbname, phone, address, cod, declaredKg, 1, timenow, matuquan, finalRealOrderId, khid, userid, realfbid, now,
+                 'Viettel', userId, account.userid, sortCode, xa, huyen, tinh, declaredKg, Number(String(kgreal).replace(',', '.'))]);//useraccountid la user GB, viettelaccountid la userid Viettel Post
 
             await DBConnection.query(require('../../services/orderAuditService').withCreator(sql, req.user));
 

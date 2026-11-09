@@ -34,19 +34,24 @@
 
     <% 
         const groups = [
-            { id: 'all', label: 'Tất cả', codes: [100,101,102,103,104,105,106,200,201,202,300,400,401,402,403,509,500,508,550,501,505,506,507,515,551,515,504], color: 'secondary' },
-            { id: 'receiving', label: 'Chờ nhận', codes: [100,101,102,103,104,105,106], color: 'secondary' },
-            { id: 'shipping', label: 'Vận chuyển', codes: [200,201,202,300,400,401,402,403,509], color: 'info' },
-            { id: 'delivering', label: 'Đang giao', codes: [500,508,550], color: 'primary' },
-            { id: 'success', label: 'Thành công', codes: [501], color: 'success' },
-            { id: 'issue', label: 'Vấn đề', codes: [505,506,507,515], color: 'warning' },
-            { id: 'issue2', label: 'Duyệt hoàn', codes: [515,551], color: 'danger' },
-            { id: 'returned', label: 'Đã hoàn', codes: [504], color: 'danger' }
+            { id: 'all', label: 'Tất cả', color: 'secondary' },
+            { id: 'receiving', label: 'Chờ nhận', codes: [100,102,103,104,105,106], jtCodes: [100,103], color: 'secondary' },
+            { id: 'shipping', label: 'Vận chuyển', codes: [200,202,300,400,401,402,403,509], jtCodes: [106,109,110], color: 'info' },
+            { id: 'delivering', label: 'Đang giao', codes: [500,508,550], jtCodes: [112], color: 'primary' },
+            { id: 'success', label: 'Thành công', codes: [501], jtCodes: [113], color: 'success' },
+            { id: 'issue', label: 'Vấn đề', codes: [505,506,507,515], jtCodes: [118,120], color: 'warning' },
+            { id: 'issue2', label: 'Xử lý hoàn', codes: [515,551], jtCodes: [116], color: 'danger' },
+            { id: 'returned', label: 'Đã hoàn', codes: [504], jtCodes: [117], color: 'danger' },
+            { id: 'cancelled', label: 'Đã hủy', codes: [101,107,201,503,510], jtCodes: [105], color: 'secondary' }
         ];
 
         const allOrders = locals.orders || [];
-        function getFiltered(codes) {
-            return allOrders.filter(o => codes.includes(Number(o.statuscode)));
+        function getFiltered(group) {
+            if (group.id === 'all') return allOrders;
+            return allOrders.filter(order => {
+                const codes = order.provider === 'J&T' ? group.jtCodes : group.codes;
+                return codes.includes(Number(order.statuscode));
+            });
         }
 
         function formatVN(dateStr) {
@@ -60,7 +65,7 @@
         <div class="d-flex flex-nowrap overflow-auto no-scrollbar px-2">
             <ul class="nav nav-pills flex-nowrap" id="orderTabs" role="tablist">
                 <% groups.forEach((group, index) => { 
-                    const count = getFiltered(group.codes).length;
+                    const count = getFiltered(group).length;
                 %>
                 <li class="nav-item">
                     <button class="nav-link px-3 mb-1 fw-bold nav-link-<%= group.color %> <%= index === 0 ? 'active' : '' %>" 
@@ -81,7 +86,7 @@
         <div class="tab-pane fade <%= index === 0 ? 'show active' : '' %>" id="<%= group.id %>">
             <div class="row g-2 px-2">
                 <% 
-                    const list = getFiltered(group.codes);
+                    const list = getFiltered(group);
                     if(list.length > 0) { 
                         list.forEach(order => { 
                 %>
@@ -89,7 +94,10 @@
                     <div class="card h-100 shadow-sm border-0 border-start border-4 border-<%= group.color %>">
                         <div class="card-body p-3">
                             <div class="d-flex justify-content-between mb-2">
-                                <span class="text-primary small fw-bold"><i class="bi bi-upc-scan"></i> <%= order.realorderid %></span>
+                                <span class="text-primary small fw-bold">
+                                    <i class="bi bi-upc-scan"></i> <%= order.realorderid %>
+                                    <% if (order.provider === 'J&T') { %><span class="badge text-bg-secondary">J&amp;T</span><% } %>
+                                </span>
                                 <small class="text-muted"><%= formatVN(order.time) %></small>
                             </div>
 
@@ -111,7 +119,10 @@
                             <div class="row g-0 bg-light rounded p-2 text-center">
                                 <div class="col-6 border-end border-white">
                                     <div style="font-size: 0.6rem;" class="text-muted uppercase">Trọng lượng</div>
-                                    <div class="fw-bold small"><%= order.kg %>kg</div>
+                                    <div class="fw-bold small"><%= order.kg %> kg</div>
+                                    <% if (order.provider === 'J&T' && Number(order.original_kg) === 3) { %>
+                                        <div class="small text-muted">Đã gửi J&amp;T 2 kg</div>
+                                    <% } %>
                                 </div>
                                 <div class="col-6">
                                     <div style="font-size: 0.6rem;" class="text-muted uppercase">COD</div>
@@ -121,8 +132,14 @@
                         </div>
 
                         <div class="card-footer bg-white border-0 d-flex justify-content-between align-items-center pb-3">
-                            <span class="small fw-bold text-<%= group.color %> text-truncate" style="max-width: 60%;"><%= order.statustext %></span>
+                            <div class="overflow-hidden" style="max-width: 60%;">
+                                <div class="small fw-bold text-<%= group.color %> text-truncate"><%= order.statustext %></div>
+                                <% if (order.provider === 'J&T' && [118, 120].includes(Number(order.statuscode)) && order.issue) { %>
+                                    <div class="small text-warning-emphasis text-break"><%= order.issue %></div>
+                                <% } %>
+                            </div>
                             <div class="d-flex align-items-center gap-2">
+                                <% if (order.userid && order.pageid) { %>
                                 <a href="javascript:void(0);" 
                                    data-customer-id="<%= order.userid %>" 
                                    data-customer-name="<%= order.name %>" 
@@ -130,8 +147,10 @@
                                    class="open-message-modal btn btn-light border btn-sm rounded-circle d-flex align-items-center justify-content-center" style="width: 32px; height: 32px;">
                                     <i class="bi bi-chat-square-text-fill text-primary"></i>
                                 </a>
-                                <button class="btn btn-sm btn-outline-<%= group.color %> rounded-pill px-3 fw-bold" 
-                                        onclick="OrderJourney('<%= order.realorderid %>', '<%= order.name %>', '<%= order.userid %>', '<%= order.phone %>')">
+                                <% } %>
+                                <button class="btn btn-sm btn-outline-<%= group.color %> rounded-pill px-3 fw-bold"
+                                        data-journey="<%= JSON.stringify([order.realorderid, order.name, order.userid || '', order.phone || '']) %>"
+                                        onclick="OrderJourney(...JSON.parse(this.dataset.journey))">
                                     Chi tiết
                                 </button>
                             </div>

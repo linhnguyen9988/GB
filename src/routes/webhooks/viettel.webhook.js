@@ -27,6 +27,16 @@ function logPodWebhookToFile(rawBody, orderNumber, podImages) {
     });
 }
 
+function weightStatusTime(value) {
+    const match = /^(\d{2})\/(\d{2})\/(\d{4}) ((?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d)$/.exec(value);
+    if (!match) return null;
+    const [, day, month, year, time] = match;
+    const date = `${year}-${month}-${day}`;
+    const parsed = new Date(`${date}T${time}Z`);
+    if (!Number.isFinite(parsed.getTime()) || !parsed.toISOString().startsWith(date)) return null;
+    return `${date} ${time}`;
+}
+
 module.exports = function registerViettelWebhook(router) {
     router.post('/viettel', async (req, res) => {
         try {
@@ -58,6 +68,22 @@ module.exports = function registerViettelWebhook(router) {
             const orderNumber = data.ORDER_NUMBER;
             //logPodWebhookToFile(body, data.ORDER_NUMBER, podImages);//de xem webhook thoi, sau nay bo di
             const db = DBConnection.promise();
+            const rawWeight = data.PRODUCT_WEIGHT;
+            const weightGrams = typeof rawWeight === 'number' || typeof rawWeight === 'string'
+                ? Number(rawWeight) : NaN;
+            const weightAt = Number.isSafeInteger(weightGrams) && weightGrams > 0
+                ? weightStatusTime(data.ORDER_STATUSDATE) : null;
+            const reportedKg = weightAt ? weightGrams / 1000 : null;
+
+            if (weightAt) {
+                await db.query(
+                    `UPDATE lendon
+                        SET viettel_input_kg = COALESCE(viettel_input_kg, kg), kg = ?, viettel_weight_status_at = ?
+                      WHERE realorderid = ? AND (provider = 'Viettel' OR provider IS NULL)
+                        AND (viettel_weight_status_at IS NULL OR viettel_weight_status_at < ?)`,
+                    [reportedKg, weightAt, orderNumber, weightAt]
+                );
+            }
 
             const [dupRows] = await db.query(
                 'SELECT 1 FROM order_logs WHERE order_number = ? AND status_code = ? AND status_date_raw = ? LIMIT 1',
@@ -95,15 +121,16 @@ module.exports = function registerViettelWebhook(router) {
                     const base = baseRows[0];
                     const timenow = new Date().toLocaleString("vi-VN", { timeZone: "Asia/Saigon" });
                     await db.query(
-                        `INSERT INTO lendon (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, statuscode, statustext, reason_code, pod_images, last_update, created_by_user_id, created_by_username)
-                 VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, NOW(), ?, ?)`,
+                        `INSERT INTO lendon (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, statuscode, statustext, reason_code, pod_images, last_update, created_by_user_id, created_by_username, original_kg, viettel_input_kg, viettel_weight_status_at)
+                 VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?)`,
                         [
                             base.name, base.phone, base.address,
-                            base.kg, 1, timenow,
+                            reportedKg ?? base.kg, 1, timenow,
                             orderNumber, orderNumber,
                             base.khid, base.userid, base.realfbid,
                             base.provider || 'Viettel',
-                            status, statustext, reasonCode, podImagesJson, base.created_by_user_id, base.created_by_username
+                            status, statustext, reasonCode, podImagesJson, base.created_by_user_id, base.created_by_username,
+                            base.original_kg, base.viettel_input_kg ?? base.kg, weightAt
                         ]
                     );
                     //console.log(`[1P1] Tạo đơn hoàn 1 phần mới: ${orderNumber} từ đơn gốc ${baseOrderNumber}`);
