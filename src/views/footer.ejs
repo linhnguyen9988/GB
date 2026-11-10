@@ -344,6 +344,45 @@
 
     messageModal = new bootstrap.Modal(messageModalEl);
 
+    const customerDetailButtons = messageModalEl.querySelectorAll('[data-message-customer-details]');
+    let loadingCustomerDetails = false;
+    async function openMessageCustomerDetails(event) {
+      const customerId = currentCustomerId;
+      if (!customerId || loadingCustomerDetails) return;
+      const trigger = event.currentTarget;
+      loadingCustomerDetails = true;
+      try {
+        const response = await fetch('/api/customers/by-userid/' + encodeURIComponent(customerId));
+        if (currentCustomerId !== customerId || !messageModalEl.classList.contains('show')) return;
+        if (response.status === 404) {
+          ShowCenterToast('warning', 'Khách này chưa có hồ sơ trong GB.', 4000);
+          return;
+        }
+        if (!response.ok) throw new Error('Không tải được hồ sơ');
+        const customer = await response.json();
+        if (currentCustomerId !== customerId || !messageModalEl.classList.contains('show')) return;
+        ShowCustomerDetails({
+          name: customer.fbname || customerNameEl.textContent,
+          userid: customerId,
+          realfbid: customer.realfbid,
+          phone: customer.phone,
+          diachi: customer.diachi,
+          note: customer.note,
+          label: customer.label,
+          nn: customer.nuocngoai,
+          trigger,
+          onSaved: window.UpdateCommentCustomerRow
+        });
+      } catch (_) {
+        if (currentCustomerId === customerId && messageModalEl.classList.contains('show')) {
+          ShowCenterToast('danger', 'Không tải được thông tin khách hàng. Thử lại sau.', 4000);
+        }
+      } finally {
+        loadingCustomerDetails = false;
+      }
+    }
+    customerDetailButtons.forEach(button => button.addEventListener('click', openMessageCustomerDetails));
+
     messageModalEl.addEventListener('hidden.bs.modal', function (event) {
       revokeAllBlobs();
     });
@@ -1210,7 +1249,7 @@
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ userid: customerId })
+          body: JSON.stringify({ userid: customerId, limit: 1 })
         });
 
         if (!response.ok) {
@@ -1219,14 +1258,7 @@
         const data = await response.json();
 
         if (data.data && Array.isArray(data.data) && data.data.length > 0) {
-          var lastOrder = data.data[0];
-          if (lastOrder.statuscode == 107) {
-            lastOrder = data.data[1];
-          }
-          if (lastOrder.statuscode == 107) {
-            lastOrder = data.data[2];
-          }
-          renderLastOrder(lastOrder);
+          renderLastOrder(data.data[0]);
         } else {
           lastOrderEl.innerHTML = '<span class="last-order-no-info">Khách hàng chưa có đơn hàng nào.</span>';
         }
@@ -1241,33 +1273,28 @@
         lastOrderEl.innerHTML = '<span class="last-order-no-info">Khách hàng chưa có đơn hàng nào.</span>';
         return;
       }
-      const dateString = order.date.split(' ')[1];
-      const [day, month, year] = dateString.split('/');
-      const orderDate = `${day}/${month}/${year.slice(-2)}`;
-
-      const statustext = order.statustext || 'N/A';
-      const cod = order.cod ? `${order.cod.toLocaleString('vi-VN')} đ` : '0đ';
+      const date = order.time ? new Date(order.time) : null;
+      const savedDate = String(order.date || '').match(/\b(\d{1,2}\/\d{1,2}\/)\d{2}(\d{2})\b/);
+      const orderDate = savedDate ? savedDate[1] + savedDate[2] : (
+        date && Number.isFinite(date.getTime())
+          ? date.toLocaleDateString('vi-VN', { day: 'numeric', month: 'numeric', year: '2-digit' }) : ''
+      );
+      const status = GBOrderStatus.get(order.provider, order.statuscode, order.statustext);
+      const cod = Number(order.cod || 0).toLocaleString('vi-VN') + ' đ';
       const kg = order.kg ? `${order.kg}KG` : 'N/A';
-
-      let statusClass = '';
-      if (statustext.includes('Phát thành công')) {
-        statusClass = 'last-order-status-completed';
-      } else if (statustext.includes('Hủy') || statustext.includes('Hoàn Thành công') || statustext.includes('duyệt hoàn') || statustext.includes('Đang chuyển hoàn') || statustext.includes('Chuyển hoàn bưu cục gốc')) {
-        statusClass = 'last-order-status-canceled';
-      } else if (statustext.includes('Tồn')) {
-        statusClass = 'last-order-status-pending';
-      } else if (statustext.includes('Đang vận chuyển') || statustext.includes('Nhận bảng kê đến')) {
-        statusClass = 'last-order-status-ontheway';
-      } else if (statustext.includes('Giao bưu tá đi phát') || statustext.includes('yêu cầu phát tiếp')) {
-        statusClass = 'last-order-status-continue';
-      }
 
       const lastOrderHtml = `
             <div class="last-order-item">
-                <a onclick="OrderJourney('${order.realorderid}', '${order.name}', '${order.userid}', '${order.phone}')"><span class="last-order-value">${orderDate} - ${cod} - ${kg} - <span class="${statusClass}">${statustext}</span></span></a>
+                <a href="/journey/${encodeURIComponent(order.realorderid)}" class="text-reset text-decoration-none">
+                  <span class="last-order-value">${gbEscapeText(orderDate)} - ${cod} - ${gbEscapeText(kg)} - <span class="badge gb-order-status text-bg-${status.color}">${gbEscapeText(status.label)}</span></span>
+                </a>
             </div>
         `;
       lastOrderEl.innerHTML = lastOrderHtml;
+      lastOrderEl.querySelector('a').addEventListener('click', event => {
+        event.preventDefault();
+        OrderJourney(order.realorderid, order.name, order.userid, order.phone);
+      });
     }
 
     if (messageInput) {

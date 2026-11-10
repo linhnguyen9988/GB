@@ -4,12 +4,13 @@ const axios = require('axios');
 const { getPageToken } = require('./pageTokenService');
 const { toE164VN } = require('../utils/text');
 
-async function SendCanhBao(orderNumber, shipper_name, shipper_phone, cod, issue) {
+async function SendCanhBao(orderNumber, shipper_name, shipper_phone, cod, issue, carrier = 'Viettel Post') {
+    const jt = carrier === 'J&T';
     try {
         const db = DBConnection.promise();
 
         const [orders] = await db.query(
-            'SELECT userid FROM lendon WHERE realorderid = ? LIMIT 1',
+            `SELECT userid FROM lendon WHERE realorderid = ?${jt ? " AND provider = 'J&T'" : ''} LIMIT 1`,
             [orderNumber]
         );
         if (orders.length === 0) return;
@@ -18,19 +19,28 @@ async function SendCanhBao(orderNumber, shipper_name, shipper_phone, cod, issue)
             'SELECT pageid FROM khachhang WHERE userid = ? LIMIT 1',
             [orders[0].userid]
         );
-        if (users.length === 0) return;
+        if (users.length === 0) {
+            if (jt) console.warn('[J&T Messenger]', orderNumber, 'Thiếu thông tin Page của khách.');
+            return;
+        }
 
-        const token = await getPageToken(users[0].pageid);
+        const pageId = users[0].pageid;
+        const token = await getPageToken(pageId);
+        if (jt && !token) {
+            console.warn('[J&T Messenger]', orderNumber, 'Thiếu token của Page.');
+            return;
+        }
         const recipientId = orders[0].userid;
+        const shipperPhoneE164 = toE164VN(shipper_phone);
         const text = [
-            `Viettel Post`,
-            `Tiền hàng: ${cod.toLocaleString()}đ`,
+            carrier,
+            ...(jt ? [`Mã vận đơn: ${orderNumber}`] : []),
+            `Tiền hàng: ${cod.toLocaleString(jt ? 'vi-VN' : undefined)}đ`,
             `Trạng thái: ${issue}`,
-            `Xin hãy gọi bưu tá`,
-            `Số bưu tá: ${shipper_phone}`,
+            ...(!jt || shipperPhoneE164 ? ['Xin hãy gọi bưu tá', `Số bưu tá: ${shipper_phone}`] : []),
             `Nếu đã nhận hàng xin bỏ qua tin nhắn này.`
         ].join('\n');
-        const journeyUrl = `https://aodaigiabao.com/journey/${orderNumber}`;
+        const journeyUrl = `https://aodaigiabao.com/journey/${encodeURIComponent(orderNumber)}`;
 
         const buttons = [
             {
@@ -39,7 +49,6 @@ async function SendCanhBao(orderNumber, shipper_name, shipper_phone, cod, issue)
                 title: 'Xem đơn hàng'
             }
         ];
-        const shipperPhoneE164 = toE164VN(shipper_phone);
         if (shipperPhoneE164) {
             buttons.push({
                 type: 'phone_number',
@@ -47,8 +56,6 @@ async function SendCanhBao(orderNumber, shipper_name, shipper_phone, cod, issue)
                 payload: shipperPhoneE164
             });
         }
-        //console.log(`[SendCanhBao] ${orderNumber} - shipper_phone gốc: "${shipper_phone}" -> chuẩn hoá: ${shipperPhoneE164 || '(không hợp lệ, bỏ qua nút gọi)'}`);
-
         const tryingSend = async (messaging_type, tag = null) => {
             const payload = {
                 recipient: { id: recipientId },
@@ -65,25 +72,32 @@ async function SendCanhBao(orderNumber, shipper_name, shipper_phone, cod, issue)
                 },
                 ...(tag ? { tag } : {})
             };
-            const res = await axios.post(
-                `https://graph.facebook.com/v19.0/me/messages?access_token=${token}`,
-                payload
-            );
-            return res.data;
+            if (jt) {
+                await axios.post(`https://graph.facebook.com/v25.0/${encodeURIComponent(pageId)}/messages`, payload, {
+                    headers: { Authorization: `Bearer ${token}` },
+                    timeout: 10000
+                });
+            } else {
+                await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${token}`, payload);
+            }
         };
 
         try {
             await tryingSend('UPDATE');
         } catch (err) {
             const code = err.response?.data?.error?.code;
-            if (code === 2018286 || code === 10) {
+            if (!jt && (code === 2018286 || code === 10)) {
                 await tryingSend('MESSAGE_TAG', 'HUMAN_AGENT');
             } else {
                 throw err;
             }
         }
     } catch (error) {
-        //console.error("Lỗi gửi tin nhắn:", error.response?.data?.error || error.message);
+        if (jt) {
+            const metaError = error.response?.data?.error;
+            console.warn('[J&T Messenger]', orderNumber, 'Gửi thất bại.',
+                'HTTP:', error.response?.status ?? '-', 'Meta:', metaError?.code ?? '-', 'chi tiết:', metaError?.error_subcode ?? '-');
+        }
     }
 }
 

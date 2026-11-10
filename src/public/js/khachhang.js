@@ -47,6 +47,22 @@ function handleInLaiDon() {
     }
 }
 
+function ResetLenDonKhachHang(userid) {
+    if (document.getElementById('userid').value !== userid) return;
+    const cod = document.getElementById('COD');
+    const kg = document.getElementById('KG');
+    const address = document.getElementById('diachilendon');
+    cod.value = cod.defaultValue;
+    kg.value = kg.defaultValue;
+    if (address.options[0]?.value !== '') {
+        const placeholder = new Option('Chọn địa chỉ lên đơn', '');
+        placeholder.disabled = true;
+        address.add(placeholder, 0);
+    }
+    address.value = '';
+    LoadDonHangDaLen(userid);
+}
+
 function LenDonKhachHang() {
     if (!window.ACTIVE_CARRIER) return ShowCenterToast('warning', 'Chưa chọn tài khoản lên đơn mặc định trong trang quản trị.', 5000);
     if (window.ACTIVE_CARRIER === 'jt') return LenDonKhachHangJT();
@@ -64,7 +80,7 @@ function LenDonKhachHang() {
         ShowAlertModal('Sai SĐT');
         return;
     }
-    if (!add || add.selectedIndex < 0 || !add.options[add.selectedIndex]) {
+    if (!add || !add.options[add.selectedIndex]?.value) {
         ShowAlertModal('Chưa có địa chỉ');
         return;
     }
@@ -107,25 +123,22 @@ function LenDonKhachHang() {
             realfbid: realfbid
         },
         success: function (data) {
-            if (data.hasOwnProperty('error')) {
+            if (!data.realorderid) {
                 if (btn) btn.disabled = false;
-                ShowCenterToast('danger', gbEscapeText(data.error), 5000);
+                ShowCenterToast('danger', gbEscapeText(data.error || 'GB chưa xác nhận được đơn Viettel.'), 5000);
                 return;
             }
-            document.getElementById('COD').value = 0;
-            kgInput.value = kgInput.defaultValue;
-            
+            ResetLenDonKhachHang(useridNow);
             if (btn) btn.disabled = false;
             if (data.printed) {
                 ShowCenterToast('success', `${fbnameNow} • ${data.realorderid} • ${(+cod).toLocaleString()} đ`, 4000);
             } else {
                 ShowCenterToast('warning', gbEscapeText(`Đã lên đơn Viettel ${data.realorderid}. ${data.printMessage || 'Chưa gửi được lệnh in.'} Bạn có thể in lại từ danh sách đơn.`), 5000);
             }
-            FillDiaChi();
         },
-        error: function () {
+        error: function (xhr) {
             if (btn) btn.disabled = false;
-            ShowCenterToast('danger', 'Không thể tạo đơn, kiểm tra lại kết nối', 4000);
+            ShowCenterToast('danger', gbEscapeText(xhr.responseJSON?.error || 'Không nhận được phản hồi. Kiểm tra đơn Viettel trước khi gửi lại.'), 5000);
         }
     });
 }
@@ -144,7 +157,7 @@ function LenDonKhachHangJT() {
         ShowAlertModal('Sai SĐT');
         return;
     }
-    if (!add || add.selectedIndex < 0 || !add.options[add.selectedIndex]) {
+    if (!add || !add.options[add.selectedIndex]?.value) {
         ShowAlertModal('Chưa có địa chỉ');
         return;
     }
@@ -204,14 +217,12 @@ function LenDonKhachHangJT() {
         success: function (data) {
             if (btn) btn.disabled = false;
             if (data.success) {
-                document.getElementById('COD').value = 0;
-                kgInput.value = kgInput.defaultValue;
+                ResetLenDonKhachHang(useridNow);
                 if (data.printDispatched === false) {
                     ShowCenterToast('warning', gbEscapeText(`Đã lên đơn J&T ${data.order_code}. ${data.printMessage || 'Chưa gửi được lệnh in.'} Bạn có thể in lại từ danh sách đơn.`), 5000);
                 } else {
                     ShowCenterToast('success', `${fbnameNow} • ${data.order_code} • ${(+cod).toLocaleString()} đ`, 4000);
                 }
-                FillDiaChi();
             } else {
                 ShowCenterToast(data.order_created ? 'warning' : 'danger', gbEscapeText(data.message || 'Không tạo được đơn J&T.'), 5000);
             }
@@ -880,12 +891,12 @@ function FillDiaChi() {
         }
     });
 
-    LoadDonHangDaLen(x[0], DONHANG_DEFAULT_LIMIT);
+    LoadDonHangDaLen(x[0]);
 }
 
 var DONHANG_DEFAULT_LIMIT = 5;
 
-function LoadDonHangDaLen(userid, limit) {
+function LoadDonHangDaLen(userid, limit = DONHANG_DEFAULT_LIMIT) {
     var donhang = document.getElementById('donhangdalen');
     if (!donhang || !userid) return;
 
@@ -900,16 +911,17 @@ function LoadDonHangDaLen(userid, limit) {
         data: params,
         dataType: "JSON",
         success: function (data) {
+            if (document.getElementById('userid').value !== String(userid)) return;
             removeOptions(donhang);
-            for (var i = 0; i < data.data.length; i++) {
-                let date = data.data[i].date.substring(9);
-                if (data.data[i].realorderid.includes('1P1')) {
+            const orders = params.limit ? data.data.slice(0, params.limit) : data.data;
+            for (const order of orders) {
+                let date = String(order.date || '').substring(9);
+                if (order.realorderid.includes('1P1')) {
                     date = '[1P] ' + date;
                 }
-                if (data.data[i].statuscode == 107) continue;
-                var statustext = data.data[i].statustext || 'TK Cũ';
-                AddOptions(donhang, data.data[i].realorderid,
-                    date + " - " + data.data[i].name + " - " + data.data[i].cod.toLocaleString() + "đ [" + data.data[i].kg + " KG] [" + statustext + "]");
+                const statustext = GBOrderStatus.get(order.provider, order.statuscode, order.statustext || 'TK Cũ').label;
+                AddOptions(donhang, order.realorderid,
+                    date + " - " + order.name + " - " + Number(order.cod || 0).toLocaleString() + "đ [" + order.kg + " KG] [" + statustext + "]");
             }
 
             var btnAll = document.getElementById('btnxemtatcadon');
@@ -1000,6 +1012,8 @@ async function handleRowDoubleClick(rowElement) {
     if (!data) return;
 
     var nameHtml = data[1];
+    var customerName = document.createElement('template');
+    customerName.innerHTML = data[11] ?? '';
     var phone = data[2] ? data[2].trim() : "";
     var idKhachHang = data[18];
 
@@ -1013,7 +1027,7 @@ async function handleRowDoubleClick(rowElement) {
 
     var printData = {
         date: ToDay(),
-        name: nameHtml.split('<br>')[0].replace(/<[^>]*>?/gm, '').trim(),
+        name: customerName.content.textContent.trim(),
         phone: phone,
         comment: "",
         gia: "",

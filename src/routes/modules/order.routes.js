@@ -5,6 +5,7 @@ const axios = require('axios');
 const jwtAuth = require('../../middleware/jwtAuth');
 const { getViettelAddressAccount } = require('../../services/shippingAccounts');
 const { applyAddressFixes, cleanSearchTerm, normalizeSQL } = require('../../utils/address');
+const { customerOrderFilter } = require('../../utils/customerOrderFilter');
 
 module.exports = function registerOrderRoutes(router) {
     router.post('/getdiachilendon', jwtAuth, async function (req, response) {
@@ -141,12 +142,13 @@ module.exports = function registerOrderRoutes(router) {
 
     router.post('/getuserorder', async function (req, res) {
         try {
-            const userid = req.body.userid;
+            const filter = customerOrderFilter(req.body.userid, req.body.realfbid);
+            if (!filter) return res.json({ success: true, data: [] });
             const limit = parseInt(req.body.limit, 10);
             const db = DBConnection.promise();
 
-            let sql = 'SELECT * FROM lendon WHERE userid=? ORDER BY ID desc';
-            const params = [userid];
+            let sql = `SELECT l.* FROM lendon l WHERE ${filter.where} ORDER BY l.time DESC, l.id DESC`;
+            const { params } = filter;
             if (Number.isInteger(limit) && limit > 0) {
                 sql += ' LIMIT ?';
                 params.push(limit);

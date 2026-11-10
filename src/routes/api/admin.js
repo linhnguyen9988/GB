@@ -3,6 +3,7 @@ const router = require('express').Router();
 const db = require('../../configs/DBConnection');
 const { requireAdmin } = require('../../middleware/jwtAuth');
 router.use(requireAdmin);
+router.use('/zalo', require('./zalo'));
 router.get('/users', async (req, res) => {
  try { const [users] = await db.query('SELECT id, username, fullname, role FROM users ORDER BY id'); res.json({ users }); }
  catch (_) { res.status(500).json({ message: 'Không tải được tài khoản' }); }

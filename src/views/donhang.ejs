@@ -35,22 +35,24 @@
     <% 
         const groups = [
             { id: 'all', label: 'Tất cả', color: 'secondary' },
-            { id: 'receiving', label: 'Chờ nhận', codes: [100,102,103,104,105,106], jtCodes: [100,103], color: 'secondary' },
-            { id: 'shipping', label: 'Vận chuyển', codes: [200,202,300,400,401,402,403,509], jtCodes: [106,109,110], color: 'info' },
-            { id: 'delivering', label: 'Đang giao', codes: [500,508,550], jtCodes: [112], color: 'primary' },
-            { id: 'success', label: 'Thành công', codes: [501], jtCodes: [113], color: 'success' },
-            { id: 'issue', label: 'Vấn đề', codes: [505,506,507,515], jtCodes: [118,120], color: 'warning' },
-            { id: 'issue2', label: 'Xử lý hoàn', codes: [515,551], jtCodes: [116], color: 'danger' },
-            { id: 'returned', label: 'Đã hoàn', codes: [504], jtCodes: [117], color: 'danger' },
-            { id: 'cancelled', label: 'Đã hủy', codes: [101,107,201,503,510], jtCodes: [105], color: 'secondary' }
+            { id: 'receiving', label: 'Chờ nhận', codes: [100,102,103,104,105,106], color: 'secondary' },
+            { id: 'shipping', label: 'Vận chuyển', codes: [200,202,300,400,401,402,403,509], color: 'info' },
+            { id: 'delivering', label: 'Đang giao', codes: [500,508,550], color: 'primary' },
+            { id: 'success', label: 'Thành công', codes: [501], color: 'success' },
+            { id: 'issue', label: 'Vấn đề', codes: [505,506,507,515], color: 'warning' },
+            { id: 'issue2', label: 'Xử lý hoàn', codes: [515,551], color: 'danger' },
+            { id: 'returned', label: 'Đã hoàn', codes: [504], color: 'danger' },
+            { id: 'finished', label: 'Kết thúc', codes: [], color: 'secondary' },
+            { id: 'cancelled', label: 'Đã hủy', codes: [101,107,201,503,510], color: 'secondary' }
         ];
 
         const allOrders = locals.orders || [];
         function getFiltered(group) {
             if (group.id === 'all') return allOrders;
             return allOrders.filter(order => {
-                const codes = order.provider === 'J&T' ? group.jtCodes : group.codes;
-                return codes.includes(Number(order.statuscode));
+                return order.provider === 'J&T'
+                    ? getOrderStatus(order.provider, order.statuscode).group === group.id
+                    : group.codes.includes(Number(order.statuscode));
             });
         }
 
@@ -88,7 +90,8 @@
                 <% 
                     const list = getFiltered(group);
                     if(list.length > 0) { 
-                        list.forEach(order => { 
+                        list.forEach(order => {
+                            const status = getOrderStatus(order.provider, order.statuscode, order.statustext);
                 %>
                 <div class="col-12 col-md-6 col-lg-4">
                     <div class="card h-100 shadow-sm border-0 border-start border-4 border-<%= group.color %>">
@@ -133,7 +136,7 @@
 
                         <div class="card-footer bg-white border-0 d-flex justify-content-between align-items-center pb-3">
                             <div class="overflow-hidden" style="max-width: 60%;">
-                                <div class="small fw-bold text-<%= group.color %> text-truncate"><%= order.statustext %></div>
+                                <span class="badge gb-order-status text-bg-<%= status.color %> text-wrap text-start"><%= status.label %></span>
                                 <% if (order.provider === 'J&T' && [118, 120].includes(Number(order.statuscode)) && order.issue) { %>
                                     <div class="small text-warning-emphasis text-break"><%= order.issue %></div>
                                 <% } %>

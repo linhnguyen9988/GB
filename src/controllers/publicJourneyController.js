@@ -1,20 +1,6 @@
 'use strict';
 const DBConnection = require("../configs/DBConnection");
-
-const STATUS_COLOR_MAP = {
-    100: 'secondary', 101: 'secondary', 102: 'secondary', 103: 'secondary', 104: 'secondary', 105: 'secondary', 106: 'secondary',
-    200: 'info', 201: 'info', 202: 'info', 300: 'info', 400: 'info', 401: 'info', 402: 'info', 403: 'info', 509: 'info',
-    500: 'primary', 508: 'primary', 550: 'primary',
-    501: 'success',
-    505: 'warning', 506: 'warning', 507: 'warning',
-    515: 'danger', 551: 'danger',
-    504: 'danger',
-};
-
-function getStatusColor(statuscode) {
-    if (statuscode === null || statuscode === undefined) return 'secondary';
-    return STATUS_COLOR_MAP[Number(statuscode)] || 'secondary';
-}
+const { get: getOrderStatus } = require('../public/js/order-status');
 
 function formatVNDateTime(value) {
     if (!value) return '';
@@ -35,7 +21,7 @@ function normalizeOrderCode(raw) {
     return { code, partial };
 }
 
-async function fetchJourneyLogs(db, orderCode, provider) {
+async function fetchJourneyLogs(db, { realorderid: orderCode, provider, cod }) {
     if (provider === 'J&T') {
         const [rows] = await db.query(
             `SELECT
@@ -45,12 +31,12 @@ async function fetchJourneyLogs(db, orderCode, provider) {
                scanbyname      AS employee_name,
                scanbycontact   AS employee_phone,
                issuename       AS note,
-               0               AS money_collection,
+               ?               AS money_collection,
                scantypecode    AS status_code
              FROM jtwaybill
              WHERE billcode = ?
              ORDER BY scantime DESC`,
-            [orderCode]
+            [cod ?? 0, orderCode]
         );
         return rows;
     }
@@ -112,7 +98,7 @@ const handleJourneyDetail = async (req, res) => {
         }
 
         const order = rows[0];
-        const logs = await fetchJourneyLogs(db, order.realorderid, order.provider || 'Viettel');
+        const logs = await fetchJourneyLogs(db, order);
 
         return res.render('journey.ejs', {
             mode: 'detail',
@@ -120,11 +106,12 @@ const handleJourneyDetail = async (req, res) => {
             order: {
                 ...order,
                 partial,
-                statusColor: getStatusColor(order.statuscode),
+                badge: getOrderStatus(order.provider, order.statuscode, order.statustext),
                 dateDisplay: order.date || formatVNDateTime(order.time),
             },
             logs: logs.map((l) => ({
                 ...l,
+                badge: getOrderStatus(order.provider, l.status_code, l.status_name),
                 timeDisplay: formatVNDateTime(l.status_date_raw) || l.status_date_raw || '',
                 codDisplay: new Intl.NumberFormat('vi-VN').format(Number(l.money_collection) || 0),
             })),

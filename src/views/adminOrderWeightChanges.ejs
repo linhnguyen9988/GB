@@ -67,6 +67,7 @@ const dateFormat = new Intl.DateTimeFormat('vi-VN', {
                             const original = Number(order.original_kg);
                             const declared = Number(order.declared_kg);
                             const current = Number(order.kg);
+                            const status = getOrderStatus(order.provider, order.statuscode, order.statustext);
                             const updated = order.updated_at ? new Date(order.updated_at) : null;
                         %>
                             <tr>
@@ -83,7 +84,7 @@ const dateFormat = new Intl.DateTimeFormat('vi-VN', {
                                 </td>
                                 <td class="text-end text-nowrap fw-semibold"><%= kgFormat.format(current) %> kg</td>
                                 <td class="text-end text-nowrap"><%= changeFormat.format(current - declared) %> kg</td>
-                                <td><%= order.statustext || '—' %></td>
+                                <td><span class="badge gb-order-status text-bg-<%= status.color %>"><%= status.label %></span></td>
                                 <td class="pe-3 text-nowrap"><%= updated && Number.isFinite(updated.getTime()) ? dateFormat.format(updated) : '—' %></td>
                             </tr>
                         <% } %>

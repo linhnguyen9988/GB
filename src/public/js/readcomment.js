@@ -41,54 +41,31 @@ $("#gia").on("keydown", function (e) {
     }
 });
 var initkey = 0;
-var oldphone = '';
-function UpdateUser() {
-    var userid = document.getElementById("fbid").value;
-    var realfbid = document.getElementById("realfbid").value;
-    var phone = document.getElementById("userphone").value;
-    var diachi = document.getElementById("diachi").value;
-    var label = document.getElementById("labelkh").value;
-    var note = document.getElementById("note").value;
-    var nn = document.getElementById("nuocngoai").value;
-    if (label == 'Xóa') {
-        label = '';
-    }
+function UpdateCommentCustomerRow({ userid, phone, diachi, label, note, nn }) {
+    if (!$.fn.dataTable.isDataTable('#comment_table')) return;
     var table = $('#comment_table').DataTable();
-    var data = table.row(getRowIdx()).data();
-    oldphone = data[3];
-    table.rows().every(function (rowIdx, tableLoop, rowLoop) {
-        if (table.cell(rowIdx, 12).data() == userid) {
-            if (oldphone.length > 0) {
-                table.cell(rowIdx, 1).data(table.cell(rowIdx, 1).data().replaceAll(oldphone, phone));
-            } else {
-                table.cell(rowIdx, 1).data(table.cell(rowIdx, 1).data() + `<br><span class="label label--pink">${phone}</span>`);
-            }
-            if (nn == 'Nước ngoài') {
-                if (phone.length > 0) {
-                    table.cell(rowIdx, 1).data(table.cell(rowIdx, 1).data() + `<span class="label label--lightpink">Nước ngoài</span>`);
-                } else {
-                    table.cell(rowIdx, 1).data(table.cell(rowIdx, 1).data() + `<br><span class="label label--lightpink">Nước ngoài</span>`);
-                }
-            } else {
-                table.cell(rowIdx, 1).data(table.cell(rowIdx, 1).data().replace('<span class="label label--lightpink">Nước ngoài</span>', ''));
-            }
-            table.cell(rowIdx, 3).data(phone);
-            table.cell(rowIdx, 10).data(diachi);
-            table.cell(rowIdx, 21).data(label);
-            table.cell(rowIdx, 19).data(note);
-            table.cell(rowIdx, 24).data(nn);
+    table.rows().every(function (rowIdx) {
+        if (String(table.cell(rowIdx, 12).data()) !== userid) return;
+        var oldPhone = table.cell(rowIdx, 3).data();
+        var display = table.cell(rowIdx, 1).data();
+        var escapedPhone = gbEscapeText(phone);
+        if (oldPhone) {
+            display = display.replaceAll(gbEscapeText(oldPhone), () => escapedPhone);
+        } else if (phone) {
+            display += '<br><span class="label label--pink">' + escapedPhone + '</span>';
         }
+        var regionBadge = '<span class="label label--lightpink">Nước ngoài</span>';
+        display = display.replaceAll(regionBadge, '');
+        if (nn === 'Nước ngoài') display += (phone ? '' : '<br>') + regionBadge;
+        table.cell(rowIdx, 1).data(display);
+        table.cell(rowIdx, 3).data(phone);
+        table.cell(rowIdx, 10).data(diachi);
+        table.cell(rowIdx, 21).data(label);
+        table.cell(rowIdx, 19).data(note);
+        table.cell(rowIdx, 24).data(nn);
     }).draw(false);
-    $.ajax({
-        url: "/updateuser",
-        method: "POST",
-        data: { phone: phone, diachi: diachi, label: label, note: note, userid: userid, realfbid: realfbid, nn: nn },
-        dataType: "JSON",
-        success: function (data) {
-        }
-    });
-    $('#modaledit').modal('hide');
 }
+
 function DeleteLive() {
     var liveid = e.value;
     $.ajax({
@@ -98,179 +75,6 @@ function DeleteLive() {
         dataType: "JSON",
         success: function (data) {
         }
-    });
-}
-function EditEsc(v) {
-    return String(v === null || v === undefined || v === 'null' ? '' : v)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-function EditPlainName(title, fallback) {
-    var tmp = document.createElement('div');
-    tmp.innerHTML = title || '';
-    tmp.querySelectorAll('span, svg, i, button, small, br').forEach(function (el) { el.remove(); });
-    var t = (tmp.textContent || '').trim();
-    return t || fallback || '';
-}
-
-function EditOrderBadge(code) {
-    var cls = (typeof statusBadgeClass === 'function') ? statusBadgeClass(code) : 'secondary';
-    return cls;
-}
-
-function LoadEditRecentOrders(userid, realfbid, name, phone) {
-    var box = document.getElementById('edit-recent-orders');
-    if (!box) return;
-    $.ajax({
-        url: '/api/orders/recent',
-        method: 'GET',
-        data: { userid: userid, realfbid: realfbid, limit: 3 },
-        dataType: 'JSON',
-        success: function (res) {
-            var box2 = document.getElementById('edit-recent-orders');
-            if (!box2) return;
-            var list = (res && res.data) ? res.data : [];
-            if (list.length === 0) {
-                box2.innerHTML = '<div class="text-muted small text-center py-2">Khách chưa có đơn nào.</div>';
-                return;
-            }
-            box2.innerHTML = list.map(function (o) {
-                var cod = new Intl.NumberFormat('vi-VN').format(o.cod || 0) + ' ₫';
-                var d = o.time ? new Date(o.time) : null;
-                var dateStr = (d && !isNaN(d)) ? d.toLocaleDateString('vi-VN') : '';
-                var st = o.statustext || ('Mã ' + (o.statuscode === null || o.statuscode === undefined ? '?' : o.statuscode));
-                var code = o.realorderid || o.orderid || '';
-                return '<div class="border rounded-3 p-2 px-3 mb-2">'
-                    + '<div class="d-flex justify-content-between align-items-center gap-2">'
-                    + '<span class="fw-bold text-break small">' + EditEsc(code) + '</span>'
-                    + '<span class="badge bg-' + EditOrderBadge(o.statuscode) + '">' + EditEsc(st) + '</span>'
-                    + '</div>'
-                    + '<div class="d-flex justify-content-between align-items-center mt-1">'
-                    + '<div class="small text-muted">'
-                    + '<span class="text-success fw-semibold">COD ' + EditEsc(cod) + '</span>'
-                    + ' · ' + EditEsc(o.kg === null || o.kg === undefined ? '' : o.kg) + ' Kg'
-                    + (dateStr ? ' · ' + EditEsc(dateStr) : '')
-                    + '</div>'
-                    + '<button type="button" class="btn btn-outline-primary btn-sm py-0 edit-order-journey" data-order="' + EditEsc(code) + '"><i class="bi bi-truck"></i> Hành trình</button>'
-                    + '</div></div>';
-            }).join('');
-            box2.querySelectorAll('.edit-order-journey').forEach(function (btn) {
-                btn.addEventListener('click', function () {
-                    EditOpenJourney(btn.getAttribute('data-order'), name, userid, phone);
-                });
-            });
-        },
-        error: function () {
-            var box2 = document.getElementById('edit-recent-orders');
-            if (box2) box2.innerHTML = '<div class="text-danger small text-center py-2">Không tải được danh sách đơn.</div>';
-        }
-    });
-}
-
-function EditOpenJourney(orderNumber, name, userid, phone) {
-    var tm = document.getElementById('trackingModal');
-    if (!tm) return;
-    tm.style.zIndex = 1075;
-    $(tm).one('shown.bs.modal', function () {
-        var bds = document.querySelectorAll('.modal-backdrop');
-        if (bds.length) bds[bds.length - 1].style.zIndex = 1070;
-    });
-    $(tm).one('hidden.bs.modal', function () {
-        tm.style.zIndex = '';
-        if (document.getElementById('modaledit')) document.body.classList.add('modal-open');
-    });
-    OrderJourney(orderNumber, name, userid, phone);
-}
-
-function ShowEdit(title, id, phone, diachi, note, label, realfbid, nn) {
-    var name = EditPlainName(title, id);
-    var labels = ['Thân thiết', 'Bom hàng', 'Xả hàng', 'Có vấn đề'];
-    var curLabel = (label === null || label === undefined || label === 'null') ? '' : String(label).trim();
-    var labelOpts = '<option value="">— Không nhãn —</option>' + labels.map(function (l) {
-        return '<option value="' + l + '"' + (l === curLabel ? ' selected' : '') + '>' + l + '</option>';
-    }).join('');
-    if (curLabel && labels.indexOf(curLabel) === -1) {
-        labelOpts += '<option value="' + EditEsc(curLabel) + '" selected>' + EditEsc(curLabel) + '</option>';
-    }
-    var nnOpts = '<option value=""' + ((nn !== 'Nước ngoài' && nn !== 'Trong nước') ? ' selected' : '') + '>Chưa chọn</option>'
-        + '<option value="Trong nước"' + (nn === 'Trong nước' ? ' selected' : '') + '>Trong nước</option>'
-        + '<option value="Nước ngoài"' + (nn === 'Nước ngoài' ? ' selected' : '') + '>Nước ngoài</option>';
-    var badge = '';
-    if (curLabel.indexOf('Xả') !== -1 || curLabel.indexOf('Bom') !== -1) badge = '<span class="badge bg-danger">' + EditEsc(curLabel) + '</span>';
-    else if (curLabel.indexOf('Có') !== -1) badge = '<span class="badge bg-warning text-dark">' + EditEsc(curLabel) + '</span>';
-    else if (curLabel.indexOf('Thân') !== -1) badge = '<span class="badge bg-success">' + EditEsc(curLabel) + '</span>';
-
-    document.getElementById("notetoshow").insertAdjacentHTML("afterend",
-        `<div class="modal" tabindex="-1" role="dialog" id="modaledit">
-    <div class="modal-dialog modal-dialog-scrollable" role="document">
-      <div class="modal-content rounded-4 shadow">
-        <div class="modal-header p-4 pb-3 border-bottom-0">
-          <div class="d-flex align-items-center flex-grow-1 me-3" style="min-width:0">
-            <img src="/images/ava/${EditEsc(id)}.jpg" class="rounded-circle me-3" width="48" height="48" onerror="this.src='/images/ava/default.jpg'">
-            <div style="min-width:0">
-              <h3 class="fw-bold mb-0 text-truncate">${EditEsc(name)}</h3>
-              <div class="mt-1">${badge}</div>
-            </div>
-          </div>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-
-        <div class="modal-body p-4 pt-0">
-          <div class="border rounded-3 p-3 mb-3 bg-body-tertiary small">
-            <div class="d-flex justify-content-between"><span class="text-muted">ID</span><span class="text-break">${EditEsc(id)}</span></div>
-            <div class="d-flex justify-content-between mt-1"><span class="text-muted">Real FB ID</span><span class="text-break">${EditEsc(realfbid)}</span></div>
-            <input type="hidden" id="fbid" value="${EditEsc(id)}">
-            <input type="hidden" id="realfbid" value="${EditEsc(realfbid)}">
-          </div>
-
-          <div class="row g-3">
-            <div class="col-12">
-              <label class="form-label small text-muted mb-1" for="userphone"><i class="bi bi-phone-fill"></i> Số điện thoại</label>
-              <input type="text" id="userphone" class="form-control" inputmode="tel" value="${EditEsc(phone)}">
-            </div>
-            <div class="col-6">
-              <label class="form-label small text-muted mb-1" for="labelkh"><i class="bi bi-tag-fill"></i> Nhãn</label>
-              <select id="labelkh" class="form-select">${labelOpts}</select>
-            </div>
-            <div class="col-6">
-              <label class="form-label small text-muted mb-1" for="nuocngoai"><i class="bi bi-globe2"></i> Khu vực</label>
-              <select id="nuocngoai" class="form-select">${nnOpts}</select>
-            </div>
-            <div class="col-12">
-              <label class="form-label small text-muted mb-1" for="diachi"><i class="bi bi-geo-alt-fill"></i> Địa chỉ</label>
-              <textarea class="form-control" id="diachi" rows="2">${EditEsc(diachi)}</textarea>
-            </div>
-            <div class="col-12">
-              <label class="form-label small text-muted mb-1" for="note"><i class="bi bi-journal-bookmark-fill"></i> Ghi chú</label>
-              <textarea class="form-control" id="note" rows="4">${EditEsc(note)}</textarea>
-            </div>
-            <div class="col-12">
-              <div class="d-flex justify-content-between align-items-center mb-1">
-                <label class="form-label small text-muted mb-0"><i class="bi bi-box-seam-fill"></i> 3 đơn gần nhất</label>
-              </div>
-              <div id="edit-recent-orders"><div class="text-center text-muted small py-2"><span class="spinner-border spinner-border-sm"></span> Đang tải...</div></div>
-            </div>
-          </div>
-
-          <div class="d-flex gap-2 mt-4">
-            <button class="btn btn-outline-secondary flex-grow-1" type="button" data-bs-dismiss="modal">Hủy</button>
-            <button class="btn btn-primary flex-grow-1" type="button" onclick="UpdateUser()"><i class="bi bi-check-lg"></i> Lưu</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>`);
-    LoadEditRecentOrders(id, realfbid, name, phone);
-    if (numx == 0) {
-        $('#modaledit').modal('show');
-        numx = 1;
-    }
-
-    $('#modaledit').on('hidden.bs.modal', function () {
-        numx = 0
-        var div = document.getElementById('modaledit');
-        div.remove();
     });
 }
 function OpenMessenger(pageid, realid) {
@@ -322,11 +126,11 @@ function UpdateComment(openmess) {
 function InItKeys() {
     var t = $('#comment_table').DataTable();
     t.on('key', function (e, datatable, keyCode, cell, originalEvent) {
+        if ($('.modal.show').is('#modaledit, #message-modal')) return;
         var x = datatable.row(cell.index().row).data();
         if ($('#comment_table_filter input').is(':focus') || $('#livenote').is(':focus') || $('#OrderNote').is(':focus') || $('#MessToSend').is(':focus') || $('#link').is(':focus') || $('#usernote').is(':focus') || $('#userphone').is(':focus') || $('#useraddress').is(':focus') || $('#diachi').is(':focus') || $('#note').is(':focus')) {
             return;
         }
-        oldphone = x[3];
         if (keyCode == 67) {
             Chot();
         } else if (keyCode == 81) {
@@ -391,7 +195,11 @@ function InItKeys() {
                 LuckyAdd(x[12], x[15] || $('<div>').html(x[1]).text(), String(x[3] || '').replace(/<[^>]*>?/gm, '').trim(), x[26], $('<div>').html(x[1]).find('img').attr('src') || '');
             }
         } else if (keyCode == 85) {
-            ShowEdit(x[1], x[12], x[3], x[10], x[19], x[21], x[23], x[24]);
+            ShowCustomerDetails({
+                name: EditPlainName(x[1], x[12]), userid: x[12], phone: x[3], diachi: x[10],
+                note: x[19], label: x[21], realfbid: x[23], nn: x[24],
+                trigger: document.activeElement, onSaved: UpdateCommentCustomerRow
+            });
         } else if (keyCode == 86) {
             UpdatePhone();
         } else if (keyCode == 88) {

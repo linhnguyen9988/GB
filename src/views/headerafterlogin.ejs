@@ -24,7 +24,9 @@
   <link rel="stylesheet" href="/css/label.css">
   <link rel="stylesheet" href="/css/pane.css">
   <script src="/js/bs5utils.js"></script>
-  <script src="/js/orderstatusrefresh.js?v=20261109-jt-issue"></script>
+  <script src="/js/order-status.js?v=20261109-status-contrast"></script>
+  <script src="/js/customer-detail-modal.js?v=20261110"></script>
+  <script src="/js/orderstatusrefresh.js?v=20261109-status-contrast"></script>
   <script src="/js/editorderviettel.js"></script>
   <script src="/js/theme-toggle.js"></script>
 
@@ -57,6 +59,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
   <script src="/socket.io/socket.io.js"></script>
   <link rel="stylesheet" href="/css/theme.css">
+  <link rel="stylesheet" href="/css/order-status.css?v=20261109-status-contrast">
 </head>
 
 <script>
@@ -202,7 +205,10 @@
     checkAndReload();
   }
 
+  var _qrReqSeq = 0;
+
   function resetQRCustomerInfo() {
+    ++_qrReqSeq;
     $('#qrresult').empty();
     khid = '';
     userid = '';
@@ -627,20 +633,6 @@
     });
   }
 
-  function statusBadgeClass(statuscode) {
-    if (statuscode == null) return 'secondary';
-    const map = {
-      100: 'secondary', 101: 'secondary', 102: 'secondary', 103: 'secondary', 104: 'secondary', 105: 'secondary', 106: 'secondary',
-      200: 'info', 201: 'info', 202: 'info', 300: 'info', 400: 'info', 401: 'info', 402: 'info', 403: 'info', 509: 'info',
-      500: 'primary', 508: 'primary', 550: 'primary',
-      501: 'success',
-      118: 'warning', 120: 'warning', 505: 'warning', 506: 'warning', 507: 'warning',
-      515: 'danger', 551: 'danger',
-      504: 'danger'
-    };
-    return map[Number(statuscode)] ?? 'secondary';
-  }
-
   function ChotEntries(row) {
     var out = [];
     if (!row || row.gia === '' || row.gia == null) return out;
@@ -711,7 +703,7 @@
         }
         var d = data.data[0];
         var status = d.statuscode;
-        var badge = statusBadgeClass(status);
+        var badge = GBOrderStatus.get(d.provider, status, d.statustext);
         var button = '';
         const isJT = d.provider === 'J&T';
         const issue = getJTOrderIssue(d);
@@ -756,7 +748,7 @@
             <span class="order-detail-code" onclick="copyOrderNumber(this)"><i class="bi bi-upc"></i> ${d.realorderid}</span><span class="order-creator ms-2">${gbEscapeText(d.created_by_username || "Chưa ghi nhận")}</span>
             ${(!motphan && canRefreshOrderStatus(d)) ? `<button type="button" class="order-refresh-btn" title="Cập nhật trạng thái từ ${d.provider === 'J&T' ? 'J&T' : 'Viettel'}" onclick="RefreshStatusInDetail(this, '${d.realorderid}', '${d.provider || ''}')"><i class="bi bi-arrow-clockwise"></i></button>` : ''}
             ${motphan ? `<span class="badge bg-secondary">${motphan}</span>` : ''}
-            <span class="badge bg-${badge} order-detail-status">${d.statustext || 'Đang xử lý'}</span>
+            <span class="badge gb-order-status text-bg-${badge.color} order-detail-status">${gbEscapeText(badge.label)}</span>
           </div>
           <div class="small text-warning-emphasis mb-2 order-detail-issue" ${issue ? '' : 'hidden'}>${gbEscapeText(issue)}</div>
 
@@ -928,6 +920,7 @@
           let html = '';
           logs.forEach((log) => {
             const formattedCOD = new Intl.NumberFormat('vi-VN').format(log.money_collection || 0) + ' ₫';
+            const status = GBOrderStatus.get(log.provider, log.status_code, log.status_name);
             const phone = log.employee_phone || '';
             let pics = [];
             try { pics = log.sigpic ? JSON.parse(log.sigpic) : []; } catch (e) { pics = []; }
@@ -941,7 +934,7 @@
 
             html += `
                     <div class="tracking-card">
-                        <span class="card-status">${log.status_name}</span>
+                        <span class="card-status badge gb-order-status text-bg-${status.color}">${gbEscapeText(status.label)}</span>
                         - <span class="card-time">${log.status_date_raw || ''}</span>
                         <div class="card-location">📍 ${log.location || 'Đang cập nhật...'}</div>
                         ${log.employee_name ? `<a href="tel:${phone}" class="shipper-tag"><b>${log.employee_name}</b>&nbsp;${phone ? '- ' + phone : ''}</a>` : ''}
@@ -1328,11 +1321,18 @@
     else PushViettelOrder();
   }
 
+  function resetQROrderAfterSuccess(kgInput) {
+    if (document.getElementById('SOKG') === kgInput && document.getElementById('modalQR2').classList.contains('show')) {
+      window.retryQRScan();
+    }
+  }
+
   function PushJTOrder() {
     var pushBtn = document.getElementById("pushjtorder") || document.getElementById("pushviettelorder");
     var phone = document.getElementById('phoneviettel').value;
     var add = document.getElementById("diachilendonviettel");
     var selectedOpt = add.options[add.selectedIndex];
+    if (!selectedOpt) return ShowAlertModal('Chưa có địa chỉ');
     var address = selectedOpt.text.replace(/^[✅⚠️🔄❌]\s*/, '');
     var cod = document.getElementById("CODX").value;
     var kgInput = document.getElementById("SOKG");
@@ -1395,7 +1395,7 @@
       success: function (data) {
         pushBtn.disabled = false;
         if (data.success) {
-          kgInput.value = kgInput.defaultValue;
+          resetQROrderAfterSuccess(kgInput);
           if (data.printDispatched === false) {
             ShowCenterToast('warning', gbEscapeText(`Đã lên đơn J&T ${data.order_code}. ${data.printMessage || 'Chưa gửi được lệnh in.'} Bạn có thể in lại từ danh sách đơn.`), 5000);
           } else {
@@ -1413,9 +1413,12 @@
   }
 
   function PushViettelOrder() {
+    var pushBtn = document.getElementById("pushviettelorder");
     var phone = document.getElementById('phoneviettel').value;
     var add = document.getElementById("diachilendonviettel");
-    var address = add.options[add.selectedIndex].text.replace(/^[✅⚠️🔄❌]\s*/, '');
+    var selectedOpt = add.options[add.selectedIndex];
+    if (!selectedOpt) return ShowAlertModal('Chưa có địa chỉ');
+    var address = selectedOpt.text.replace(/^[✅⚠️🔄❌]\s*/, '');
     var cod = document.getElementById("CODX").value;
     var kgInput = document.getElementById("SOKG");
     var kg = kgInput.value;
@@ -1439,7 +1442,7 @@
       return;
     }
 
-    document.getElementById("pushviettelorder").disabled = true;
+    pushBtn.disabled = true;
 
     $.ajax({
       url: "/createorderviettel",
@@ -1447,19 +1450,21 @@
       dataType: "JSON",
       data: { fbname: fbnameSend, phone: phone, address: address, cod: cod, kg: kg, khid: khidSend, userid: useridSend, realfbid: realidSend },
       success: function (data) {
-        if (data.hasOwnProperty('error')) {
-          document.getElementById("pushviettelorder").disabled = false;
-          ShowAlertModal(data.error);
+        pushBtn.disabled = false;
+        if (!data.realorderid) {
+          ShowCenterToast('danger', gbEscapeText(data.error || 'GB chưa xác nhận được đơn Viettel.'), 5000);
           return;
         }
-        document.getElementById("pushviettelorder").disabled = false;
-        $('#qrresult').empty();
-        document.getElementById("video-container").style.display = "block";
+        resetQROrderAfterSuccess(kgInput);
         if (data.printed) {
           ShowCenterToast('success', gbEscapeText('Đã lên đơn Viettel ' + data.realorderid), 5000);
         } else {
           ShowCenterToast('warning', gbEscapeText('Đã lên đơn Viettel ' + data.realorderid + '. ' + (data.printMessage || 'Chưa gửi được lệnh in.') + ' Bạn có thể in lại từ danh sách đơn.'), 5000);
         }
+      },
+      error: function (xhr) {
+        pushBtn.disabled = false;
+        ShowCenterToast('danger', gbEscapeText(xhr.responseJSON?.error || 'Không nhận được phản hồi. Kiểm tra đơn Viettel trước khi gửi lại.'), 5000);
       }
     });
   }
@@ -1472,13 +1477,14 @@
     return splitStr.join(' ');
   }
   function FillDiaChiLenDon(phone) {
+    const select = document.getElementById('diachilendonviettel');
     $.ajax({
       url: "/getdiachilendon",
       method: "POST",
       data: { phone: phone, userid: userid },
       dataType: "JSON",
       success: function (data) {
-        const select = document.getElementById('diachilendonviettel');
+        if (!select?.isConnected) return;
 
         for (var i = 0; i < data.data.length; i++) {
           var item = data.data[i];
@@ -1868,10 +1874,11 @@
   }
   window.retryQRScan = function () {
     resetQRCustomerInfo();
-    scanner.start().then(function () { _startRot(); });
+    scanner.start().then(function () { _startRot(); }).catch(function () {
+      ShowCenterToast('warning', 'Không mở lại được camera. Bấm bắt đầu quét để thử lại.', 5000);
+    });
   };
 
-  var _qrReqSeq = 0;
   function loadCustomerInfoByKhachId(khachId) {
     var mySeq = ++_qrReqSeq;
     khid = khachId;
@@ -1998,24 +2005,18 @@
               dataType: "JSON",
               data: params,
               success: function (order) {
+                if (mySeq !== _qrReqSeq) return;
                 var select = document.getElementById("userorder");
                 if (!select) return;
                 removeOptions(select);
                 for (var i = 0; i < order.data.length; i++) {
-                  let date = order.data[i].date.substring(9);
+                  let date = String(order.data[i].date || '').substring(9);
                   if (order.data[i].realorderid.includes('1P1')) {
                     date = '[1P] ' + date;
                   }
-                  if (order.data[i].statuscode == 107) {
-                    continue;
-                  }
-                  var statustext = '';
-                  if (order.data[i].statustext == '' || order.data[i].statustext == null) {
-                    statustext = 'TK Cũ';
-                  } else {
-                    statustext = order.data[i].statustext;
-                  }
-                  AddOptions(select, order.data[i].realorderid, `${date} • ${order.data[i].cod.toLocaleString()} • ${order.data[i].kg}KG • ${statustext}`);
+                  const item = order.data[i];
+                  const statustext = GBOrderStatus.get(item.provider, item.statuscode, item.statustext || 'TK Cũ').label;
+                  AddOptions(select, order.data[i].realorderid, `${date} • ${Number(item.cod || 0).toLocaleString()} • ${item.kg}KG • ${statustext}`);
                 }
 
                 var btnAll = document.getElementById('btnxemtatcadonqr');
@@ -2033,6 +2034,7 @@
             dataType: "JSON",
             data: { userid: userid, limit: QR_DONHANG_DEFAULT_LIMIT },
             success: function (order) {
+              if (mySeq !== _qrReqSeq) return;
               if (order.data.length > 0) {
                 $('#qrresult').append(`
                   <div class="qr-section-label"><i class="bi bi-bag-check"></i> Đơn hàng</div>
@@ -2046,20 +2048,13 @@
                     <button type="button" class="btn btn-outline-secondary" id="btnxemtatcadonqr" title="Xem tất cả đơn hàng" style="display:none;" onclick="loadQROrderList('${userid}', null)"><i class="bi bi-list-ul"></i></button>
                   </div>`);
                 for (var i = 0; i < order.data.length; i++) {
-                  let date = order.data[i].date.substring(9);
+                  let date = String(order.data[i].date || '').substring(9);
                   if (order.data[i].realorderid.includes('1P1')) {
                     date = '[1P] ' + date;
                   }
-                  if (order.data[i].statuscode == 107) {
-                    continue;
-                  }
-                  var statustext = '';
-                  if (order.data[i].statustext == '' || order.data[i].statustext == null) {
-                    statustext = 'TK Cũ';
-                  } else {
-                    statustext = order.data[i].statustext;
-                  }
-                  AddOptions(document.getElementById("userorder"), order.data[i].realorderid, `${date} • ${order.data[i].cod.toLocaleString()} • ${order.data[i].kg}KG • ${statustext}`);
+                  const item = order.data[i];
+                  const statustext = GBOrderStatus.get(item.provider, item.statuscode, item.statustext || 'TK Cũ').label;
+                  AddOptions(document.getElementById("userorder"), order.data[i].realorderid, `${date} • ${Number(item.cod || 0).toLocaleString()} • ${item.kg}KG • ${statustext}`);
                 }
                 var btnAllInit = document.getElementById('btnxemtatcadonqr');
                 if (btnAllInit) {
@@ -2079,6 +2074,7 @@
               dataType: "JSON",
               data: { userid: data.data[0].userid, sllive: sllive },
               success: function (chot) {
+                if (mySeq !== _qrReqSeq) return;
                 if (chot.data.length > 0) {
                   var j = 0;
                   var t = 0;
@@ -2139,7 +2135,7 @@
           }
       },
       error: function () {
-        handleQRNotFound('Lỗi tra cứu khách hàng, vui lòng thử lại.');
+        if (mySeq === _qrReqSeq) handleQRNotFound('Lỗi tra cứu khách hàng, vui lòng thử lại.');
       }
     });
   }
@@ -2291,14 +2287,18 @@
     })();
   </script>
 
-    <div class="modal fade" id="message-modal" tabindex="-1" aria-labelledby="message-modal-label" aria-hidden="true">
+    <div class="modal fade" id="message-modal" tabindex="-1" aria-labelledby="customer-name" aria-hidden="true">
       <div class="modal-dialog modal-fullscreen-sm-down modal-dialog-centered">
         <div class="modal-content modal-content-messenger">
           <div class="modal-header modal-header-messenger">
             <div class="customer-info-messenger">
-              <img id="customer-avatar" src="" class="avatar-messenger" alt="Avatar">
+              <button type="button" class="p-0 border-0 bg-transparent rounded-circle" data-message-customer-details aria-haspopup="dialog" aria-label="Xem thông tin khách hàng" title="Xem thông tin khách hàng">
+                <img id="customer-avatar" src="" class="avatar-messenger" alt="">
+              </button>
               <div class="customer-details-messenger">
-                <span id="customer-name" class="customer-name-messenger text1">Tên Khách Hàng</span>
+                <button type="button" class="p-0 border-0 bg-transparent text-start" data-message-customer-details aria-haspopup="dialog" title="Xem thông tin khách hàng">
+                  <span id="customer-name" class="customer-name-messenger text1">Tên Khách Hàng</span>
+                </button>
                 <div id="last-order-info" class="last-order-info-container">
                 </div>
               </div>

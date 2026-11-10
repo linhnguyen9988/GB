@@ -1,0 +1,10 @@
+.gb-order-status.badge {
+    color: #fff !important;
+}
+
+.gb-order-status.text-bg-secondary { background-color: #fce300 !important; }
+.gb-order-status.text-bg-info { background-color: #1baedb !important; }
+.gb-order-status.text-bg-primary { background-color: #1d4ed8 !important; }
+.gb-order-status.text-bg-success { background-color: #0a9b41 !important; }
+.gb-order-status.text-bg-warning { background-color: #e09238 !important; }
+.gb-order-status.text-bg-danger { background-color: #b91c1c !important; }

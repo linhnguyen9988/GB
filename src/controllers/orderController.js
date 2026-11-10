@@ -1,5 +1,6 @@
 'use strict';
 const DBConnection = require("../configs/DBConnection");
+const { get: getOrderStatus } = require('../public/js/order-status');
 let handleOrder = async (req, res) => {
     try {
         const db = DBConnection.promise();
@@ -37,6 +38,7 @@ let handleOrder = async (req, res) => {
         return res.render("donhang.ejs", {
             user: req.user,
             orders: rows,
+            getOrderStatus,
             searchQuery: search,
             startDate: finalStartDate,
             endDate: finalEndDate

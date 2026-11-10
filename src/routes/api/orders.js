@@ -3,6 +3,7 @@ const router = require('express').Router();
 const db = require('../../configs/DBConnection');
 const auth = require('../../middleware/jwtAuth');
 const { getAccountForOrder } = require('../../services/viettelAccountService');
+const { customerOrderFilter } = require('../../utils/customerOrderFilter');
 
 router.get('/', auth, async (req, res) => {
   const { status, search, fromDate, limit = 50, offset = 0 } = req.query;
@@ -33,23 +34,18 @@ router.get('/', auth, async (req, res) => {
 
 router.get('/recent', auth, async (req, res) => {
   try {
-    const userid = String(req.query.userid || '').trim();
-    const realfbid = String(req.query.realfbid || '').trim();
+    const filter = customerOrderFilter(req.query.userid, req.query.realfbid);
+    if (!filter) return res.json({ data: [] });
+    const { params, where } = filter;
     const limit = Math.min(Math.max(parseInt(req.query.limit) || 3, 1), 10);
-    if (!userid && !realfbid) return res.json({ data: [] });
-
-    const conds = [];
-    const params = [];
-    if (userid) { conds.push('userid = ?'); params.push(userid); }
-    if (realfbid && realfbid !== 'null') { conds.push('realfbid = ?'); params.push(realfbid); }
-    params.push(limit);
+    const all = req.query.all === '1';
+    if (!all) params.push(limit);
 
     const [rows] = await db.query(
       `SELECT realorderid, orderid, cod, kg, statuscode, statustext, provider, time, last_update, address
-       FROM lendon
-       WHERE (${conds.join(' OR ')})
-       ORDER BY time DESC, realorderid DESC
-       LIMIT ?`,
+       FROM lendon l
+       WHERE ${where}
+       ORDER BY l.time DESC, l.id DESC${all ? '' : ' LIMIT ?'}`,
       params
     );
     res.json({ data: rows });
@@ -104,7 +100,7 @@ router.get('/logs/:orderNumber', auth, async (req, res) => {
     const orderNumber = req.params.orderNumber;
 
     const [[orderInfo]] = await db.query(
-      'SELECT provider FROM lendon WHERE realorderid = ? LIMIT 1',
+      'SELECT provider, cod FROM lendon WHERE realorderid = ? LIMIT 1',
       [orderNumber]
     );
     const provider = orderInfo?.provider || 'Viettel';
@@ -121,14 +117,17 @@ router.get('/logs/:orderNumber', auth, async (req, res) => {
            scanbyname      AS employee_name,
            scanbycontact   AS employee_phone,
            issuename       AS note,
-           0               AS money_collection,
+           ?               AS money_collection,
            scantypecode    AS status_code${sigCol}
          FROM jtwaybill
          WHERE billcode = ?
          ORDER BY REPLACE(CAST(scantime AS CHAR), 'T', ' ') DESC`,
-        [orderNumber]
+        [orderInfo.cod ?? 0, orderNumber]
       );
-      for (const row of rows) row.status_date_raw = formatJTScanTime(row.status_date_raw) || row.status_date_raw;
+      for (const row of rows) {
+        row.status_date_raw = formatJTScanTime(row.status_date_raw) || row.status_date_raw;
+        row.provider = provider;
+      }
     } else {
       [rows] = await db.query(
         `SELECT * FROM order_logs

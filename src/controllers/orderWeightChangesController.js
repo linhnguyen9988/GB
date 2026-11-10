@@ -1,6 +1,7 @@
 'use strict';
 
 const db = require('../configs/DBConnection');
+const { get: getOrderStatus } = require('../public/js/order-status');
 
 const PAGE_SIZE = 50;
 const PAGE_PATH = '/admin/order-weight-changes';
@@ -45,10 +46,10 @@ async function show(req, res) {
     };
 
     res.set('Cache-Control', 'no-store');
-    const view = { user: req.user, carrier, search, allTime, page, previous: page > 1 ? pageUrl(page - 1) : null };
+    const view = { user: req.user, carrier, search, allTime, page, getOrderStatus, previous: page > 1 ? pageUrl(page - 1) : null };
     try {
         const [rows] = await db.query(
-            `SELECT realorderid, orderid, name, provider, original_kg, ${DECLARED_KG} AS declared_kg, kg, statustext,
+            `SELECT realorderid, orderid, name, provider, original_kg, ${DECLARED_KG} AS declared_kg, kg, statuscode, statustext,
                     COALESCE(last_update, time) AS updated_at
                FROM lendon
               WHERE ${filters.join(' AND ')}

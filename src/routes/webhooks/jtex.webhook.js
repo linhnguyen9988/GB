@@ -1,37 +1,58 @@
 'use strict';
 const DBConnection = require("../../configs/DBConnection");
 const { sendFcmToUser } = require('../fcm');
+const zaloAlerts = require('../../services/zaloShipmentAlerts');
+const { SendCanhBao } = require('../../services/shipmentAlertService');
 const {
-    jtHasSigpic, isPartReturnBill, eventCode, toWaybillRow, toEpoch, readJTDetails,
+    JT_FINAL_CODES, jtHasSigpic, isPartReturnBill, eventCode, toWaybillRow, toEpoch, readJTDetails, latestJTStatusIndex,
     insertWaybillIfNew, readStoredJTWaybill, latestStoredScanEpoch, lockJTOrder, applyJTStatus, createPartReturnOrder
 } = require('../../services/jtExpressService');
 
 const JT_NOTIFY_CODES = new Set([116, 117, 118, 120]);
+const JT_MESSENGER_CODES = new Set([118, 120]);
 
-async function notifyShop(db, billCode, scanCode, statusText, issueText) {
-    const [orderRows] = await db.query('SELECT * FROM lendon WHERE realorderid = ? LIMIT 1', [billCode]);
-    if (!orderRows.length) return;
-    const order = orderRows[0];
-    const userId = order.useraccountid;
-    const title = `${order.name} - J&T`;
-    const body = `${statusText}${issueText ? ' - ' + issueText : ''}`;
+function isInProvinceAddressChange(text) {
+    if (typeof text !== 'string') return false;
+    const normalized = text.normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase();
+    return /^thay đổi địa chỉ giao hàng ?\( ?nội tỉnh ?\)$/.test(normalized);
+}
 
-    const [notiRows] = await db.query(
-        'SELECT 1 FROM order_noti_log WHERE realorderid = ? AND status_code = ? LIMIT 1',
-        [billCode, scanCode]
-    );
-    if (notiRows.length) return;
-
-    const [result] = await db.query(
-        'INSERT IGNORE INTO order_noti_log (realorderid, status_code, sent_at, title, body, userid) VALUES (?, ?, NOW(), ?, ?, ?)',
-        [billCode, scanCode, title, body, userId]
-    );
-    await sendFcmToUser(db, userId, title, body, {
-        type: 'order_status',
-        realorderid: billCode,
-        status: scanCode,
-        noti_id: result.insertId
-    });
+async function claimNotifications(billCode, notices) {
+    const conn = await DBConnection.getConnection();
+    const claimed = [];
+    try {
+        await conn.beginTransaction();
+        const locked = await lockJTOrder(conn, billCode);
+        if (locked) {
+            const [[order]] = await conn.query(
+                "SELECT name, cod, userid, useraccountid FROM lendon WHERE realorderid = ? AND provider = 'J&T' LIMIT 1",
+                [billCode]
+            );
+            const title = `${order.name} - J&T`;
+            const final = JT_FINAL_CODES.includes(Number(locked.statuscode));
+            for (const [code, notice] of notices) {
+                const messenger = notice.messenger && Boolean(order.userid) && !final;
+                if (!notice.push && !messenger) continue;
+                const [existing] = await conn.query(
+                    'SELECT 1 FROM order_noti_log WHERE realorderid = ? AND status_code = ? LIMIT 1',
+                    [billCode, code]
+                );
+                if (existing.length) continue;
+                const [result] = await conn.query(
+                    'INSERT IGNORE INTO order_noti_log (realorderid, status_code, sent_at, title, body, userid) VALUES (?, ?, NOW(), ?, ?, ?)',
+                    [billCode, code, title, notice.body, order.useraccountid]
+                );
+                if (result.affectedRows) claimed.push({ ...notice, code, title, order, messenger, id: result.insertId });
+            }
+        }
+        await conn.commit();
+        return claimed;
+    } catch (error) {
+        await conn.rollback();
+        throw error;
+    } finally {
+        conn.release();
+    }
 }
 
 async function storeFeedback(data) {
@@ -53,15 +74,51 @@ async function storeFeedback(data) {
         if (partSign === 1 && !isPartReturnBill(billCode)) {
             await createPartReturnOrder(billCode, conn);
         }
+        const statusIndex = latestJTStatusIndex(events);
+        const alerts = new Map();
         let latestIssue;
-        for (const event of events) {
-            latestIssue = await insertWaybillIfNew(conn, toWaybillRow(billCode, event), withSig);
+        let suppressStatusNotice = false;
+        for (const [index, event] of events.entries()) {
+            const row = toWaybillRow(billCode, event);
+            const issue = await insertWaybillIfNew(conn, row, withSig);
+            const suppressNotice = isInProvinceAddressChange(issue) || isInProvinceAddressChange(event.scanTypeName);
+            if (index === statusIndex) {
+                latestIssue = issue;
+                suppressStatusNotice = suppressNotice;
+            }
+            if (!suppressNotice && zaloAlerts.isIssue('J&T', row.scantypecode)) {
+                alerts.set(row.scantypecode, {
+                    body: issue ? row.scantypename + ' - ' + issue : row.scantypename,
+                    phone: row.scanbycontact,
+                    time: toEpoch(event.scanTime)
+                });
+            }
         }
 
         const stale = storedNewest !== null && toEpoch(newest.scanTime) < storedNewest;
-        const status = stale ? null : await applyJTStatus(billCode, newest, conn, latestIssue);
+        const status = stale ? null : await applyJTStatus(billCode, events[statusIndex], conn, latestIssue);
+        if (alerts.size) {
+            const [[order]] = await conn.query(
+                "SELECT name, phone, cod FROM lendon WHERE realorderid = ? AND provider = 'J&T' LIMIT 1",
+                [billCode]
+            );
+            for (const [code, alert] of alerts) {
+                await zaloAlerts.enqueue(conn, 'J&T', billCode, code, alert.body, order);
+            }
+        }
+        const notices = new Map();
+        const scanCode = eventCode(newest);
+        if (status?.applied && !suppressStatusNotice && JT_NOTIFY_CODES.has(scanCode)) {
+            const body = status.issue ? status.statustext + ' - ' + status.issue : status.statustext;
+            notices.set(scanCode, { body, push: true });
+        }
+        for (const [code, alert] of alerts) {
+            if (JT_MESSENGER_CODES.has(code) && (storedNewest === null || alert.time >= storedNewest)) {
+                notices.set(code, { ...notices.get(code), body: alert.body, phone: alert.phone, messenger: true });
+            }
+        }
         await conn.commit();
-        return { billCode, scanCode: eventCode(newest), status };
+        return { billCode, notices };
     } catch (error) {
         await conn.rollback();
         throw error;
@@ -83,12 +140,24 @@ module.exports = function registerJtexWebhook(router) {
         }
         res.json({ code: '1', msg: 'success', data: null });
 
-        const { billCode, scanCode, status } = result;
-        if (status?.applied && JT_NOTIFY_CODES.has(scanCode)) {
+        const { billCode, notices } = result;
+        if (notices.size) {
             try {
-                await notifyShop(DBConnection.promise(), billCode, scanCode, status.statustext, status.issue);
+                const claimed = await claimNotifications(billCode, notices);
+                await Promise.all(claimed.flatMap(notice => {
+                    const deliveries = [];
+                    if (notice.messenger) {
+                        deliveries.push(SendCanhBao(billCode, null, notice.phone, Number(notice.order.cod) || 0, notice.body, 'J&T'));
+                    }
+                    if (notice.push) {
+                        deliveries.push(sendFcmToUser(DBConnection.promise(), notice.order.useraccountid, notice.title, notice.body, {
+                            type: 'order_status', realorderid: billCode, status: notice.code, noti_id: notice.id
+                        }));
+                    }
+                    return deliveries;
+                }));
             } catch (error) {
-                console.error('[J&T FCM] Lỗi gửi notification:', error.message);
+                console.error('[J&T] Lỗi xử lý thông báo:', error.code || error.message);
             }
         }
     });

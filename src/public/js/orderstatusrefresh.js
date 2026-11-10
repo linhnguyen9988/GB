@@ -62,7 +62,7 @@ function requestOrderStatusRefresh(orderNumber, btn, onSuccess, provider) {
     data: { realorderid: orderNumber },
     dataType: 'JSON',
     success: function (res) {
-      var text = res.statustext || ('Trạng thái ' + res.statuscode);
+      var text = GBOrderStatus.get(provider, res.statuscode, res.statustext).label;
       if (provider === 'J&T' && Number.isInteger(res.logCount)) {
         ShowCenterToast('success', 'Đã tải lại ' + res.logCount + ' mốc hành trình J&T.', 3000);
       } else {
@@ -87,9 +87,9 @@ function RefreshStatusInDetail(btn, orderNumber, provider) {
     if (!modal || !modal.isConnected) return;
     var badge = modal.querySelector('.order-detail-status');
     if (badge) {
-      badge.textContent = res.statustext || 'Đang xử lý';
-      var color = (typeof statusBadgeClass === 'function') ? statusBadgeClass(res.statuscode) : 'secondary';
-      badge.className = badge.className.replace(/\bbg-\S+/g, '').replace(/\s+/g, ' ').trim() + ' bg-' + color;
+      var status = GBOrderStatus.get(provider, res.statuscode, res.statustext);
+      badge.textContent = status.label;
+      badge.className = 'badge gb-order-status order-detail-status text-bg-' + status.color;
     }
     var weight = modal.querySelector('.order-detail-weight');
     var issue = modal.querySelector('.order-detail-issue');

@@ -6,6 +6,7 @@ const { JT_API_ACCOUNT, JT_CUSTOMER_CODE, JT_PASSWORD, JT_PKEY, SHIP_LABEL } = r
 const { md5ToBase64 } = require('../utils/crypto');
 const { isPrinterOnline, dispatchPrint } = require('./printAgent');
 const { printLabelByCode } = require('./labelPrintService');
+const { jt: jtStatuses, jtCancelled } = require('../public/js/order-status');
 
 async function loadJTOrder(code) {
     const [[order]] = await DBConnection.query(
@@ -41,22 +42,7 @@ async function CancelOrderJT(orderid) {
 
 const JT_BASE = 'https://ylopenapi.jtexpress.vn/webopenplatformapi/api';
 
-const JT_FINAL_CODES = [105, 113, 117];
-const JT_KNOWN_CODES = [103, 105, 106, 109, 110, 112, 113, 116, 117, 118, 120];
-
-const JT_STATUS_VN = {
-    103: "Tạo đơn thành công",
-    105: "Đã hủy đơn",
-    106: "Bưu tá đã lấy hàng",
-    109: "Xuất kho trung chuyển",
-    110: "Hàng đã đến bưu cục",
-    112: "Đang giao hàng",
-    113: "Giao hàng thành công",
-    116: "Đang chuyển hoàn",
-    117: "Đã ký nhận hoàn trả",
-    118: "Kiện vấn đề (Giao)",
-    120: "Kiện vấn đề (Hoàn)"
-};
+const JT_FINAL_CODES = [jtCancelled, 113, 117, 121];
 
 const { JT_SENDER, JT_ORDER_NOTE, JT_PRODUCT_NAME } = require('../configs/jtLabelConfig');
 
@@ -102,7 +88,7 @@ function eventCode(ev) {
 }
 
 function jtTypeName(code, name) {
-    let n = JT_STATUS_VN[code] || name || 'Hành trình mới';
+    let n = jtStatuses[code]?.label || name || 'Hành trình mới';
     if (n === '中心到件') n = 'Hàng đến TTKT';
     else if (n === '取件失败') n = 'Nhận hàng không thành công';
     return n;
@@ -156,6 +142,17 @@ function readJTDetails(details) {
         throw new Error('J&T trả mốc hành trình có thời gian không hợp lệ');
     }
     return [...events].sort((a, b) => toEpoch(a.scanTime) - toEpoch(b.scanTime));
+}
+
+function latestJTStatusIndex(events) {
+    const last = events.length - 1;
+    if (eventCode(events[last]) !== 121) return last;
+    for (let i = last - 1; i >= 0; i--) {
+        const code = eventCode(events[i]);
+        if (code === jtCancelled) return i;
+        if (code === 113 || code === 117) break;
+    }
+    return last;
 }
 
 function toWaybillRow(billCode, d) {
@@ -260,7 +257,10 @@ async function applyJTStatus(billCode, ev, conn, storedIssue) {
     const code = eventCode(ev);
     const [prevRows] = await conn.query("SELECT statuscode FROM lendon WHERE realorderid = ? AND provider = 'J&T' LIMIT 1", [billCode]);
     if (!prevRows.length) return { applied: false, found: false };
-    if (!JT_KNOWN_CODES.includes(code)) return { applied: false, found: true };
+    if (code === 100 || !jtStatuses[code]) return { applied: false, found: true };
+    if (code === 121 && Number(prevRows[0].statuscode) === jtCancelled) {
+        return { applied: false, found: true };
+    }
 
     const row = toWaybillRow(billCode, ev);
     const rawWeight = ev.weight;
@@ -493,7 +493,8 @@ async function refreshJTStatus(billCode) {
             row.issuename = row.issuename || previous?.issue || null;
             await insertWaybill(conn, row, withSig);
         }
-        const st = await applyJTStatus(billCode, newest, conn, rows[rows.length - 1].issuename);
+        const statusIndex = latestJTStatusIndex(trace.details);
+        const st = await applyJTStatus(billCode, trace.details[statusIndex], conn, rows[statusIndex].issuename);
         const [[after]] = await conn.query("SELECT statuscode, statustext FROM lendon WHERE realorderid = ? AND provider = 'J&T' LIMIT 1", [billCode]);
         await conn.commit();
         return {
@@ -514,6 +515,6 @@ async function refreshJTStatus(billCode) {
 module.exports = {
     CancelOrderJT, GetBillJT, dispatchJTLabel, reprintBillJT,
     createJTOrder, traceJT, refreshJTStatus,
-    JT_FINAL_CODES, jtHasSigpic, isPartReturnBill, eventCode, toWaybillRow, toEpoch, formatJTScanTime, readJTDetails,
+    JT_FINAL_CODES, jtHasSigpic, isPartReturnBill, eventCode, toWaybillRow, toEpoch, formatJTScanTime, readJTDetails, latestJTStatusIndex,
     insertWaybillIfNew, readStoredJTWaybill, latestStoredScanEpoch, lockJTOrder, applyJTStatus, createPartReturnOrder
 };

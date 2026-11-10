@@ -5,6 +5,7 @@ const path = require('path');
 const { SendCanhBao } = require('../../services/shipmentAlertService');
 const { VIETTEL_WEBHOOK_TOKEN } = require('../../configs/constants');
 const { sendFcmToUser } = require('../fcm');
+const zaloAlerts = require('../../services/zaloShipmentAlerts');
 
     const POD_LOG_FILE = path.join(__dirname, '..', 'pod-webhooks.txt');
 
@@ -89,10 +90,8 @@ module.exports = function registerViettelWebhook(router) {
                 'SELECT 1 FROM order_logs WHERE order_number = ? AND status_code = ? AND status_date_raw = ? LIMIT 1',
                 [orderNumber, status, data.ORDER_STATUSDATE]
             );
-            if (dupRows.length > 0) {
-                //console.log(`[Duplicate] Bỏ qua webhook trùng: đơn ${orderNumber}, status=${status}, date=${data.ORDER_STATUSDATE}`);
-                return res.sendStatus(200);
-            }
+            const isIssue = zaloAlerts.isIssue('Viettel', status);
+            if (dupRows.length > 0 && !isIssue) return res.sendStatus(200);
 
             let phone = data.EMPLOYEE_PHONE || '';
             if (phone.startsWith('84')) {
@@ -106,6 +105,13 @@ module.exports = function registerViettelWebhook(router) {
                 'SELECT * FROM lendon WHERE realorderid = ? LIMIT 1',
                 [orderNumber]
             );
+            const order = rows[0];
+            if (order && (!order.provider || order.provider === 'Viettel')) {
+                await zaloAlerts.enqueue(db, 'Viettel', orderNumber, status, statustext, {
+                    name: order.name, phone: order.phone, cod: data.MONEY_COLLECTION ?? order.cod, note: data.NOTE
+                });
+            }
+            if (dupRows.length > 0 && (order || !is1P1)) return res.sendStatus(200);
 
             const FINAL_STATUSES = new Set([101, 107, 201, 501, 503, 504]);
 
@@ -133,6 +139,9 @@ module.exports = function registerViettelWebhook(router) {
                             base.original_kg, base.viettel_input_kg ?? base.kg, weightAt
                         ]
                     );
+                    await zaloAlerts.enqueue(db, 'Viettel', orderNumber, status, statustext, {
+                        name: base.name, phone: base.phone, cod: 0, note: data.NOTE
+                    });
                     //console.log(`[1P1] Tạo đơn hoàn 1 phần mới: ${orderNumber} từ đơn gốc ${baseOrderNumber}`);
                 } else {
                     console.warn(`[1P1] Không tìm thấy đơn gốc ${baseOrderNumber} để tạo đơn ${orderNumber}`);
@@ -162,7 +171,6 @@ module.exports = function registerViettelWebhook(router) {
                         [status, statustext, data.MONEY_COLLECTION,
                             data.EMPLOYEE_NAME || null, phone || null, reasonCode, podImagesJson, orderNumber]
                     );
-
                     const NOTIFY_STATUSES = {
                         505: '⚠️', 506: '⚠️', 507: '⚠️',
                         502: '🔄', 515: '🔄', 551: '🔄', 504: '🔄',

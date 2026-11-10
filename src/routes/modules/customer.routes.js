@@ -283,27 +283,30 @@ module.exports = function registerCustomerRoutes(router) {
             });
     });
 
-    router.post('/updateuser', jwtAuth, function (request, response, next) {
+    router.post('/updateuser', jwtAuth, async function (request, response) {
         var phone = request.body.phone;
         var diachi = request.body.diachi;
         var userid = request.body.userid;
         var label = request.body.label;
         var note = request.body.note;
         var nuocngoai = request.body.nn;
-        var realfbid = request.body.realfbid;
-        var important = request.body.checknote;
+        var realfbid = request.body.realfbid || '';
+        var important = request.body.checknote ?? null;
         var sql;
 
         if (realfbid.length > 0) {
-            sql = SqlString.format('UPDATE khachhang SET nuocngoai=?, phone=?, diachi=?, label=?, note=?, important=? WHERE userid=? OR realfbid=?',
+            sql = SqlString.format('UPDATE khachhang SET nuocngoai=?, phone=?, diachi=?, label=?, note=?, important=COALESCE(?, important) WHERE userid=? OR realfbid=?',
                 [nuocngoai, phone, diachi, label, note, important, userid, realfbid]);
         } else {
-            sql = SqlString.format('UPDATE khachhang SET nuocngoai=?, phone=?, diachi=?, label=?, note=?, important=? WHERE userid=?',
+            sql = SqlString.format('UPDATE khachhang SET nuocngoai=?, phone=?, diachi=?, label=?, note=?, important=COALESCE(?, important) WHERE userid=?',
                 [nuocngoai, phone, diachi, label, note, important, userid]);
         }
-        DBConnection.query(sql);
-        response.json({
-            data: userid
-        });
+        try {
+            await DBConnection.query(sql);
+            response.json({ data: userid });
+        } catch (error) {
+            console.error('Lỗi cập nhật thông tin khách hàng:', error.code);
+            response.status(500).json({ error: 'Không lưu được thông tin khách hàng' });
+        }
     });
 };
