@@ -54,6 +54,8 @@ function ResetLenDonKhachHang(userid) {
     const address = document.getElementById('diachilendon');
     cod.value = cod.defaultValue;
     kg.value = kg.defaultValue;
+    const exchange = document.getElementById('customerJtExchange');
+    if (exchange) exchange.checked = false;
     if (address.options[0]?.value !== '') {
         const placeholder = new Option('Chọn địa chỉ lên đơn', '');
         placeholder.disabled = true;
@@ -212,7 +214,8 @@ function LenDonKhachHangJT() {
             realfbid: realfbid,
             tinh: tinhjt,
             huyen: huyenjt,
-            xa: xajt
+            xa: xajt,
+            ...(document.getElementById('customerJtExchange')?.checked ? { isExchange: '1' } : {})
         }),
         success: function (data) {
             if (btn) btn.disabled = false;
@@ -455,7 +458,10 @@ function InItKeys() {
         document.getElementById("labelkh").value = x[4];
         document.getElementById("aka").value = x[9];
         document.getElementById("realfbid").value = x[12];
-        document.getElementById("userid").value = x[0];
+        const userIdField = document.getElementById('userid');
+        const exchange = document.getElementById('customerJtExchange');
+        if (exchange && userIdField.value !== String(x[0])) exchange.checked = false;
+        userIdField.value = x[0];
         //document.getElementById("COD").value = 0;
         var kgInput = document.getElementById("KG");
         kgInput.value = kgInput.defaultValue;

@@ -72,6 +72,15 @@
                                                 onfocus="SelectX(this)">
                                             <span class="input-group-text" id="labelkg">KG</span>
                                         </div>
+                                        <% if (typeof activeCarrier !== 'undefined' && activeCarrier === 'jt') { %>
+                                            <div class="input-group mb-3">
+                                                <label class="d-inline-flex align-items-center gap-1 small py-1" for="customerJtExchange"
+                                                    style="padding-inline-start: calc(.75rem + var(--bs-border-width, 1px));">
+                                                    <input type="checkbox" class="form-check-input m-0 flex-shrink-0" id="customerJtExchange">
+                                                    <span>Đổi trả</span>
+                                                </label>
+                                            </div>
+                                        <% } %>
                                         <div class="input-group mb-3">
                                             <select id="diachilendon" class="form-select">
                                             </select>
@@ -166,5 +175,5 @@
                 </div>
             </div>
         </div>
-        <script src="/js/khachhang.js?v=20261110-order-reset"></script>
+        <script src="/js/khachhang.js?v=20261111-jt-exchange"></script>
         <%- include('footer'); -%>

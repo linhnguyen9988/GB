@@ -1384,7 +1384,8 @@
         realfbid: realid,
         tinh: tinhjt,
         huyen: huyenjt,
-        xa: xajt
+        xa: xajt,
+        ...(document.getElementById('qrJtExchange')?.checked ? { isExchange: '1' } : {})
       }),
       success: function (data) {
         pushBtn.disabled = false;
@@ -1954,6 +1955,14 @@
                   <button type="button" id="pushviettelorder" class="btn btn-success" onclick="PushOrder()" title="Lên đơn ${window.ACTIVE_CARRIER === 'jt' ? 'J&T' : window.ACTIVE_CARRIER === 'viettel' ? 'Viettel' : ''}"><i class="bi bi-box-seam"></i> ${window.ACTIVE_CARRIER === 'jt' ? 'J&amp;T' : window.ACTIVE_CARRIER === 'viettel' ? 'Viettel' : 'Lên đơn'}</button>
                 </div>
               </div>
+              ${window.ACTIVE_CARRIER === 'jt' ? `
+                <div class="text-start mb-2">
+                  <label class="d-inline-flex align-items-center gap-1 small" for="qrJtExchange">
+                    <input type="checkbox" class="form-check-input m-0 flex-shrink-0" id="qrJtExchange">
+                    <span>Đổi trả</span>
+                  </label>
+                </div>
+              ` : ''}
               <select id="diachilendonviettel" class="form-select qr-select mb-2"></select>
 
               <div class="qr-section-label"><i class="bi bi-person-lines-fill"></i> Thông tin</div>

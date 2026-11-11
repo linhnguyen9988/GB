@@ -11,10 +11,12 @@ const {
 const JT_NOTIFY_CODES = new Set([116, 117, 118, 120]);
 const JT_MESSENGER_CODES = new Set([118, 120]);
 
+function normalizeReason(text) {
+    return typeof text === 'string' ? text.normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase() : '';
+}
+
 function isInProvinceAddressChange(text) {
-    if (typeof text !== 'string') return false;
-    const normalized = text.normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase();
-    return /^thay đổi địa chỉ giao hàng ?\( ?nội tỉnh ?\)$/.test(normalized);
+    return /^thay đổi địa chỉ giao hàng ?\( ?nội tỉnh ?\)$/.test(normalizeReason(text));
 }
 
 async function claimNotifications(billCode, notices) {
@@ -90,7 +92,8 @@ async function storeFeedback(data) {
                 alerts.set(row.scantypecode, {
                     body: issue ? row.scantypename + ' - ' + issue : row.scantypename,
                     phone: row.scanbycontact,
-                    time: toEpoch(event.scanTime)
+                    time: toEpoch(event.scanTime),
+                    buyerRescheduled: [issue, event.scanTypeName].some(reason => normalizeReason(reason) === 'người mua hẹn lại ngày nhận')
                 });
             }
         }
@@ -113,7 +116,7 @@ async function storeFeedback(data) {
             notices.set(scanCode, { body, push: true });
         }
         for (const [code, alert] of alerts) {
-            if (JT_MESSENGER_CODES.has(code) && (storedNewest === null || alert.time >= storedNewest)) {
+            if (!alert.buyerRescheduled && JT_MESSENGER_CODES.has(code) && (storedNewest === null || alert.time >= storedNewest)) {
                 notices.set(code, { ...notices.get(code), body: alert.body, phone: alert.phone, messenger: true });
             }
         }

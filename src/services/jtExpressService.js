@@ -304,7 +304,7 @@ async function createPartReturnOrder(billCode, conn) {
 }
 
 async function createJTOrder(input) {
-    let { fbname, address, phone, cod, kg, khid, userid, realfbid, tinh, huyen, xa, accountId, actor } = input || {};
+    let { fbname, address, phone, cod, kg, khid, userid, realfbid, tinh, huyen, xa, accountId, actor, isExchange } = input || {};
 
     if (!actor || !actor.id || !actor.username) return { success: false, message: 'Thiếu nhân viên tạo đơn' };
     if (!xa) return { success: false, stage: 'validation', message: 'Chưa có xã/phường J&T. Vui lòng kiểm tra lại địa chỉ.' };
@@ -335,6 +335,7 @@ async function createJTOrder(input) {
             orderType: '1',
             serviceType: '1',
             partSign: Number(codStr) > 0 ? 1 : 0,
+            ...(isExchange === '1' || isExchange === 1 ? { isExchange: '1' } : {}),
             deliveryType: '1',
             totalQuantity: 1,
             isCallBeforeReturn: 1,
