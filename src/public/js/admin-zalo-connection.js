@@ -16,6 +16,13 @@
     const message = el('text');
     const send = el('send');
     const sendStatus = el('send-status');
+    const groupsPanel = el('groups');
+    const fetchGroups = el('fetch-groups');
+    const groupSelect = el('group-select');
+    const groupId = el('group-id');
+    const copyGroup = el('copy-group');
+    const saveGroup = el('save-group');
+    const groupStatus = el('group-status');
     const messages = {
         starting: 'Đang tạo mã QR…',
         waiting: 'Mở Zalo và quét mã QR.',
@@ -28,6 +35,7 @@
     };
     let state;
     let recipient;
+    let groupAccountId;
     let working = false;
     let timer;
     const active = () => ['starting', 'waiting', 'scanned'].includes(state?.attempt?.status);
@@ -55,6 +63,20 @@
         phone.disabled = message.disabled = checkPhone.disabled = working || form.hidden || active() || state?.busy;
         send.disabled = checkPhone.disabled || !recipient || !message.value.trim();
         el('recipient').textContent = recipient ? 'Tìm thấy ' + (recipient.name || 'UID ' + recipient.uid) : '';
+        if (groupAccountId && groupAccountId !== state?.account?.id) {
+            groupAccountId = undefined;
+            groupSelect.replaceChildren(new Option('Tải danh sách nhóm để chọn', ''));
+            groupStatus.textContent = '';
+        }
+        groupsPanel.hidden = form.hidden;
+        fetchGroups.disabled = checkPhone.disabled;
+        groupSelect.disabled = fetchGroups.disabled || !groupAccountId;
+        groupId.value = groupSelect.value;
+        copyGroup.disabled = saveGroup.disabled = groupSelect.disabled || !groupId.value;
+        const savedGroup = state?.shipmentGroup;
+        el('shipment-group').textContent = savedGroup
+            ? 'Đang báo đơn vào ' + (savedGroup.name ? savedGroup.name + ' · ' : '') + 'ID ' + savedGroup.id
+            : 'Chưa chọn nhóm nhận cảnh báo đơn.';
         if (!state) return;
         const { account, attempt, busy } = state;
         el('account').textContent = account
@@ -97,6 +119,33 @@
         if (!window.confirm('Gỡ kết nối Zalo đã lưu khỏi GB?')) return;
         run(() => request('/' + encodeURIComponent(state.account.id), 'DELETE'));
     });
+    fetchGroups.addEventListener('click', () => run(async () => {
+        groupStatus.textContent = 'Đang tải danh sách nhóm…';
+        const { accountId, groups } = await request('/groups');
+        groupAccountId = accountId;
+        groupSelect.replaceChildren(new Option('Chọn nhóm Zalo', ''));
+        for (const group of groups) {
+            groupSelect.add(new Option((group.name ? group.name + ' · ' : '') + 'ID ' + group.id, group.id));
+        }
+        const savedId = state?.shipmentGroup?.id;
+        if (groups.some(group => group.id === savedId)) groupSelect.value = savedId;
+        groupStatus.textContent = groups.length ? 'Đã tải ' + groups.length + ' nhóm.' : 'Tài khoản này chưa có nhóm.';
+    }, { feedback: groupStatus }));
+    groupSelect.addEventListener('change', render);
+    copyGroup.addEventListener('click', async () => {
+        try {
+            await navigator.clipboard.writeText(groupId.value);
+            groupStatus.textContent = 'Đã sao chép ID nhóm.';
+        } catch (_) {
+            groupId.focus();
+            groupId.select();
+            groupStatus.textContent = 'ID nhóm đã được chọn. Hãy sao chép từ ô ID nhóm.';
+        }
+    });
+    saveGroup.addEventListener('click', () => run(async () => {
+        await request('/shipment-group', 'PUT', { groupId: groupSelect.value, accountId: groupAccountId });
+        groupStatus.textContent = 'Đã lưu nhóm nhận cảnh báo đơn.';
+    }, { feedback: groupStatus }));
     form.addEventListener('submit', event => event.preventDefault());
     phone.addEventListener('input', () => {
         recipient = null;

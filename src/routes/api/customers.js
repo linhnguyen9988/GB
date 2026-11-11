@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const DBConnection = require('../../configs/DBConnection');
+const { updateCustomers } = require('../../services/facebookCustomerLabels');
 
 router.get('/', async (req, res) => {
     try {
@@ -109,7 +110,12 @@ router.put('/:id', async (req, res) => {
 
         const sets   = Object.keys(updates).map(k => `${k} = ?`).join(', ');
         const values = [...Object.values(updates), req.params.id];
-        await db.query(`UPDATE khachhang SET ${sets} WHERE id = ?`, values);
+        const sql = `UPDATE khachhang SET ${sets} WHERE id = ?`;
+        if (Object.hasOwn(updates, 'label')) {
+            await updateCustomers('id = ?', [req.params.id], updates.label, sql, values);
+        } else {
+            await db.query(sql, values);
+        }
         res.json({ success: true });
     } catch (err) {
         console.error('[PUT /api/customers/:id]', err);

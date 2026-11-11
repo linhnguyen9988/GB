@@ -38,21 +38,34 @@ async function ShareToPage2(message, videoid) {
 
 let tokenRefreshing = false;
 async function GetUserToken() {
-    if (tokenRefreshing) return;
+    if (tokenRefreshing) return { ok: false, busy: true, message: 'GB đang lấy User Token. Vui lòng đợi.' };
     tokenRefreshing = true;
     let page2;
+    let failureMessage = 'Không mở được Chromium để lấy User Token.';
     try {
         const browser = await getBrowser();
         page2 = await browser.newPage();
+        failureMessage = 'Không lấy được User Token từ phiên Facebook.';
         const r = await fbToken.refreshUserToken(
             page2,
-            (t) => UpdateUToken(1, t),
-            (m) => console.log('[GetUserToken]', m)
+            (token) => {
+                failureMessage = 'Đã lấy được User Token nhưng lưu vào cơ sở dữ liệu thất bại.';
+                return UpdateUToken(1, token);
+            }
         );
-        if (r.ok) console.log(`[GetUserToken] ✅ Đã cập nhật token mới (${r.info.name})`);
-        else console.error('[GetUserToken] ❌ KHÔNG lấy được token mới, giữ nguyên token cũ:', r.reason);
+        if (r.ok) {
+            const name = r.info?.name || '';
+            console.log('[GetUserToken] Đã cập nhật token mới.');
+            return { ok: true, name };
+        }
+        if (r.reason?.startsWith('Phiên Facebook đã mất hoặc bị checkpoint')) {
+            failureMessage = 'Phiên Facebook trong Chromium đã mất hoặc cần xác minh.';
+        }
+        console.warn('[GetUserToken]', failureMessage);
+        return { ok: false, message: failureMessage };
     } catch (e) {
-        console.error('[GetUserToken] ❌ Lỗi:', e.message);
+        console.error('[GetUserToken]', failureMessage, e.code || e.name);
+        return { ok: false, message: failureMessage };
     } finally {
         tokenRefreshing = false;
         if (page2) setTimeout(() => page2.close().catch(() => { }), 500);
@@ -60,12 +73,10 @@ async function GetUserToken() {
 }
 
 async function UpdateUToken(id, token) {
-    var utoken = SqlString.format('INSERT IGNORE INTO usertoken (id,token) VALUES(?,?) ON DUPLICATE KEY UPDATE token=?;', [id, token, token]);
-    try {
-        DBConnection.query(utoken);
-    } catch (e) {
-        console.log('ERROR: SQL ERROR');
-    }
+    await DBConnection.query(
+        'INSERT INTO usertoken (id, token) VALUES (?, ?) ON DUPLICATE KEY UPDATE token = ?',
+        [id, token, token]
+    );
 }
 
 async function fetchFbProfile(fbuserid, pageid) {

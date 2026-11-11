@@ -19,6 +19,9 @@ function route(handler) {
             if (error instanceof zalo.ZaloActionError) {
                 return res.status(error.status).json({ message: error.message });
             }
+            if (error.code === 'ER_BAD_FIELD_ERROR') {
+                return res.status(503).json({ message: 'Cần chạy migration 20261110_zalo_shipment_groups.sql.' });
+            }
             if (error.code === 'ER_NO_SUCH_TABLE') {
                 return res.status(503).json({ message: 'Cần chạy migration 20261109_zalo_connection.sql.' });
             }
@@ -60,6 +63,11 @@ router.post('/check-phone', route(async (req, res) => {
 router.post('/send-test', route(async (req, res) => {
     const result = await zalo.sendTestMessage(req.body || {});
     return res.json({ success: true, ...result });
+}));
+router.get('/groups', route(async (_req, res) => res.json(await zalo.listGroups())));
+router.put('/shipment-group', route(async (req, res) => {
+    const shipmentGroup = await zalo.setShipmentGroup(req.body || {});
+    return res.json({ shipmentGroup });
 }));
 router.delete('/:id', route(async (req, res) => {
     if (!/^\d{1,64}$/.test(req.params.id)) return res.status(400).json({ message: 'Mã tài khoản không hợp lệ.' });

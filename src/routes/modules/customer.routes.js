@@ -10,6 +10,7 @@ const { attachAkaCount, dedupeByPerson } = require('../../services/akaService');
 const { downloadAvatar } = require('../../utils/download');
 const { getBrowser } = require('../../services/browserService');
 const { getPageToken } = require('../../services/pageTokenService');
+const { updateCustomers } = require('../../services/facebookCustomerLabels');
 const { isNumeric } = require('../../utils/common');
 
 module.exports = function registerCustomerRoutes(router) {
@@ -134,20 +135,15 @@ module.exports = function registerCustomerRoutes(router) {
             });
     });
 
-    router.post('/onupdatelabel', jwtAuth, function (req, res) {
-        var label = req.body.label;
-        var userid = req.body.userid;
-        DBConnection.query(SqlString.format(` UPDATE khachhang SET label=? WHERE userid=?`, [label, userid]),
-            function (error, data) {
-                if (error) {
-                    throw error;
-                }
-                else {
-                    res.json({
-                        data: userid
-                    });
-                }
-            });
+    router.post('/onupdatelabel', jwtAuth, async function (req, res) {
+        const { label, userid } = req.body;
+        try {
+            await updateCustomers('userid = ?', [userid], label, 'UPDATE khachhang SET label = ? WHERE userid = ?', [label, userid]);
+            res.json({ data: userid });
+        } catch (error) {
+            console.error('Lỗi cập nhật nhãn khách hàng:', error.code);
+            res.status(500).json({ error: 'Không lưu được nhãn khách hàng' });
+        }
     });
 
     router.post('/updaterealfbid', jwtAuth, function (req, res) {
@@ -214,55 +210,47 @@ module.exports = function registerCustomerRoutes(router) {
         });
     });
 
-    router.post('/updatephone', jwtAuth, function (request, response, next) {
-        const io = socket.getIo();
-        var userid = request.body.userid;
-        var phone = request.body.phone;
-        var realfbid = request.body.realfbid || '';
-        var liveid = request.body.liveid;
-        var socketid = request.body.socketid;
-        DBConnection.query(SqlString.format('UPDATE khachhang SET phone=? WHERE userid=?', [phone, userid]));
-        const newPhoneData = { userid: userid, phone: phone, liveid: liveid };
-        if (liveid || socketid) {
-            let target = io;
-            if (liveid) target = target.to(liveid);
-            if (socketid) target = target.to(socketid);
-            target.emit('new-phone', newPhoneData);
+    router.post('/updatephone', jwtAuth, async function (request, response) {
+        const { userid, phone, realfbid = '', liveid, socketid } = request.body;
+        try {
+            await DBConnection.query('UPDATE khachhang SET phone=? WHERE userid=?', [phone, userid]);
+            if (liveid || socketid) {
+                let target = socket.getIo();
+                if (liveid) target = target.to(liveid);
+                if (socketid) target = target.to(socketid);
+                target.emit('new-phone', { userid, phone, liveid });
+            }
+            const [othersRaw] = await DBConnection.query(
+                "SELECT id,fbname,userid,realfbid,pageid,label,note,diachi,phone,threadid FROM khachhang WHERE phone=? AND userid<>? AND (realfbid IS NULL OR realfbid='' OR realfbid<>?) ORDER BY id DESC",
+                [phone, userid, realfbid || '']
+            );
+            const others = dedupeByPerson(othersRaw);
+            if (!others?.length) return response.json({ data: { message: 'OK' } });
+
+            let xabom = 'none';
+            const names = [];
+            const uids = [];
+            for (const customer of others) {
+                const label = customer.label || '';
+                names.push(customer.fbname);
+                uids.push(customer.userid);
+                if (label.includes('Xả')) xabom = 'Xả hàng';
+                else if (label.includes('Bom')) xabom = 'Bom hàng';
+                else if (label.includes('Có') && xabom === 'none') xabom = 'Có vấn đề';
+            }
+            const name = names.join(' - ');
+            const akauid = uids.join(';') + ';';
+            if (xabom === 'none') {
+                await DBConnection.query('UPDATE khachhang SET aka=?, akauid=? WHERE phone=?', [name, akauid, phone]);
+            } else {
+                await updateCustomers('phone = ?', [phone], xabom,
+                    'UPDATE khachhang SET aka=?, label=?, akauid=? WHERE phone=?', [name, xabom, akauid, phone]);
+            }
+            response.json({ data: { name, bom: xabom, list: others } });
+        } catch (error) {
+            console.error('Lỗi cập nhật số điện thoại khách hàng:', error.code);
+            response.status(500).json({ error: 'Không hoàn tất được cập nhật số điện thoại' });
         }
-        
-        DBConnection.query(
-            SqlString.format("SELECT id,fbname,userid,realfbid,pageid,label,note,diachi,phone,threadid FROM khachhang WHERE phone=? AND userid<>? AND (realfbid IS NULL OR realfbid='' OR realfbid<>?) ORDER BY id DESC", [phone, userid, realfbid]),
-            function (error, othersRaw) {
-                var others = dedupeByPerson(othersRaw);
-                if (error) {
-                    console.error(error);
-                    return response.json({ data: { message: 'OK' } });
-                }
-                if (!others || others.length === 0) {
-                    return response.json({ data: { message: 'OK' } });
-                }
-                var xabom = 'none';
-                var names = [];
-                var uids = [];
-                others.forEach(function (o) {
-                    var lb = o.label || '';
-                    names.push(o.fbname);
-                    uids.push(o.userid);
-                    if (lb.includes('Xả')) xabom = 'Xả hàng';
-                    else if (lb.includes('Bom')) xabom = 'Bom hàng';
-                    else if (lb.includes('Có') && xabom == 'none') xabom = 'Có vấn đề';
-                });
-                var name = names.join(' - ');
-                var akauid = uids.join(';') + ';';
-                if (xabom == 'none') {
-                    DBConnection.query(SqlString.format('UPDATE khachhang SET aka=?,akauid=? WHERE phone=?', [name, akauid, phone]));
-                } else {
-                    DBConnection.query(SqlString.format('UPDATE khachhang SET aka=?, label=?, akauid=? WHERE phone=?', [name, xabom, akauid, phone]));
-                }
-                response.json({
-                    data: { name: name, bom: xabom, list: others }
-                });
-            });
     });
 
     router.post('/getakadetail', jwtAuth, function (req, res) {
@@ -292,17 +280,12 @@ module.exports = function registerCustomerRoutes(router) {
         var nuocngoai = request.body.nn;
         var realfbid = request.body.realfbid || '';
         var important = request.body.checknote ?? null;
-        var sql;
-
-        if (realfbid.length > 0) {
-            sql = SqlString.format('UPDATE khachhang SET nuocngoai=?, phone=?, diachi=?, label=?, note=?, important=COALESCE(?, important) WHERE userid=? OR realfbid=?',
-                [nuocngoai, phone, diachi, label, note, important, userid, realfbid]);
-        } else {
-            sql = SqlString.format('UPDATE khachhang SET nuocngoai=?, phone=?, diachi=?, label=?, note=?, important=COALESCE(?, important) WHERE userid=?',
-                [nuocngoai, phone, diachi, label, note, important, userid]);
-        }
+        const where = realfbid.length > 0 ? 'userid = ? OR realfbid = ?' : 'userid = ?';
+        const keys = realfbid.length > 0 ? [userid, realfbid] : [userid];
         try {
-            await DBConnection.query(sql);
+            await updateCustomers(where, keys, label,
+                `UPDATE khachhang SET nuocngoai=?, phone=?, diachi=?, label=?, note=?, important=COALESCE(?, important) WHERE ${where}`,
+                [nuocngoai, phone, diachi, label, note, important, ...keys]);
             response.json({ data: userid });
         } catch (error) {
             console.error('Lỗi cập nhật thông tin khách hàng:', error.code);

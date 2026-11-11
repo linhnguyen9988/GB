@@ -72,6 +72,7 @@ app.use(xhub({ algorithm: 'sha1', secret: 'af774e918b2b6336188792ef83fd7660' }))
 
 initWebRoutes(app);
 require('./services/zaloShipmentAlerts').start();
+require('./services/facebookCustomerLabels').start();
 
 if (BEHIND_PROXY) {
     const server = http.createServer(app);

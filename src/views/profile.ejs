@@ -49,7 +49,7 @@
                   <p class="text-muted font-size-sm">Admin</p>
                   <button class="btn btn-outline-primary" onclick="OpenChangePass()">Đổi mật khẩu</button>
                   <button class="btn btn-outline-primary" onclick="GetAllAddress()">GetAllAddress</button>
-                  <button class="btn btn-outline-primary" onclick="Test2()">Test2</button>
+                  <button type="button" class="btn btn-outline-primary" onclick="GetUserToken(this)">Get User Token</button>
                   <button class="btn btn-outline-primary" onclick="TokenPage()">Token Page</button>
                   <a href="/admin/order-weight-changes" class="btn btn-outline-primary">Đối chiếu cân nặng</a>
 
@@ -599,22 +599,25 @@
       </table>
       </body></html>`;
     const pdfBase64 = "";
-    async function Test2() {
-      const payload = {
-        userId: 1,
-        title: 'Đơn hàng',
-        content: 'Đơn hàng có vấn đề, bấm để xem.'
-      };
-      $.ajax({
-        url: "/sendnoti",
-        method: "POST",
-        contentType: "application/json",
-        dataType: "JSON",
-        data: JSON.stringify(payload), 
-        success: function (data) {
-          alert('done');
+    async function GetUserToken(button) {
+      button.disabled = true;
+      button.textContent = 'Đang lấy token...';
+      try {
+        const response = await fetch('/api/admin/facebook/user-token', { method: 'POST' });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+          ShowCenterToast(response.status === 409 ? 'warning' : 'danger',
+            gbEscapeText(result.message || 'Không lấy được User Token.'), 5000);
+          return;
         }
-      });
+        const account = result.name ? ' của ' + result.name : '';
+        ShowCenterToast('success', gbEscapeText('Đã cập nhật User Token' + account + '.'), 5000);
+      } catch (_) {
+        ShowCenterToast('danger', 'Không nhận được phản hồi khi lấy User Token.', 5000);
+      } finally {
+        button.textContent = 'Get User Token';
+        button.disabled = false;
+      }
     }
 
     async function sendToPrinter(userId, content, type = 'pdf', pName = "Xprinter XP-420B") {

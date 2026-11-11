@@ -2,8 +2,14 @@
 const router = require('express').Router();
 const db = require('../../configs/DBConnection');
 const { requireAdmin } = require('../../middleware/jwtAuth');
+const { GetUserToken } = require('../../services/facebookService');
 router.use(requireAdmin);
 router.use('/zalo', require('./zalo'));
+router.post('/facebook/user-token', async (req, res) => {
+ const result = await GetUserToken();
+ if (!result.ok) return res.status(result.busy ? 409 : 502).json({ success: false, message: result.message });
+ return res.json({ success: true, name: result.name });
+});
 router.get('/users', async (req, res) => {
  try { const [users] = await db.query('SELECT id, username, fullname, role FROM users ORDER BY id'); res.json({ users }); }
  catch (_) { res.status(500).json({ message: 'Không tải được tài khoản' }); }

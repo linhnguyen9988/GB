@@ -115,7 +115,7 @@ function receiverText(name, phone, maxWidth, minSize) {
     const d = measurer();
     d.font(FONT_BOLD).fontSize(minSize);
     let n = String(name || '');
-    const full = (t) => `NHẬN: ${t} - ${phone || ''}`;
+    const full = (t) => `${t} - ${phone || ''}`;
     if (d.widthOfString(full(n)) <= maxWidth) return full(n);
     while (n.length > 1 && d.widthOfString(full(n + '…')) > maxWidth) n = n.slice(0, -1);
     return full(n.trimEnd() + '…');
@@ -168,8 +168,8 @@ async function renderJtHtml(o) {
     });
 
     parts.push(hline(143, FRAME_X, RIGHT));
-    parts.push(textLine(10, 82, 205, 'left', fit(`GỬI: ${sender.name || 'N/A'} - ${sender.mobile || ''}`, FONT_BOLD, 9, 7, 205), true));
-    parts.push(textLine(10, 95, 205, 'left', fit(receiverText(o.name, o.phone, 205, 7), FONT_BOLD, 9, 7, 205), true));
+    //parts.push(textLine(10, 82, 205, 'left', fit(`GỬI: ${sender.name || 'N/A'} - ${sender.mobile || ''}`, FONT_BOLD, 9, 7, 205), true));
+    parts.push(textLine(10, 92, 205, 'left', fit(receiverText(o.name, o.phone, 205, 7), FONT_BOLD, 11, 7, 205), true));
 
     const d = measurer();
     let addr = String(o.address || '');
@@ -195,7 +195,7 @@ async function renderJtHtml(o) {
         fit(`Hàng hóa: ${JT_PRODUCT_NAME} x ${Number.isFinite(kg) ? kg : o.kg} KG`, FONT_REGULAR, 12, 8, qrX - 15), false));
     parts.push(img(qrBuf, qrX + 4, 145, 52, 52));
 
-    parts.push(textLine(FRAME_X, 205, FRAME_W, 'center', fit(`TIỀN THU HỘ: ${money(o.cod)} VNĐ`, FONT_BOLD, 13, 8, FRAME_W), true));
+    parts.push(textLine(FRAME_X, 205, FRAME_W, 'center', fit(`COD: ${money(o.cod)} VNĐ`, FONT_BOLD, 13, 8, FRAME_W), true));
 
     return `<html><head>
 <meta charset="utf-8">

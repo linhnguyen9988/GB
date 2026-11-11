@@ -3,9 +3,8 @@
 const db = require('../configs/DBConnection');
 const zalo = require('./zaloConnection');
 
-const recipients = ['84888118855', '84913181141'];
 const issueCodes = {
-    'J&T': new Set([104, 118, 120]),
+    'J&T': new Set([118, 120]),
     Viettel: new Set([102, 505, 506, 507])
 };
 
@@ -28,27 +27,27 @@ async function enqueue(connection, carrier, billCode, statusCode, statusText, or
     const note = carrier === 'Viettel' && typeof order.note === 'string' ? order.note.trim() : '';
     if (note) lines.push('Ghi chú: ' + note);
     const message = lines.join('\n');
-    const values = recipients.map(phone => [carrier, billCode, statusCode, phone, message]);
     await connection.query(
-        `INSERT INTO gb_zalo_shipment_alerts (carrier, bill_code, status_code, recipient_phone, message, next_attempt_at)
-         VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP()), (?, ?, ?, ?, ?, UTC_TIMESTAMP())
-         ON DUPLICATE KEY UPDATE id = id`,
-        values.flat()
+        `INSERT INTO gb_zalo_group_shipment_alerts (carrier, bill_code, status_code, account_id, group_id, message, next_attempt_at)
+         SELECT ?, ?, ?, zalo_user_id, shipment_group_id, ?, UTC_TIMESTAMP()
+           FROM gb_zalo_connection WHERE id = 1 AND zalo_user_id IS NOT NULL AND shipment_group_id IS NOT NULL
+         ON DUPLICATE KEY UPDATE id = gb_zalo_group_shipment_alerts.id`,
+        [carrier, billCode, statusCode, message]
     );
 }
 
 async function settle(id, state, messageId = null) {
     await db.query(
-        `UPDATE gb_zalo_shipment_alerts SET state = ?, message_id = ?,
+        `UPDATE gb_zalo_group_shipment_alerts SET state = ?, message_id = ?,
             sent_at = IF(? = 'sent', UTC_TIMESTAMP(), NULL)
           WHERE id = ? AND state = 'sending'`,
         [state, messageId, state, id]
     );
 }
 
-async function retryLookup(id) {
+async function retryBeforeSend(id) {
     await db.query(
-        `UPDATE gb_zalo_shipment_alerts
+        `UPDATE gb_zalo_group_shipment_alerts
             SET state = IF(attempts >= 3, 'failed', 'pending'),
                 next_attempt_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 1 MINUTE)
           WHERE id = ? AND state = 'sending'`,
@@ -58,16 +57,22 @@ async function retryLookup(id) {
 
 function warnJob(job, reason) {
     console.warn('[Zalo vận đơn]', job.bill_code, 'trạng thái', job.status_code,
-        'người nhận đuôi', job.recipient_phone.slice(-4), reason);
+        'nhóm', job.group_id, reason);
 }
 
 async function dispatchPending() {
     await db.query(
-        `UPDATE gb_zalo_shipment_alerts SET state = 'uncertain'
+        `UPDATE gb_zalo_group_shipment_alerts SET state = 'uncertain'
           WHERE state = 'sending' AND started_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL 5 MINUTE)`
     );
+    await db.query(
+        `UPDATE gb_zalo_group_shipment_alerts a LEFT JOIN gb_zalo_connection c ON c.id = 1
+            SET a.state = 'skipped'
+          WHERE a.state = 'pending'
+            AND NOT (c.zalo_user_id <=> a.account_id AND c.shipment_group_id <=> a.group_id)`
+    );
     const [jobs] = await db.query(
-        `SELECT id, bill_code, status_code, recipient_phone, message FROM gb_zalo_shipment_alerts
+        `SELECT id, bill_code, status_code, account_id, group_id, message FROM gb_zalo_group_shipment_alerts
           WHERE state = 'pending' AND next_attempt_at <= UTC_TIMESTAMP()
           ORDER BY next_attempt_at, id LIMIT 4`
     );
@@ -75,38 +80,29 @@ async function dispatchPending() {
     const session = await zalo.openSavedSession(45000);
     if (!session) throw new zalo.ZaloActionError(409, 'Đang có cảnh báo chờ gửi. Kiểm tra kết nối Zalo trong trang quản trị.');
 
-    const found = new Map();
     for (const job of jobs) {
         const [claim] = await db.query(
-            `UPDATE gb_zalo_shipment_alerts
+            `UPDATE gb_zalo_group_shipment_alerts
                 SET state = 'sending', attempts = attempts + 1, started_at = UTC_TIMESTAMP()
               WHERE id = ? AND state = 'pending' AND next_attempt_at <= UTC_TIMESTAMP()`,
             [job.id]
         );
         if (!claim.affectedRows) continue;
 
-        let recipient;
         try {
-            recipient = found.get(job.recipient_phone) || await zalo.findRecipient(session, job.recipient_phone);
-            found.set(job.recipient_phone, recipient);
-            if (!await zalo.isSavedSessionCurrent(session)) {
-                await retryLookup(job.id);
-                return;
+            if (session.accountId !== job.account_id || !await zalo.isSavedSessionCurrent(session, job.group_id)) {
+                await retryBeforeSend(job.id);
+                continue;
             }
         } catch (error) {
-            if (error instanceof zalo.ZaloActionError && error.status === 404) {
-                await settle(job.id, 'failed');
-                warnJob(job, 'Tra số điện thoại không ra UID.');
-            } else {
-                await retryLookup(job.id);
-                warnJob(job, 'Lỗi tra UID hoặc xác minh phiên Zalo.');
-            }
+            await retryBeforeSend(job.id);
+            warnJob(job, 'Lỗi xác minh tài khoản hoặc nhóm Zalo.');
             continue;
         }
 
         let result;
         try {
-            result = await zalo.sendText(session, recipient.uid, job.message);
+            result = await zalo.sendText(session, job.group_id, job.message, session.groupThread);
         } catch (error) {
             const rejected = error instanceof zalo.ZaloActionError && error.status === 422;
             await settle(job.id, rejected ? 'failed' : 'uncertain');
@@ -127,8 +123,8 @@ function start() {
             await dispatchPending();
             lastProblem = undefined;
         } catch (error) {
-            const problem = error.code === 'ER_NO_SUCH_TABLE'
-                ? 'Thiếu bảng Zalo. Kiểm tra migration kết nối và cảnh báo vận đơn.'
+            const problem = ['ER_NO_SUCH_TABLE', 'ER_BAD_FIELD_ERROR'].includes(error.code)
+                ? 'Kiểm tra migration 20261110_zalo_shipment_groups.sql.'
                 : error instanceof zalo.ZaloActionError
                     ? error.message
                     : 'Không xử lý được hàng đợi cảnh báo Zalo.';

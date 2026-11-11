@@ -19,6 +19,7 @@
 
   <link rel="stylesheet" href="/css/style.css">
   <link rel="stylesheet" href="/css/chat.css">
+  <link rel="stylesheet" href="/css/pod-viewer.css">
   <link rel="stylesheet" href="/css/all.min.css">
   <link rel="stylesheet" href="/css/tw.css">
   <link rel="stylesheet" href="/css/label.css">
@@ -26,6 +27,7 @@
   <script src="/js/bs5utils.js"></script>
   <script src="/js/order-status.js?v=20261109-status-contrast"></script>
   <script src="/js/customer-detail-modal.js?v=20261110"></script>
+  <script src="/js/pod-viewer.js" defer></script>
   <script src="/js/orderstatusrefresh.js?v=20261109-status-contrast"></script>
   <script src="/js/editorderviettel.js"></script>
   <script src="/js/theme-toggle.js"></script>
@@ -922,15 +924,7 @@
             const formattedCOD = new Intl.NumberFormat('vi-VN').format(log.money_collection || 0) + ' ₫';
             const status = GBOrderStatus.get(log.provider, log.status_code, log.status_name);
             const phone = log.employee_phone || '';
-            let pics = [];
-            try { pics = log.sigpic ? JSON.parse(log.sigpic) : []; } catch (e) { pics = []; }
-            pics = (Array.isArray(pics) ? pics : []).filter(u => /^https?:\/\//i.test(u));
-            const picsHtml = pics.length
-              ? `<div class="d-flex flex-wrap gap-1 mt-2">${pics.map(u => {
-                  const url = gbEscapeText(u).replace(/"/g, '&quot;');
-                  return `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" loading="lazy" style="width:64px;height:64px;object-fit:cover;border-radius:6px"></a>`;
-                }).join('')}</div>`
-              : '';
+            const picsHtml = GBPodViewer.thumbnails(log.sigpic, log.pod_images);
 
             html += `
                     <div class="tracking-card">
@@ -2408,6 +2402,19 @@
           </ul>
           <div class="modal-body" id="modal-tracking-content">
           </div>
+          <dialog id="pod-viewer" class="pod-viewer" aria-labelledby="pod-viewer-title">
+            <div class="pod-viewer-toolbar">
+              <strong id="pod-viewer-title">Ảnh POD</strong>
+              <span data-pod-count aria-live="polite"></span>
+              <button type="button" data-pod-close aria-label="Đóng trình xem ảnh" autofocus>×</button>
+            </div>
+            <div class="pod-viewer-photo" data-pod-photo>
+              <img data-pod-image alt="" draggable="false" referrerpolicy="no-referrer">
+              <p data-pod-error role="status" hidden>Không tải được ảnh POD.</p>
+              <button type="button" data-pod-prev aria-label="Ảnh trước">‹</button>
+              <button type="button" data-pod-next aria-label="Ảnh sau">›</button>
+            </div>
+          </dialog>
         </div>
       </div>
     </div>
