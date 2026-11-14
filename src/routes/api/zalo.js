@@ -1,6 +1,9 @@
 'use strict';
 
 const router = require('express').Router();
+const uploadTestImage = require('multer')({
+    limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 4, fieldSize: 8192 }
+}).single('image');
 const zalo = require('../../services/zaloConnection');
 
 router.use((req, res, next) => {
@@ -60,8 +63,16 @@ router.post('/check-phone', route(async (req, res) => {
     const recipient = await zalo.checkPhone(req.body?.phone);
     return res.json({ recipient });
 }));
-router.post('/send-test', route(async (req, res) => {
-    const result = await zalo.sendTestMessage(req.body || {});
+function parseTestImage(req, res, next) {
+    uploadTestImage(req, res, error => {
+        if (!error) return next();
+        if (error.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ message: 'Ảnh vượt quá 10 MB.' });
+        return res.status(400).json({ message: 'Tệp ảnh tải lên không hợp lệ. Chỉ chọn một ảnh.' });
+    });
+}
+
+router.post('/send-test', parseTestImage, route(async (req, res) => {
+    const result = await zalo.sendTestMessage(req.body || {}, req.file?.buffer);
     return res.json({ success: true, ...result });
 }));
 router.get('/groups', route(async (_req, res) => res.json(await zalo.listGroups())));

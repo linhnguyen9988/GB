@@ -11,6 +11,7 @@ const { GlobalPageID, GlobalPageID2 } = require('../../configs/constants');
 const { codeToEmoji } = require('../../utils/emoji');
 const { getPageToken } = require('../../services/pageTokenService');
 const { getRecentCommentIdsFromDB } = require('../../services/commentService');
+const zaloChat = require('../../services/zaloCustomerChat');
 
 module.exports = function registerMessagesRoutes(router) {
     router.post('/api/send-message', require('../../middleware/jwtAuth'), (req, res) => {
@@ -22,18 +23,40 @@ module.exports = function registerMessagesRoutes(router) {
 
             const { customerId, message, currentPageID } = req.body;
             const file = req.file;
+            const directZalo = req.body.deliveryChannel === 'zalo';
+            const orderConfirmation = zaloChat.isOrderConfirmation(message) || req.body.orderConfirmation === '1';
             let attachmentId = null;
             let attachmentType = 'image';
-            let token = await getPageToken(currentPageID);
+            let uploadFilePath = file?.path;
+            const token = directZalo ? null : await getPageToken(currentPageID);
             const messageIds = [];
-            const sendMessageWithPayload = async (payload) => {
+            const uncertain = { image: false, text: false };
+            const sendMessageWithPayload = async (payload, part) => {
                 const result = await require('../../services/messageAuditService').send({
                     user: req.user, pageId: currentPageID, customerId, payload, clientMessageId: req.body.clientMessageId,
                     post: body => axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${token}`, body)
                 });
-                if (result.success && result.response && result.response.message_id) messageIds.push(result.response.message_id);
+                if (result.success && result.response?.message_id) messageIds.push(result.response.message_id);
+                if (!result.success && (!result.error?.response || result.error.response.status >= 500)) uncertain[part] = true;
                 return result;
             };
+
+            async function sendViaZalo(imageSent, textSent, facebookError) {
+                const missingFile = !imageSent && !uncertain.image ? file : null;
+                const missingText = !textSent && !uncertain.text ? message : '';
+                const result = missingFile || missingText ? await zaloChat.sendCustomerMessage({
+                    customerId, pageId: currentPageID, clientMessageId: req.body.clientMessageId, actor: req.user,
+                    text: missingText, file: missingFile
+                }) : {};
+                const allSent = Boolean((!file || imageSent || result.imageSent) && (!message || textSent || result.textSent));
+                return res.status(allSent ? 200 : 400).json({
+                    messageIds, success: allSent, imageSent: Boolean(imageSent || result.imageSent),
+                    textSent: Boolean(textSent || result.textSent), facebookImageSent: imageSent, facebookTextSent: textSent,
+                    zaloImageSent: Boolean(result.imageSent), zaloTextSent: Boolean(result.textSent),
+                    uncertain: Boolean(result.uncertain || uncertain.image || uncertain.text),
+                    error: allSent ? undefined : (result.error ? 'Zalo: ' + result.error : facebookError)
+                });
+            }
 
             const sendDirectMessage = async (imageContent, textContent, mediaType) => {
                 let imageSent = false;
@@ -44,14 +67,14 @@ module.exports = function registerMessagesRoutes(router) {
                         messaging_type: 'UPDATE',
                         message: { attachment: { type: mediaType || 'image', payload: { attachment_id: imageContent } } }
                     };
-                    const result = await sendMessageWithPayload(payload);
+                    const result = await sendMessageWithPayload(payload, 'image');
                     if (result.success) {
                         imageSent = true;
                     } else {
                         const errorData = (result.error && result.error.response && result.error.response.data) ? result.error.response.data.error : null;
-                        if (errorData && (errorData.code === 2018286 || errorData.code === 10)) {
+                        if (!uncertain.image && errorData && (errorData.code === 2018286 || errorData.code === 10)) {
                             payload = Object.assign({}, payload, { messaging_type: 'MESSAGE_TAG', tag: 'HUMAN_AGENT' });
-                            const retryResult = await sendMessageWithPayload(payload);
+                            const retryResult = await sendMessageWithPayload(payload, 'image');
                             if (retryResult.success) {
                                 imageSent = true;
                             }
@@ -64,14 +87,14 @@ module.exports = function registerMessagesRoutes(router) {
                         messaging_type: 'UPDATE',
                         message: { text: textContent }
                     };
-                    const result = await sendMessageWithPayload(payload);
+                    const result = await sendMessageWithPayload(payload, 'text');
                     if (result.success) {
                         textSent = true;
                     } else {
                         const errorData = (result.error && result.error.response && result.error.response.data) ? result.error.response.data.error : null;
-                        if (errorData && (errorData.code === 2018286 || errorData.code === 10)) {
+                        if (!uncertain.text && errorData && (errorData.code === 2018286 || errorData.code === 10)) {
                             payload = Object.assign({}, payload, { messaging_type: 'MESSAGE_TAG', tag: 'HUMAN_AGENT' });
-                            const retryResult = await sendMessageWithPayload(payload);
+                            const retryResult = await sendMessageWithPayload(payload, 'text');
                             if (retryResult.success) {
                                 textSent = true;
                             }
@@ -105,15 +128,15 @@ module.exports = function registerMessagesRoutes(router) {
                     let finalError = null;
 
                     for (const commentId of recentCommentIds) {
-                        if (imageSent && textSent) break;
+                        if ((imageSent || uncertain.image) && (textSent || uncertain.text)) break;
                         //console.log(`Private Reply: ${commentId}`);
-                        if (imageContent && !imageSent) {
+                        if (imageContent && !imageSent && !uncertain.image) {
                             const imagePayload = {
                                 messaging_type: 'RESPONSE',
                                 recipient: { comment_id: commentId },
                                 message: { attachment: { type: mediaType || 'image', payload: { attachment_id: imageContent } } }
                             };
-                            const imageResult = await sendMessageWithPayload(imagePayload);
+                            const imageResult = await sendMessageWithPayload(imagePayload, 'image');
                             if (imageResult.success) {
                                 //console.log(`Thành công (P): ${commentId}`);
                                 imageSent = true;
@@ -121,13 +144,13 @@ module.exports = function registerMessagesRoutes(router) {
                                 finalError = imageResult.error;
                             }
                         }
-                        if (textContent && !textSent) {
+                        if (textContent && !textSent && !uncertain.text) {
                             const textPayload = {
                                 messaging_type: 'RESPONSE',
                                 recipient: { comment_id: commentId },
                                 message: { text: textContent }
                             };
-                            const textResult = await sendMessageWithPayload(textPayload);
+                            const textResult = await sendMessageWithPayload(textPayload, 'text');
                             if (textResult.success) {
                                 //console.log(`Thành công (T): ${commentId}`);
                                 textSent = true;
@@ -169,6 +192,10 @@ module.exports = function registerMessagesRoutes(router) {
             };
 
             try {
+                if (!file && !message) return res.status(400).json({ success: false, error: 'Không có nội dung để gửi.' });
+                if (directZalo) return await sendViaZalo(false, false);
+                if (!token && orderConfirmation) return await sendViaZalo(false, false);
+                if (!token) return res.status(400).json({ success: false, error: 'Thiếu token Facebook của Page.' });
                 if (file && file.path) {
                     const mimeType = file.mimetype || mime.lookup(file.originalname) || '';
                     if (mimeType.startsWith('video/')) {
@@ -179,21 +206,18 @@ module.exports = function registerMessagesRoutes(router) {
                         attachmentType = 'image';
                     }
 
-                    let uploadFilePath = file.path;
-
                     if (attachmentType === 'image') {
                         const optimizedImagePath = file.path + '_optimized.jpg';
+                        uploadFilePath = optimizedImagePath;
                         try {
                             await sharp(file.path)
                                 .rotate()
                                 .resize(1024, 1024, { fit: sharp.fit.inside, withoutEnlargement: true })
                                 .jpeg({ quality: 70 })
                                 .toFile(optimizedImagePath);
-                            fs.unlinkSync(file.path);
-                            uploadFilePath = optimizedImagePath;
                         } catch (optimizationError) {
-                            console.error('Lỗi khi tối ưu hóa hoặc upload ảnh:', optimizationError.message);
-                            return res.status(500).json({ success: false, error: 'Lỗi khi xử lý hình ảnh.' });
+                            await fs.promises.unlink(optimizedImagePath).catch(() => {});
+                            uploadFilePath = file.path;
                         }
                     }
 
@@ -207,18 +231,12 @@ module.exports = function registerMessagesRoutes(router) {
                             { headers: form.getHeaders() }
                         );
                         attachmentId = uploadResponse.data.attachment_id;
-                        fs.unlinkSync(uploadFilePath);
                     } catch (uploadError) {
                         console.error('Lỗi khi upload file đính kèm lên Facebook:', uploadError.message);
-                        try { fs.unlinkSync(uploadFilePath); } catch (e) { }
-                        return res.status(500).json({ success: false, error: 'Lỗi khi xử lý file đính kèm.' });
                     }
                 }
-                if (!attachmentId && !message) {
-                    return res.json({ messageIds, success: true, message: "Không có nội dung để gửi." });
-                }
                 const directMessageResult = await sendDirectMessage(attachmentId, message, attachmentType);
-                if (directMessageResult.success) {
+                if (directMessageResult.success && (!file || attachmentId)) {
                     return res.json({
                         messageIds,
                         success: true,
@@ -228,8 +246,8 @@ module.exports = function registerMessagesRoutes(router) {
                     });
                 }
 
-                const needImage = !!attachmentId && !directMessageResult.imageSent;
-                const needText = !!message && !directMessageResult.textSent;
+                const needImage = !!attachmentId && !directMessageResult.imageSent && !uncertain.image;
+                const needText = !!message && !directMessageResult.textSent && !uncertain.text;
 
                 let imageSent = directMessageResult.imageSent;
                 let textSent = directMessageResult.textSent;
@@ -247,7 +265,7 @@ module.exports = function registerMessagesRoutes(router) {
                     textSent = needText ? (privateReplyResult.textStatus === 'sent') : textSent;
                 }
 
-                const overallOk = (!attachmentId || imageSent) && (!message || textSent);
+                const overallOk = (!file || imageSent) && (!message || textSent);
                 if (overallOk) {
                     return res.json({
                         messageIds,
@@ -259,23 +277,31 @@ module.exports = function registerMessagesRoutes(router) {
                 }
 
                 const failedParts = [];
-                if (attachmentId && !imageSent) {
+                if (file && !imageSent) {
                     failedParts.push(attachmentType === 'video' ? 'video' : attachmentType === 'audio' ? 'audio' : 'ảnh');
                 }
                 if (message && !textSent) failedParts.push('tin nhắn văn bản');
-                const reason = privateReplyRan
+                const reason = uncertain.image || uncertain.text
+                    ? 'Chưa xác nhận được kết quả gửi Facebook. Kiểm tra cuộc trò chuyện trước khi gửi lại.'
+                    : privateReplyRan
                     ? privateReplyResult.message
                     : (failedParts.length ? `Không thể gửi ${failedParts.join(' và ')}.` : 'Không thể gửi tin nhắn.');
 
+                if (orderConfirmation) return await sendViaZalo(imageSent, textSent, reason);
                 return res.status(400).json({
                     messageIds, success: false,
                     error: reason,
                     imageSent,
-                    textSent
+                    textSent,
+                    uncertain: uncertain.image || uncertain.text
                 });
             } catch (error) {
                 console.error('Lỗi server tổng quát:', error.response ? JSON.stringify(error.response.data) : error.message);
                 res.status(500).json({ success: false, error: 'Lỗi server khi xử lý tin nhắn.' });
+            } finally {
+                for (const path of new Set([file?.path, uploadFilePath])) {
+                    if (path) await fs.promises.unlink(path).catch(() => {});
+                }
             }
         });
     });
@@ -283,7 +309,7 @@ module.exports = function registerMessagesRoutes(router) {
     router.get('/api/last-messages', async (req, res) => {
         const sqlQuery = `
     SELECT 
-    t1.messid, t1.sender, t1.recipient, t1.message, t1.time, t1.timestamp, t1.image, t1.template_json, t1.is_echo, t1.sent_by_user_id, t1.sent_by_username,
+    t1.messid, t1.sender, t1.recipient, t1.message, t1.time, t1.timestamp, t1.image, t1.template_json, t1.is_echo, t1.sent_by_user_id, t1.sent_by_username, t1.channel,
     k.fbname AS ten_khach, k.label AS label, k.note AS note, k.id AS khid
 FROM messaging t1
 INNER JOIN (
@@ -333,12 +359,36 @@ ORDER BY t1.id DESC;
         });
     });
 
-    router.get('/api/messages/:customerId', function (req, res) {
+    router.get('/api/messages/:customerId', async function (req, res) {
         const customerId = req.params.customerId;
         if (!customerId) {
             return res.status(400).json({ error: 'Customer ID is required.' });
         }
         const offset = parseInt(req.query.offset, 10) || 0;
+        if (req.query.afterZaloId !== undefined) {
+            const { afterZaloId, zaloReadFromId } = req.query;
+            const validId = value => typeof value === 'string' && /^\d{1,20}$/.test(value);
+            if (!validId(afterZaloId) || (zaloReadFromId !== undefined && !validId(zaloReadFromId))) {
+                return res.status(400).json([]);
+            }
+            try {
+                const [[messages], [readRows]] = await Promise.all([
+                    DBConnection.query(
+                        "SELECT * FROM messaging WHERE channel = 'zalo' AND id > ? AND (sender = ? OR recipient = ?) ORDER BY id ASC LIMIT 50",
+                        [afterZaloId, customerId, customerId]
+                    ),
+                    zaloReadFromId && zaloReadFromId !== '0' ? DBConnection.query(
+                        `SELECT CAST(id AS CHAR) AS id FROM messaging
+                         WHERE recipient = ? AND channel = 'zalo' AND is_echo = 1 AND isread = 1 AND id BETWEEN ? AND ?`,
+                        [customerId, zaloReadFromId, afterZaloId]
+                    ) : [[]]
+                ]);
+                if (zaloReadFromId === undefined) return res.json(messages);
+                return res.json({ messages, readIds: readRows.map(row => row.id) });
+            } catch (_) {
+                return res.status(500).json([]);
+            }
+        }
         let limit = parseInt(req.query.limit, 10) || 10;
 
         if (limit > 50) {

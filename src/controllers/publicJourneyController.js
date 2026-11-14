@@ -78,7 +78,7 @@ const handleJourneyDetail = async (req, res) => {
         }
 
         const [rows] = await db.query(
-            `SELECT realorderid, orderid, name, phone, address, cod, kg,
+            `SELECT realorderid, orderid, name, phone, address, cod, kg, jt_reported_kg,
                     statuscode, statustext, date, time, provider
              FROM lendon
              WHERE realorderid = ? OR orderid = ?
@@ -105,6 +105,7 @@ const handleJourneyDetail = async (req, res) => {
             errorMessage: null,
             order: {
                 ...order,
+                kg: order.provider === 'J&T' && order.jt_reported_kg != null ? Number(order.jt_reported_kg) : order.kg,
                 partial,
                 badge: getOrderStatus(order.provider, order.statuscode, order.statustext),
                 dateDisplay: order.date || formatVNDateTime(order.time),

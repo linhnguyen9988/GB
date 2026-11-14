@@ -8,6 +8,7 @@ const PAGE_PATH = '/admin/order-weight-changes';
 const CARRIERS = new Map([['jt', 'J&T'], ['viettel', 'Viettel']]);
 const JT_CONVERTED = "provider = 'J&T' AND original_kg = 3";
 const DECLARED_KG = `CASE WHEN ${JT_CONVERTED} THEN 2 ELSE original_kg END`;
+const CURRENT_KG = `CASE WHEN provider = 'J&T' THEN COALESCE(jt_reported_kg, kg) ELSE kg END`;
 
 async function show(req, res) {
     const carrier = CARRIERS.has(req.query.carrier) ? req.query.carrier : '';
@@ -20,9 +21,10 @@ async function show(req, res) {
     const filters = [
         "provider IN ('J&T', 'Viettel')",
         'original_kg > 0',
-        'kg > 0',
-        `ABS(kg - (${DECLARED_KG})) > 0.000001`,
-        `NOT (${JT_CONVERTED} AND kg = 3 AND jt_weight_reported = 0)`
+        `(${CURRENT_KG}) > 0`,
+        `ABS(CAST((${CURRENT_KG}) AS DECIMAL(18,9)) - CAST((${DECLARED_KG}) AS DECIMAL(18,9)))
+            > CASE WHEN provider = 'J&T' THEN 0 ELSE 0.000001 END`,
+        `NOT (${JT_CONVERTED} AND (${CURRENT_KG}) = 3 AND jt_weight_reported = 0)`
     ];
     if (!allTime) filters.push('COALESCE(last_update, time) >= DATE_SUB(NOW(), INTERVAL 10 DAY)');
     const params = [];
@@ -49,7 +51,7 @@ async function show(req, res) {
     const view = { user: req.user, carrier, search, allTime, page, getOrderStatus, previous: page > 1 ? pageUrl(page - 1) : null };
     try {
         const [rows] = await db.query(
-            `SELECT realorderid, orderid, name, provider, original_kg, ${DECLARED_KG} AS declared_kg, kg, statuscode, statustext,
+            `SELECT realorderid, orderid, name, provider, original_kg, ${DECLARED_KG} AS declared_kg, ${CURRENT_KG} AS kg, statuscode, statustext,
                     COALESCE(last_update, time) AS updated_at
                FROM lendon
               WHERE ${filters.join(' AND ')}

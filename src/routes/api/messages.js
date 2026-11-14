@@ -8,6 +8,20 @@ const FormData = require('form-data');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const { randomUUID } = require('node:crypto');
+const zaloChat = require('../../services/zaloCustomerChat');
+
+router.get('/zalo-image/:key', auth, async (req, res) => {
+  if (!/^[a-f0-9]{64}$/.test(req.params.key)) return res.sendStatus(404);
+  try {
+    const [[image]] = await db.query("SELECT image_data FROM gb_zalo_chat_delivery WHERE send_key = ? AND state = 'sent'",
+      [req.params.key]);
+    if (!image?.image_data) return res.sendStatus(404);
+    return res.type('jpeg').set('Cache-Control', 'private, no-store').send(image.image_data);
+  } catch (_) {
+    return res.sendStatus(500);
+  }
+});
 
 const ALLOWED_MIME_PREFIXES = ['image/', 'video/', 'audio/'];
 
@@ -112,7 +126,7 @@ router.get('/conversation/:sender', auth, async (req, res) => {
     }));
 
     const readWatermark = messages
-      .filter(m => m.isread === 1)
+      .filter(m => m.channel !== 'zalo' && m.isread === 1)
       .reduce((max, m) => Math.max(max, m.timestamp || 0), 0);
 
     res.json({ messages, readWatermark, reactions });
@@ -124,17 +138,37 @@ router.get('/conversation/:sender', auth, async (req, res) => {
 router.post('/send', auth, uploadAttachment, async (req, res) => {
   const { recipient, message, currentPageID } = req.body;
   const file = req.file;
+  const directZalo = req.body.deliveryChannel === 'zalo';
+  const orderConfirmation = zaloChat.isOrderConfirmation(message) || req.body.orderConfirmation === '1';
+  const uncertain = { image: false, text: false };
+  const messageIds = [];
 
-  if (!recipient || !currentPageID)
-    return res.status(400).json({ success: false, error: 'Thiếu recipient hoặc currentPageID' });
-
-  if (!message && !file)
-    return res.json({ success: true, message: 'Không có nội dung để gửi.' });
+  async function sendViaZalo(imageSent, textSent, facebookError) {
+    const missingFile = !imageSent && !uncertain.image ? file : null;
+    const missingText = !textSent && !uncertain.text ? message : '';
+    const result = missingFile || missingText ? await zaloChat.sendCustomerMessage({
+      customerId: String(recipient), pageId: String(currentPageID), actor: req.user,
+      clientMessageId: req.body.clientMessageId || randomUUID(), text: missingText, file: missingFile
+    }) : {};
+    const success = Boolean((!file || imageSent || result.imageSent) && (!message || textSent || result.textSent));
+    return res.status(success ? 200 : 400).json({
+      messageIds, success, imageSent: Boolean(imageSent || result.imageSent), textSent: Boolean(textSent || result.textSent),
+      zaloImageSent: Boolean(result.imageSent), zaloTextSent: Boolean(result.textSent),
+      uncertain: Boolean(result.uncertain || uncertain.image || uncertain.text),
+      ...(success ? { message: 'Gửi thành công.' } : { error: result.error ? 'Zalo: ' + result.error : facebookError })
+    });
+  }
 
   try {
+    if (!recipient || !currentPageID)
+      return res.status(400).json({ success: false, error: 'Thiếu recipient hoặc currentPageID' });
+    if (!message && !file)
+      return res.json({ success: true, message: 'Không có nội dung để gửi.' });
+    if (directZalo) return await sendViaZalo(false, false);
     const [[page]] = await db.query(
       'SELECT pageid, accesstoken FROM pageinfo WHERE pageid = ?', [currentPageID]
     );
+    if (!page?.accesstoken && orderConfirmation) return await sendViaZalo(false, false);
     if (!page)
       return res.status(404).json({ success: false, error: `Không tìm thấy page: ${currentPageID}` });
     if (!page.accesstoken)
@@ -142,13 +176,13 @@ router.post('/send', auth, uploadAttachment, async (req, res) => {
 
     const token = page.accesstoken;
 
-    const messageIds = [];
-    const sendMessageWithPayload = async (payload) => {
+    const sendMessageWithPayload = async (payload, part) => {
       const result = await require('../../services/messageAuditService').send({
         user: req.user, pageId: currentPageID, customerId: recipient, payload, clientMessageId: req.body.clientMessageId,
         post: body => axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${token}`, body)
       });
       if (result.success && result.response && result.response.message_id) messageIds.push(result.response.message_id);
+      if (!result.success && (!result.error?.response || result.error.response.status >= 500)) uncertain[part] = true;
       return result;
     };
 
@@ -171,14 +205,14 @@ router.post('/send', auth, uploadAttachment, async (req, res) => {
           messaging_type: 'UPDATE',
           message: { attachment: { type: attachmentType, payload: { attachment_id: attachmentId } } }
         };
-        const result = await sendMessageWithPayload(payload);
+        const result = await sendMessageWithPayload(payload, 'image');
         if (result.success) {
           imageSent = true;
         } else {
           const code = result.error?.response?.data?.error?.code;
-          if (code === 2018286 || code === 10) {
+          if (!uncertain.image && (code === 2018286 || code === 10)) {
             payload = { ...payload, messaging_type: 'MESSAGE_TAG', tag: 'HUMAN_AGENT' };
-            const retry = await sendMessageWithPayload(payload);
+            const retry = await sendMessageWithPayload(payload, 'image');
             if (retry.success) imageSent = true;
           }
         }
@@ -190,14 +224,14 @@ router.post('/send', auth, uploadAttachment, async (req, res) => {
           messaging_type: 'UPDATE',
           message: { text: textContent }
         };
-        const result = await sendMessageWithPayload(payload);
+        const result = await sendMessageWithPayload(payload, 'text');
         if (result.success) {
           textSent = true;
         } else {
           const code = result.error?.response?.data?.error?.code;
-          if (code === 2018286 || code === 10) {
+          if (!uncertain.text && (code === 2018286 || code === 10)) {
             payload = { ...payload, messaging_type: 'MESSAGE_TAG', tag: 'HUMAN_AGENT' };
-            const retry = await sendMessageWithPayload(payload);
+            const retry = await sendMessageWithPayload(payload, 'text');
             if (retry.success) textSent = true;
           }
         }
@@ -219,22 +253,22 @@ router.post('/send', auth, uploadAttachment, async (req, res) => {
       for (const commentId of commentIds) {
         const tasks = [];
 
-        if (attachmentId && !imageSent) {
+        if (attachmentId && !imageSent && !uncertain.image) {
           tasks.push(
             sendMessageWithPayload({
               messaging_type: 'RESPONSE',
               recipient: { comment_id: commentId },
               message: { attachment: { type: attachmentType, payload: { attachment_id: attachmentId } } }
-            }).then(r => { if (r.success) imageSent = true; })
+            }, 'image').then(r => { if (r.success) imageSent = true; })
           );
         }
-        if (textContent && !textSent) {
+        if (textContent && !textSent && !uncertain.text) {
           tasks.push(
             sendMessageWithPayload({
               messaging_type: 'RESPONSE',
               recipient: { comment_id: commentId },
               message: { text: textContent }
-            }).then(r => { if (r.success) textSent = true; })
+            }, 'text').then(r => { if (r.success) textSent = true; })
           );
         }
 
@@ -259,8 +293,6 @@ router.post('/send', auth, uploadAttachment, async (req, res) => {
 
       try {
         let uploadPath = file.path;
-        let cleanupPaths = [file.path];
-
         if (attachmentType === 'image') {
           const optimizedPath = file.path + '_opt.jpg';
           await sharp(file.path)
@@ -268,9 +300,7 @@ router.post('/send', auth, uploadAttachment, async (req, res) => {
             .resize(1024, 1024, { fit: sharp.fit.inside, withoutEnlargement: true })
             .jpeg({ quality: 70 })
             .toFile(optimizedPath);
-          fs.unlinkSync(file.path);
           uploadPath = optimizedPath;
-          cleanupPaths = [optimizedPath];
         }
 
         const form = new FormData();
@@ -285,26 +315,20 @@ router.post('/send', auth, uploadAttachment, async (req, res) => {
         );
         attachmentId = uploadRes.data.attachment_id;
 
-        for (const p of cleanupPaths) {
-          if (fs.existsSync(p)) fs.unlinkSync(p);
-        }
       } catch (err) {
-        if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
-        if (fs.existsSync(file.path + '_opt.jpg')) fs.unlinkSync(file.path + '_opt.jpg');
-        const label = attachmentType === 'video' ? 'video' : attachmentType === 'audio' ? 'âm thanh' : 'hình ảnh';
-        return res.status(500).json({ success: false, error: `Lỗi khi xử lý tệp ${label}.` });
+        console.error('Lỗi chuẩn bị tệp gửi Facebook:', err.code || err.name);
       }
     }
 
     const directResult = await sendDirect(attachmentId, attachmentType, message);
-    if (directResult.success) {
+    if (directResult.success && (!file || attachmentId)) {
       return res.json({ messageIds, success: true, message: 'Gửi thành công.' });
     }
 
     let imageSent = directResult.imageSent;
     let textSent = directResult.textSent;
-    const needImage = !!attachmentId && !imageSent;
-    const needText = !!message && !textSent;
+    const needImage = !!attachmentId && !imageSent && !uncertain.image;
+    const needText = !!message && !textSent && !uncertain.text;
 
     if (needImage || needText) {
       const privateResult = await sendPrivateReply(
@@ -316,29 +340,37 @@ router.post('/send', auth, uploadAttachment, async (req, res) => {
       textSent = textSent || privateResult.textSent;
     }
 
-    const overallOk = (!attachmentId || imageSent) && (!message || textSent);
+    const overallOk = (!file || imageSent) && (!message || textSent);
     if (overallOk) {
       return res.json({ messageIds, success: true, message: 'Gửi thành công.' });
     }
 
     const failedParts = [];
-    if (attachmentId && !imageSent) failedParts.push('tệp đính kèm');
+    if (file && !imageSent) failedParts.push('tệp đính kèm');
     if (message && !textSent) failedParts.push('tin nhắn văn bản');
-    const reason = failedParts.length
+    const reason = uncertain.image || uncertain.text
+      ? 'Chưa xác nhận được kết quả gửi Facebook. Kiểm tra cuộc trò chuyện trước khi gửi lại.'
+      : failedParts.length
       ? `Không thể gửi ${failedParts.join(' và ')}.`
       : 'Không thể gửi tin nhắn.';
 
+    if (orderConfirmation) return await sendViaZalo(imageSent, textSent, reason);
     return res.status(400).json({
       messageIds,
       success: false,
       error: reason,
       imageSent,
       textSent,
+      uncertain: uncertain.image || uncertain.text,
     });
 
   } catch (err) {
     console.error('Send message error:', err.message);
     res.status(500).json({ success: false, error: 'Lỗi server khi xử lý tin nhắn.' });
+  } finally {
+    if (file?.path) {
+      await Promise.all([file.path, file.path + '_opt.jpg'].map(name => fs.promises.unlink(name).catch(() => {})));
+    }
   }
 });
 

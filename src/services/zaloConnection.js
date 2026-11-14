@@ -1,6 +1,7 @@
 'use strict';
 
 const { randomUUID } = require('node:crypto');
+const sharp = require('sharp');
 const db = require('../configs/DBConnection');
 const { encryptSecret, decryptSecret } = require('./viettelAccountService');
 
@@ -292,12 +293,24 @@ async function checkPhone(value) {
     return findRecipient(session, phone);
 }
 
-async function sendTestMessage({ phone: value, message, uid, accountId }) {
+async function prepareTestImage(buffer) {
+    try {
+        const image = sharp(buffer, { limitInputPixels: 64_000_000 });
+        const { format } = await image.metadata();
+        if (!['jpeg', 'png', 'webp'].includes(format)) throw new Error('Unsupported image format');
+        const { data, info } = await image.rotate().resize(1280, 1280, { fit: 'inside', withoutEnlargement: true })
+            .jpeg({ quality: 80 }).toBuffer({ resolveWithObject: true });
+        return { data, filename: 'anh-gui-thu.jpg', metadata: { totalSize: data.length, width: info.width, height: info.height } };
+    } catch (_) {
+        throw new ZaloActionError(400, 'Không đọc được ảnh. Hãy chọn ảnh JPG, PNG hoặc WebP hợp lệ.');
+    }
+}
+
+async function sendTestMessage({ phone: value, message, uid, accountId }, imageBuffer) {
     const phone = normalizePhone(value);
     const text = typeof message === 'string' ? message.trim() : '';
-    if (!text || text.length > 2000) {
-        throw new ZaloActionError(400, 'Nhập nội dung tin nhắn từ 1 đến 2.000 ký tự.');
-    }
+    if (text.length > 2000) throw new ZaloActionError(400, 'Nội dung tin nhắn tối đa 2.000 ký tự.');
+    if (!text && !imageBuffer) throw new ZaloActionError(400, 'Nhập nội dung hoặc chọn một ảnh để gửi.');
     if (typeof uid !== 'string' || !/^\d{1,64}$/.test(uid) ||
         typeof accountId !== 'string' || !/^\d{1,64}$/.test(accountId)) {
         throw new ZaloActionError(400, 'Kiểm tra số điện thoại trước khi gửi.');
@@ -307,10 +320,34 @@ async function sendTestMessage({ phone: value, message, uid, accountId }) {
         throw new ZaloActionError(409, 'Kết nối Zalo đã thay đổi. Hãy kiểm tra lại số điện thoại.');
     }
     const recipient = await findRecipient(session, phone);
+    const attachment = imageBuffer && await prepareTestImage(imageBuffer);
     if (recipient.uid !== uid || !await isSavedSessionCurrent(session)) {
         throw new ZaloActionError(409, 'Người nhận hoặc kết nối Zalo đã thay đổi. Hãy kiểm tra lại số điện thoại.');
     }
-    return sendText(session, recipient.uid, text, session.userThread);
+    if (!attachment) return sendText(session, recipient.uid, text, session.userThread);
+    let result;
+    try {
+        result = await session.api.sendMessage({ msg: text, attachments: [attachment] }, recipient.uid, session.userThread);
+    } catch (error) {
+        if (error.name === 'ZcaApiError' && Number.isInteger(Number(error.code)) && Number(error.code) !== 0) {
+            throw new ZaloActionError(422, 'Zalo từ chối gửi ảnh (mã ' + Number(error.code) + ').');
+        }
+    }
+    if (!result?.attachment?.some(item => item.msgId != null)) {
+        throw new ZaloActionError(502, 'Chưa xác nhận được ảnh đã gửi. Kiểm tra cuộc trò chuyện Zalo trước khi gửi lại.');
+    }
+    return { imageSent: true };
+}
+
+function eventId(value) {
+    let id = value;
+    if (typeof value === 'bigint' || Number.isSafeInteger(value)) {
+        id = String(value);
+    } else if (typeof value?.isInteger === 'function' && typeof value.toFixed === 'function' && value.isInteger()) {
+        // zca-js decodes large JSON integers as BigNumber values.
+        id = value.toFixed();
+    }
+    return typeof id === 'string' && /^\d{1,64}$/.test(id) ? id : null;
 }
 
 async function sendText(session, threadId, text, threadType) {
@@ -327,10 +364,10 @@ async function sendText(session, threadId, text, threadType) {
     if (messageId == null) {
         throw new ZaloActionError(502, 'Chưa xác nhận được tin đã gửi. Kiểm tra cuộc trò chuyện Zalo trước khi gửi lại.');
     }
-    return { messageId: String(messageId) };
+    return { messageId: eventId(messageId) };
 }
 
 module.exports = {
     start, getStatus, cancel, disconnect, verify, checkPhone, sendTestMessage, ZaloActionError,
-    openSavedSession, isSavedSessionCurrent, listGroups, setShipmentGroup, sendText
+    openSavedSession, isSavedSessionCurrent, listGroups, setShipmentGroup, normalizePhone, findRecipient, sendText, eventId
 };

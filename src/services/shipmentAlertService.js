@@ -4,6 +4,11 @@ const axios = require('axios');
 const { getPageToken } = require('./pageTokenService');
 const { toE164VN } = require('../utils/text');
 
+function suppressCustomerShipmentAlert(...reasons) {
+    return reasons.some(reason => typeof reason === 'string' &&
+        /phân sai|hàng chưa đến/.test(reason.normalize('NFC').toLowerCase().replace(/\s+/g, ' ')));
+}
+
 async function SendCanhBao(orderNumber, shipper_name, shipper_phone, cod, issue, carrier = 'Viettel Post') {
     const jt = carrier === 'J&T';
     try {
@@ -101,4 +106,4 @@ async function SendCanhBao(orderNumber, shipper_name, shipper_phone, cod, issue,
     }
 }
 
-module.exports = { SendCanhBao };
+module.exports = { SendCanhBao, suppressCustomerShipmentAlert };

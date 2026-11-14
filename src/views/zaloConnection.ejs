@@ -39,7 +39,11 @@
       </div>
       <p data-zalo-recipient class="small mt-2 mb-3" aria-live="polite"></p>
       <label for="zaloTestMessage" class="form-label">Nội dung</label>
-      <textarea id="zaloTestMessage" data-zalo-text class="form-control" rows="3" maxlength="2000" required></textarea>
+      <textarea id="zaloTestMessage" data-zalo-text class="form-control" rows="3" maxlength="2000"></textarea>
+      <label for="zaloTestImage" class="form-label mt-2">Ảnh</label>
+      <input type="file" id="zaloTestImage" data-zalo-image class="form-control"
+             accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" aria-describedby="zaloTestImageHelp">
+      <div id="zaloTestImageHelp" class="form-text">JPG, PNG hoặc WebP, tối đa 10 MB.</div>
       <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
         <button type="button" data-zalo-send class="btn btn-primary" disabled>Gửi thử</button>
         <span data-zalo-send-status class="small" role="status" aria-live="polite"></span>
@@ -47,4 +51,4 @@
     </form>
   </div>
 </section>
-<script src="/js/admin-zalo-connection.js?v=20261110-shipment-groups" defer></script>
+<script src="/js/admin-zalo-connection.js?v=20261112-test-image" defer></script>

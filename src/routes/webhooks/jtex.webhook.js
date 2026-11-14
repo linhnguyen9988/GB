@@ -2,10 +2,10 @@
 const DBConnection = require("../../configs/DBConnection");
 const { sendFcmToUser } = require('../fcm');
 const zaloAlerts = require('../../services/zaloShipmentAlerts');
-const { SendCanhBao } = require('../../services/shipmentAlertService');
+const { SendCanhBao, suppressCustomerShipmentAlert } = require('../../services/shipmentAlertService');
 const {
     JT_FINAL_CODES, jtHasSigpic, isPartReturnBill, eventCode, toWaybillRow, toEpoch, readJTDetails, latestJTStatusIndex,
-    insertWaybillIfNew, readStoredJTWaybill, latestStoredScanEpoch, lockJTOrder, applyJTStatus, createPartReturnOrder
+    insertWaybillIfNew, readStoredJTWaybill, latestStoredScanEpoch, lockJTOrder, applyJTStatus, applyJTWeight, createPartReturnOrder
 } = require('../../services/jtExpressService');
 
 const JT_NOTIFY_CODES = new Set([116, 117, 118, 120]);
@@ -27,24 +27,34 @@ async function claimNotifications(billCode, notices) {
         const locked = await lockJTOrder(conn, billCode);
         if (locked) {
             const [[order]] = await conn.query(
-                "SELECT name, cod, userid, useraccountid FROM lendon WHERE realorderid = ? AND provider = 'J&T' LIMIT 1",
+                "SELECT name, cod, userid, useraccountid, created_by_user_id FROM lendon WHERE realorderid = ? AND provider = 'J&T' LIMIT 1",
                 [billCode]
             );
             const title = `${order.name} - J&T`;
             const final = JT_FINAL_CODES.includes(Number(locked.statuscode));
+            const userId = order.useraccountid || order.created_by_user_id;
             for (const [code, notice] of notices) {
+                const push = notice.push && Boolean(userId);
                 const messenger = notice.messenger && Boolean(order.userid) && !final;
-                if (!notice.push && !messenger) continue;
-                const [existing] = await conn.query(
-                    'SELECT 1 FROM order_noti_log WHERE realorderid = ? AND status_code = ? LIMIT 1',
+                if (!push && !messenger) continue;
+                const [[existing]] = await conn.query(
+                    'SELECT id, body FROM order_noti_log WHERE realorderid = ? AND status_code = ? ORDER BY id DESC LIMIT 1',
                     [billCode, code]
                 );
-                if (existing.length) continue;
+                if (existing) {
+                    if (!JT_MESSENGER_CODES.has(code) || normalizeReason(existing.body) === normalizeReason(notice.body)) continue;
+                    await conn.query(
+                        'UPDATE order_noti_log SET body = ?, title = ?, userid = ?, sent_at = NOW(), is_read = 0 WHERE id = ?',
+                        [notice.body, title, userId, existing.id]
+                    );
+                    claimed.push({ ...notice, code, title, order, userId, push, messenger, id: existing.id });
+                    continue;
+                }
                 const [result] = await conn.query(
                     'INSERT IGNORE INTO order_noti_log (realorderid, status_code, sent_at, title, body, userid) VALUES (?, ?, NOW(), ?, ?, ?)',
-                    [billCode, code, title, notice.body, order.useraccountid]
+                    [billCode, code, title, notice.body, userId]
                 );
-                if (result.affectedRows) claimed.push({ ...notice, code, title, order, messenger, id: result.insertId });
+                if (result.affectedRows) claimed.push({ ...notice, code, title, order, userId, push, messenger, id: result.insertId });
             }
         }
         await conn.commit();
@@ -88,18 +98,21 @@ async function storeFeedback(data) {
                 latestIssue = issue;
                 suppressStatusNotice = suppressNotice;
             }
+            const time = toEpoch(event.scanTime);
             if (!suppressNotice && zaloAlerts.isIssue('J&T', row.scantypecode)) {
                 alerts.set(row.scantypecode, {
                     body: issue ? row.scantypename + ' - ' + issue : row.scantypename,
                     phone: row.scanbycontact,
-                    time: toEpoch(event.scanTime),
-                    buyerRescheduled: [issue, event.scanTypeName].some(reason => normalizeReason(reason) === 'người mua hẹn lại ngày nhận')
+                    time,
+                    suppressMessenger: suppressCustomerShipmentAlert(issue, event.scanTypeName) ||
+                        [issue, event.scanTypeName].some(reason => normalizeReason(reason) === 'người mua hẹn lại ngày nhận')
                 });
             }
         }
 
         const stale = storedNewest !== null && toEpoch(newest.scanTime) < storedNewest;
         const status = stale ? null : await applyJTStatus(billCode, events[statusIndex], conn, latestIssue);
+        await applyJTWeight(billCode, events, conn);
         if (alerts.size) {
             const [[order]] = await conn.query(
                 "SELECT name, phone, cod FROM lendon WHERE realorderid = ? AND provider = 'J&T' LIMIT 1",
@@ -111,13 +124,13 @@ async function storeFeedback(data) {
         }
         const notices = new Map();
         const scanCode = eventCode(newest);
-        if (status?.applied && !suppressStatusNotice && JT_NOTIFY_CODES.has(scanCode)) {
+        if (status?.applied && !suppressStatusNotice && JT_NOTIFY_CODES.has(scanCode) && !JT_MESSENGER_CODES.has(scanCode)) {
             const body = status.issue ? status.statustext + ' - ' + status.issue : status.statustext;
             notices.set(scanCode, { body, push: true });
         }
         for (const [code, alert] of alerts) {
-            if (!alert.buyerRescheduled && JT_MESSENGER_CODES.has(code) && (storedNewest === null || alert.time >= storedNewest)) {
-                notices.set(code, { ...notices.get(code), body: alert.body, phone: alert.phone, messenger: true });
+            if (storedNewest === null || alert.time >= storedNewest) {
+                notices.set(code, { body: alert.body, phone: alert.phone, push: true, messenger: !alert.suppressMessenger });
             }
         }
         await conn.commit();
@@ -153,7 +166,7 @@ module.exports = function registerJtexWebhook(router) {
                         deliveries.push(SendCanhBao(billCode, null, notice.phone, Number(notice.order.cod) || 0, notice.body, 'J&T'));
                     }
                     if (notice.push) {
-                        deliveries.push(sendFcmToUser(DBConnection.promise(), notice.order.useraccountid, notice.title, notice.body, {
+                        deliveries.push(sendFcmToUser(DBConnection.promise(), notice.userId, notice.title, notice.body, {
                             type: 'order_status', realorderid: billCode, status: notice.code, noti_id: notice.id
                         }));
                     }

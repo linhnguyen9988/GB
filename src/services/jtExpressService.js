@@ -7,6 +7,7 @@ const { md5ToBase64 } = require('../utils/crypto');
 const { isPrinterOnline, dispatchPrint } = require('./printAgent');
 const { printLabelByCode } = require('./labelPrintService');
 const { jt: jtStatuses, jtCancelled } = require('../public/js/order-status');
+const { enqueueJTWeightChange } = require('./zaloShipmentAlerts');
 
 async function loadJTOrder(code) {
     const [[order]] = await DBConnection.query(
@@ -263,9 +264,6 @@ async function applyJTStatus(billCode, ev, conn, storedIssue) {
     }
 
     const row = toWaybillRow(billCode, ev);
-    const rawWeight = ev.weight;
-    const w = typeof rawWeight === 'number' || typeof rawWeight === 'string' ? Number(rawWeight) : NaN;
-    const weight = Number.isFinite(w) && w > 0 ? w : null;
     const issue = (code === 118 || code === 120)
         ? (storedIssue || row.issuename || 'Kiện vấn đề')
         : null;
@@ -273,11 +271,9 @@ async function applyJTStatus(billCode, ev, conn, storedIssue) {
 
     const [res] = await conn.query(
         `UPDATE lendon
-            SET statuscode = ?, statustext = ?, issue = ?, kg = COALESCE(?, kg),
-                jt_weight_reported = CASE WHEN ? IS NULL THEN jt_weight_reported ELSE 1 END,
-                last_update = NOW()
+            SET statuscode = ?, statustext = ?, issue = ?, last_update = NOW()
           WHERE realorderid = ? AND provider = 'J&T'${terminal ? '' : ` AND statuscode NOT IN (${JT_FINAL_CODES.join(',')})`}`,
-        [code, row.scantypename, issue, weight, weight, billCode]
+        [code, row.scantypename, issue, billCode]
     );
     return {
         applied: res.affectedRows > 0,
@@ -287,6 +283,39 @@ async function applyJTStatus(billCode, ev, conn, storedIssue) {
         statustext: row.scantypename,
         issue
     };
+}
+
+async function applyJTWeight(billCode, events, conn) {
+    let reported;
+    let epoch;
+    for (let index = events.length - 1; index >= 0; index--) {
+        const raw = events[index].weight;
+        const text = typeof raw === 'string' || typeof raw === 'number' ? String(raw).trim() : '';
+        if (!/^\d{1,9}(?:\.\d{1,9}0*)?$/.test(text) || Number(text) <= 0) continue;
+        reported = Number(text);
+        epoch = toEpoch(events[index].scanTime);
+        break;
+    }
+    if (reported == null || epoch == null) return;
+
+    const [[order]] = await conn.query(
+        `SELECT name, phone, cod, statustext, original_kg, jt_reported_kg, jt_reported_weight_epoch
+         FROM lendon WHERE realorderid = ? AND provider = 'J&T' LIMIT 1`, [billCode]
+    );
+    if (!order || epoch <= Number(order.jt_reported_weight_epoch)) return;
+
+    await conn.query(
+        `UPDATE lendon SET jt_reported_kg = ?, jt_reported_weight_epoch = ?,
+             kg = ?, jt_weight_reported = 1, last_update = NOW()
+         WHERE realorderid = ? AND provider = 'J&T'`,
+        [reported, epoch, reported, billCode]
+    );
+    const original = Number(order.original_kg);
+    const declared = original === 3 ? 2 : Number(original.toFixed(9));
+    const previousReported = Number(order.jt_reported_kg ?? 0);
+    if (declared > 0 && reported > Math.max(declared, previousReported)) {
+        await enqueueJTWeightChange(conn, billCode, order, { epoch, declared, reported });
+    }
 }
 
 async function createPartReturnOrder(billCode, conn) {
@@ -496,6 +525,7 @@ async function refreshJTStatus(billCode) {
         }
         const statusIndex = latestJTStatusIndex(trace.details);
         const st = await applyJTStatus(billCode, trace.details[statusIndex], conn, rows[statusIndex].issuename);
+        await applyJTWeight(billCode, trace.details, conn);
         const [[after]] = await conn.query("SELECT statuscode, statustext FROM lendon WHERE realorderid = ? AND provider = 'J&T' LIMIT 1", [billCode]);
         await conn.commit();
         return {
@@ -517,5 +547,5 @@ module.exports = {
     CancelOrderJT, GetBillJT, dispatchJTLabel, reprintBillJT,
     createJTOrder, traceJT, refreshJTStatus,
     JT_FINAL_CODES, jtHasSigpic, isPartReturnBill, eventCode, toWaybillRow, toEpoch, formatJTScanTime, readJTDetails, latestJTStatusIndex,
-    insertWaybillIfNew, readStoredJTWaybill, latestStoredScanEpoch, lockJTOrder, applyJTStatus, createPartReturnOrder
+    insertWaybillIfNew, readStoredJTWaybill, latestStoredScanEpoch, lockJTOrder, applyJTStatus, applyJTWeight, createPartReturnOrder
 };

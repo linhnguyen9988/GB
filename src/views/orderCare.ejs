@@ -1,0 +1,107 @@
+<%- include('headerafterlogin'); %>
+<link rel="stylesheet" href="/css/order-care.css?v=20261113">
+
+<main class="order-care mx-auto my-3 my-md-4" aria-labelledby="care-title">
+    <nav aria-label="Vị trí trang" class="care-breadcrumb mb-2 small">
+        <a href="/donhang">Đơn hàng</a><span aria-hidden="true"> / </span><span>Chăm sóc đơn</span>
+    </nav>
+    <% if (!order) { %>
+        <h1 id="care-title" class="h3">Chăm sóc đơn</h1>
+        <p class="alert alert-warning" role="alert"><%= error %></p>
+    <% } else { %>
+        <% const journey = item => JSON.stringify([item.journeyCode, item.name || customer.name, item.userId || customer.id || '', item.phone || '']); %>
+        <% const tel = value => String(value || '').replace(/[^+\d]/g, ''); %>
+        <header class="care-intro mb-3">
+            <div>
+                <h1 id="care-title" class="mb-2">Đơn <%= order.code %></h1>
+                <div class="care-summary small">
+                    <span class="badge gb-order-status text-bg-<%= order.badge.color %>"><%= order.badge.label %></span>
+                    <span><%= order.carrier %></span><span><%= order.date %></span>
+                </div>
+            </div>
+            <% if (order.journeyCode) { %>
+                <button type="button" class="btn btn-primary" data-care-journey="<%= journey(order) %>"><i class="bi bi-truck" aria-hidden="true"></i> Tra hành trình</button>
+            <% } %>
+        </header>
+
+        <div class="care-grid">
+            <section class="card" aria-labelledby="care-order-info">
+                <header class="care-section-head"><span class="care-icon" aria-hidden="true"><i class="bi bi-box-seam"></i></span><h2 id="care-order-info">Thông tin đơn hàng</h2></header>
+                <div class="care-section-body">
+                    <dl class="care-metrics">
+                        <div><dt>Thu hộ (COD)</dt><dd><%= order.cod %></dd></div>
+                        <div><dt>Trọng lượng</dt><dd><%= order.weight %></dd></div>
+                    </dl>
+                    <dl class="care-fields">
+                        <div><dt>Mã vận đơn</dt><dd class="care-code-line"><span id="care-waybill"><%= order.journeyCode || '—' %></span>
+                            <% if (order.journeyCode) { %><button type="button" class="btn btn-sm btn-outline-secondary" data-care-copy aria-label="Sao chép mã vận đơn" title="Sao chép mã vận đơn"><i class="bi bi-copy" aria-hidden="true"></i></button><% } %>
+                        </dd></div>
+                        <div><dt>Mã nội bộ · Người lên đơn</dt><dd><%= order.internalCode || '—' %> · <%= order.creator || 'Chưa ghi nhận' %></dd></div>
+                        <div><dt>Người nhận</dt><dd><%= order.name || '—' %></dd></div>
+                        <div><dt>Số điện thoại nhận hàng</dt><dd><% if (tel(order.phone)) { %><a href="tel:<%= tel(order.phone) %>"><%= order.phone %></a><% } else { %>—<% } %></dd></div>
+                        <div class="care-wide"><dt>Địa chỉ giao hàng</dt><dd><%= order.address || '—' %></dd></div>
+                        <% if (order.note) { %><div class="care-wide"><dt>Ghi chú giao hàng</dt><dd class="care-note"><%= order.note %></dd></div><% } %>
+                    </dl>
+                    <% if (order.issue) { %><p class="alert alert-warning py-2 mt-3 mb-0"><%= order.issue %></p><% } %>
+                </div>
+            </section>
+
+            <section class="card" aria-labelledby="care-customer-info">
+                <header class="care-section-head"><span class="care-icon" aria-hidden="true"><i class="bi bi-person"></i></span><h2 id="care-customer-info">Thông tin khách hàng</h2></header>
+                <div class="care-section-body">
+                    <div class="care-customer-name">
+                        <img src="/images/ava/<%= customer.id || 'default' %>.jpg" onerror="this.onerror=null; this.src='/images/ava/default.jpg'" alt="" width="42" height="42">
+                        <div><strong><%= customer.name %></strong><% if (customer.label) { %><div class="small"><%= customer.label %></div><% } %></div>
+                    </div>
+                    <dl class="care-fields">
+                        <div><dt>Số điện thoại</dt><dd><% if (tel(customer.phone)) { %><a href="tel:<%= tel(customer.phone) %>"><%= customer.phone %></a><% } else { %>—<% } %></dd></div>
+                        <% if (customer.pageLabel) { %><div><dt>Facebook</dt><dd><%= customer.pageLabel %></dd></div><% } %>
+                        <% if (customer.address) { %><div class="care-wide"><dt>Địa chỉ trong hồ sơ</dt><dd><%= customer.address %></dd></div><% } %>
+                        <% if (customer.note) { %><div class="care-wide"><dt>Ghi chú khách hàng</dt><dd class="care-note"><%= customer.note %></dd></div><% } %>
+                    </dl>
+                    <div class="care-contact mt-3">
+                        <% if (customer.id && customer.pageId) { %>
+                            <button type="button" class="btn btn-primary open-message-modal" data-customer-id="<%= customer.id %>" data-customer-name="<%= customer.name %>" data-sender-page-id="<%= customer.pageId %>"><i class="bi bi-chat-dots" aria-hidden="true"></i> Tin nhắn</button>
+                        <% } %>
+                        <% if (careBusinessUrl) { %>
+                            <a href="<%= careBusinessUrl %>" class="btn btn-outline-primary" target="_blank" rel="noopener noreferrer"><i class="bi bi-box-arrow-up-right" aria-hidden="true"></i> Business Suite</a>
+                        <% } %>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <section class="card care-history mt-3" aria-labelledby="care-history-title">
+            <header class="care-section-head"><span class="care-icon" aria-hidden="true"><i class="bi bi-clock-history"></i></span><h2 id="care-history-title">5 đơn gần nhất</h2></header>
+            <% if (recent.length) { %>
+                <table class="care-table" role="table" aria-labelledby="care-history-title">
+                    <thead role="rowgroup"><tr role="row"><th scope="col">Đơn hàng</th><th scope="col">Thu hộ</th><th scope="col">Trạng thái</th><th scope="col">Hành trình</th></tr></thead>
+                    <tbody role="rowgroup">
+                        <% recent.forEach(item => { %>
+                            <tr role="row">
+                                <td role="cell">
+                                    <% if (item.path && item.code !== order.code) { %><a class="fw-bold" href="<%= item.path %>"><%= item.code %></a><% } else { %><span class="fw-bold"><%= item.code || '—' %></span><% } %>
+                                    <div class="small care-muted"><%= item.date %> · <%= item.carrier %></div>
+                                </td>
+                                <td role="cell" class="care-cod fw-semibold"><%= item.cod %></td>
+                                <td role="cell"><span class="badge gb-order-status text-bg-<%= item.badge.color %>"><%= item.badge.label %></span></td>
+                                <td role="cell">
+                                    <% if (item.journeyCode) { %><button type="button" class="btn btn-sm btn-outline-primary" aria-label="Tra hành trình <%= item.code %>" data-care-journey="<%= journey(item) %>"><i class="bi bi-truck" aria-hidden="true"></i> Tra cứu</button><% } else { %><span class="care-muted">—</span><% } %>
+                                </td>
+                            </tr>
+                        <% }); %>
+                    </tbody>
+                </table>
+            <% } else { %>
+                <p class="care-section-body mb-0 care-muted">Chưa có đơn gần đây cho khách này.</p>
+            <% } %>
+        </section>
+    <% } %>
+</main>
+<script>
+    for (const button of document.querySelectorAll('[data-care-journey]')) {
+        button.addEventListener('click', () => OrderJourney(...JSON.parse(button.dataset.careJourney)));
+    }
+    document.querySelector('[data-care-copy]')?.addEventListener('click', () => copyOrderNumber(document.getElementById('care-waybill')));
+</script>
+<%- include('footer'); %>

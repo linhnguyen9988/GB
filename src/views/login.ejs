@@ -23,6 +23,7 @@
             <% } %>
 
             <form method="POST" novalidate autocomplete="off" action="/login">
+              <% if (locals.returnTo) { %><input type="hidden" name="returnTo" value="<%= returnTo %>"><% } %>
               <div class="mb-3">
                 <label class="mb-2 text-muted small fw-bold" for="username">Tài khoản</label>
                 <div class="input-group">

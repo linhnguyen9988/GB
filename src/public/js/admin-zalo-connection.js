@@ -14,6 +14,7 @@
     const phone = el('phone');
     const checkPhone = el('check-phone');
     const message = el('text');
+    const testImage = el('image');
     const send = el('send');
     const sendStatus = el('send-status');
     const groupsPanel = el('groups');
@@ -42,11 +43,15 @@
 
     async function request(path = '', method = 'GET', body) {
         const headers = { 'X-GB-Zalo-Action': '1' };
-        if (body) headers['Content-Type'] = 'application/json';
+        const multipart = body instanceof FormData;
+        if (body && !multipart) headers['Content-Type'] = 'application/json';
         const response = await fetch('/api/admin/zalo' + path, {
-            method, cache: 'no-store', headers, body: body ? JSON.stringify(body) : undefined
+            method, cache: 'no-store', headers, body: body && !multipart ? JSON.stringify(body) : body
         });
-        const data = await response.json();
+        const data = await response.json().catch(error => {
+            if (response.status === 413) throw new Error('Ảnh quá lớn để tải lên. Hãy chọn ảnh nhỏ hơn.');
+            throw error;
+        });
         if (!response.ok) throw new Error(data.message || 'Không tải được kết nối Zalo.');
         return data;
     }
@@ -60,9 +65,11 @@
         disconnect.disabled ||= active();
         if (recipient && recipient.accountId !== state?.account?.id) recipient = null;
         form.hidden = !state?.account;
-        phone.disabled = message.disabled = checkPhone.disabled = working || form.hidden || active() || state?.busy;
-        send.disabled = checkPhone.disabled || !recipient || !message.value.trim();
-        el('recipient').textContent = recipient ? 'Tìm thấy ' + (recipient.name || 'UID ' + recipient.uid) : '';
+        phone.disabled = message.disabled = testImage.disabled = checkPhone.disabled = working || form.hidden || active() || state?.busy;
+        send.disabled = checkPhone.disabled || !recipient || (!message.value.trim() && !testImage.files.length);
+        el('recipient').textContent = recipient
+            ? 'Tìm thấy ' + (recipient.name ? recipient.name + ' · ' : '') + 'UID ' + recipient.uid
+            : '';
         if (groupAccountId && groupAccountId !== state?.account?.id) {
             groupAccountId = undefined;
             groupSelect.replaceChildren(new Option('Tải danh sách nhóm để chọn', ''));
@@ -153,6 +160,10 @@
         render();
     });
     message.addEventListener('input', render);
+    testImage.addEventListener('change', () => {
+        sendStatus.textContent = '';
+        render();
+    });
     const messageAction = { feedback: sendStatus, refresh: false };
     checkPhone.addEventListener('click', () => {
         if (!phone.reportValidity()) return;
@@ -165,15 +176,28 @@
         }, messageAction);
     });
     send.addEventListener('click', () => {
-        if (!recipient || !message.reportValidity()) return;
+        if (send.disabled || !message.reportValidity()) return;
+        const file = testImage.files[0];
+        if (file && file.size > 10 * 1024 * 1024) {
+            sendStatus.textContent = 'Ảnh vượt quá 10 MB.';
+            return;
+        }
         run(async () => {
             sendStatus.textContent = 'Đang gửi…';
-            await request('/send-test', 'POST', {
+            let body = {
                 phone: phone.value, message: message.value,
                 uid: recipient.uid, accountId: recipient.accountId
-            });
+            };
+            if (file) {
+                const fields = new FormData();
+                for (const [key, value] of Object.entries(body)) fields.append(key, value);
+                fields.append('image', file);
+                body = fields;
+            }
+            await request('/send-test', 'POST', body);
             message.value = '';
-            sendStatus.textContent = 'Đã gửi tin nhắn Zalo.';
+            testImage.value = '';
+            sendStatus.textContent = file ? 'Đã gửi ảnh qua Zalo.' : 'Đã gửi tin nhắn Zalo.';
         }, messageAction);
     });
     run();

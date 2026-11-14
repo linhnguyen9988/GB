@@ -2,6 +2,7 @@
 const jwt = require('jsonwebtoken');
 const db = require('../configs/DBConnection');
 const { JWT_SECRET, COOKIE_NAME } = require('../configs/jwtConfig');
+const { getCareReturnPath, loginPath } = require('../utils/carePath');
 function extractToken(req) {
  const h = req.headers.authorization;
  return h && h.startsWith('Bearer ') ? h.slice(7) : req.cookies && req.cookies[COOKIE_NAME];
@@ -20,7 +21,7 @@ function authenticate(web) {
   try {
    req.user = await loadUser(req);
    if (!req.user) {
-    if (web) { res.clearCookie(COOKIE_NAME); return res.redirect('/login'); }
+    if (web) { res.clearCookie(COOKIE_NAME); return res.redirect(loginPath(getCareReturnPath(req.path))); }
     return res.status(401).json({ success: false, message: 'Vui lòng đăng nhập lại' });
    }
    res.locals.user = req.user;

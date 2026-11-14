@@ -2,6 +2,7 @@
 
 const db = require('../configs/DBConnection');
 const zalo = require('./zaloConnection');
+const { getCarePath } = require('../utils/carePath');
 
 const issueCodes = {
     'J&T': new Set([118, 120]),
@@ -14,25 +15,41 @@ function isIssue(carrier, statusCode) {
 
 async function enqueue(connection, carrier, billCode, statusCode, statusText, order) {
     if (!order || !isIssue(carrier, statusCode)) return;
+    await enqueueAlert(connection, carrier, billCode, statusCode, statusText, order);
+}
+
+async function enqueueJTWeightChange(connection, billCode, order, { epoch, declared, reported }) {
+    const format = new Intl.NumberFormat('en-US', { useGrouping: false, maximumFractionDigits: 9 });
+    const signed = new Intl.NumberFormat('en-US', { useGrouping: false, maximumFractionDigits: 9, signDisplay: 'exceptZero' });
+    const lines = [
+        'Số ký gửi J&T: ' + format.format(declared) + ' kg',
+        'Số ký J&T báo lại: ' + format.format(reported) + ' kg',
+        'Chênh lệch: ' + signed.format(reported - declared) + ' kg'
+    ];
+    await enqueueAlert(connection, 'J&T', billCode, 0, order.statustext, order, `${epoch}:${reported}`, lines);
+}
+
+async function enqueueAlert(connection, carrier, billCode, statusCode, statusText, order, eventKey = '', weightLines = []) {
     const cod = Number(order.cod);
     const value = text => String(text ?? '').replace(/\s+/g, ' ').trim().slice(0, 255) || 'Chưa có';
     const lines = [
-        'Đơn có vấn đề · ' + carrier,
+        'Đơn có vấn đề · ' + carrier + (weightLines.length ? ' · Đơn hàng bị sửa ký' : ''),
         'Khách: ' + value(order.name),
         'SĐT khách: ' + value(order.phone),
         'Mã vận đơn: ' + billCode,
         'COD: ' + (order.cod != null && Number.isFinite(cod) ? cod.toLocaleString('vi-VN') + ' đ' : 'Chưa có'),
-        'Trạng thái: ' + value(statusText)
+        'Trạng thái: ' + value(statusText),
+        ...weightLines
     ];
     const note = carrier === 'Viettel' && typeof order.note === 'string' ? order.note.trim() : '';
     if (note) lines.push('Ghi chú: ' + note);
     const message = lines.join('\n');
     await connection.query(
-        `INSERT INTO gb_zalo_group_shipment_alerts (carrier, bill_code, status_code, account_id, group_id, message, next_attempt_at)
-         SELECT ?, ?, ?, zalo_user_id, shipment_group_id, ?, UTC_TIMESTAMP()
+        `INSERT INTO gb_zalo_group_shipment_alerts (carrier, bill_code, status_code, account_id, group_id, message, next_attempt_at, event_key)
+         SELECT ?, ?, ?, zalo_user_id, shipment_group_id, ?, UTC_TIMESTAMP(), ?
            FROM gb_zalo_connection WHERE id = 1 AND zalo_user_id IS NOT NULL AND shipment_group_id IS NOT NULL
          ON DUPLICATE KEY UPDATE id = gb_zalo_group_shipment_alerts.id`,
-        [carrier, billCode, statusCode, message]
+        [carrier, billCode, statusCode, message, eventKey]
     );
 }
 
@@ -102,7 +119,9 @@ async function dispatchPending() {
 
         let result;
         try {
-            result = await zalo.sendText(session, job.group_id, job.message, session.groupThread);
+            const carePath = getCarePath(job.bill_code);
+            const message = carePath ? job.message + '\n\nMở đơn trên GB:\nhttps://aodaigiabao.com' + carePath : job.message;
+            result = await zalo.sendText(session, job.group_id, message, session.groupThread);
         } catch (error) {
             const rejected = error instanceof zalo.ZaloActionError && error.status === 422;
             await settle(job.id, rejected ? 'failed' : 'uncertain');
@@ -136,4 +155,4 @@ function start() {
     }, 15000).unref();
 }
 
-module.exports = { isIssue, enqueue, start };
+module.exports = { isIssue, enqueue, enqueueJTWeightChange, start };

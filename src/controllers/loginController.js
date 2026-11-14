@@ -3,20 +3,23 @@ const { validationResult } = require("express-validator");
 const loginService = require("../services/loginService");
 const jwt = require("jsonwebtoken");
 const { JWT_SECRET, JWT_EXPIRES_IN, COOKIE_NAME } = require("../configs/jwtConfig");
+const { getCareReturnPath, loginPath } = require('../utils/carePath');
 
 let getPageLogin = (req, res) => {
     return res.render("login.ejs", {
-        errors: req.flash("errors")
+        errors: req.flash("errors"),
+        returnTo: getCareReturnPath(req.query?.returnTo)
     });
 };
 
 let handleLogin = async (req, res) => {
+    const returnTo = getCareReturnPath(req.body.returnTo);
     let errorsArr = [];
     const validationErrors = validationResult(req);
     if (!validationErrors.isEmpty()) {
         Object.values(validationErrors.mapped()).forEach(item => errorsArr.push(item.msg));
         req.flash("errors", errorsArr);
-        return res.redirect("/login");
+        return res.redirect(loginPath(returnTo));
     }
 
     try {
@@ -32,10 +35,10 @@ let handleLogin = async (req, res) => {
             maxAge: 30 * 24 * 60 * 60 * 1000, // 30 ngày (ms)
         });
 
-        return res.redirect("/");
+        return res.redirect(returnTo || '/');
     } catch (err) {
         req.flash("errors", err.message || err);
-        return res.redirect("/login");
+        return res.redirect(loginPath(returnTo));
     }
 };
 
@@ -59,7 +62,7 @@ let checkLoggedOut = (req, res, next) => {
     if (token) {
         try {
             jwt.verify(token, JWT_SECRET);
-            return res.redirect("/");
+            return res.redirect(getCareReturnPath(req.query?.returnTo) || '/');
         } catch (_) {
             res.clearCookie(COOKIE_NAME);
         }

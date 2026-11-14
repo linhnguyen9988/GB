@@ -40,6 +40,7 @@ module.exports = function registerPageRoutes(router) {
     router.post("/changepass", webAuth, require("../../controllers/personalProfileController").changePassword);
     router.get("/diennuoc", webAuth, dienNuocController.handleDienNuoc);
     router.get("/donhang", webAuth, orderController.handleOrder);
+    router.get('/care/:orderCode', require('../../controllers/orderCareController').show);
 
     router.get("/journey", publicJourneyController.handleJourneySearch);
     router.get("/journey/:madonhang", publicJourneyController.handleJourneyDetail);

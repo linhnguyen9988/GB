@@ -1,19 +1,21 @@
 var FINAL_ORDER_STATUSES = [101, 107, 201, 501, 503, 504];
 
 function formatOrderDetailWeight(order) {
-  const current = Number(order.kg);
+  const isJT = order.provider === 'J&T';
+  const current = Number(isJT ? (order.jt_reported_kg ?? order.kg) : order.kg);
   if (!Number.isFinite(current) || current <= 0) return '—';
 
   const original = Number(order.original_kg);
-  const isJT = order.provider === 'J&T';
   const isViettel = (order.provider || 'Viettel') === 'Viettel';
   const convertedJT = isJT && original === 3;
   const declared = convertedJT ? 2 : original;
   const unconfirmedJT = convertedJT && current === 3 && Number(order.jt_weight_reported) !== 1;
   const changed = (isJT || isViettel) && Number.isFinite(declared) && declared > 0 &&
-    !unconfirmedJT && Math.abs(current - declared) > 0.000001;
+    !unconfirmedJT && (isJT ? current !== Number(declared.toFixed(9)) : Math.abs(current - declared) > 0.000001);
 
-  const format = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 6 });
+  const format = isJT
+    ? new Intl.NumberFormat('en-US', { useGrouping: false, maximumFractionDigits: 9 })
+    : new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 6 });
   const currentText = format.format(current) + ' kg';
   return changed ? format.format(declared) + ' kg → ' + currentText : currentText;
 }
@@ -133,3 +135,5 @@ function RefreshStatusInTracking(btn) {
     if (provider === 'J&T' && typeof loadOrderJourney === 'function') loadOrderJourney(orderNumber);
   }, provider);
 }
+
+if (typeof module !== 'undefined' && module.exports) module.exports = { formatOrderDetailWeight, getJTOrderIssue };

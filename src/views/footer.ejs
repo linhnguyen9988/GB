@@ -292,13 +292,19 @@
 
   const retryingIds = new Set();
 
-  window.openMessageModalAndPaste = function (customerId, customerName, pageId) {
+  let orderConfirmationDraft = false;
+  window.openMessageModalAndPaste = function (customerId, customerName, pageId, orderConfirmation = false) {
     if (!messageModal || !customerId) {
       console.error('Lỗi: Modal hoặc ID khách hàng chưa được khởi tạo.');
       return;
     }
     currentPageID = pageId;
     currentCustomerId = customerId;
+    const careInbox = document.getElementById('care-chat-inbox');
+    if (careInbox) {
+      careInbox.classList.toggle('d-none', careInbox.dataset.customerId !== String(customerId) || careInbox.dataset.pageId !== String(pageId));
+    }
+    orderConfirmationDraft = orderConfirmation;
     customerNameEl.textContent = customerName || 'Khách hàng';
     customerAvatarEl.src = `/images/ava/${customerId}.jpg`;
 
@@ -519,7 +525,8 @@
     }
 
     async function renderMessage(msg, shouldShowAvatar) {
-      const isPageSender = PAGE_IDS.includes(msg.sender);
+      const isZalo = msg.channel === 'zalo';
+      const isPageSender = isZalo ? Boolean(Number(msg.is_echo)) : PAGE_IDS.includes(msg.sender);
 
       const messageRow = document.createElement('div');
       let avatarHtml = '';
@@ -533,11 +540,14 @@
       }
 
       const formattedTime = formatTimestamp(msg.time);
-      const timestampHtml = `<span class="message-timestamp">${formattedTime}${isPageSender ? " · " + gbEscapeText(msg.sent_by_username || "Chưa ghi nhận") : ""}</span>`;
+      const channelIcon = isZalo
+        ? '<span class="zalo-message-icon" role="img" title="Zalo" aria-label="Zalo">Z</span>'
+        : '<i class="fa-brands fa-facebook-messenger messenger-message-icon" role="img" title="Messenger" aria-label="Messenger"></i>';
+      const timestampHtml = `<span class="message-timestamp">${channelIcon}<span class="message-timestamp-text">${formattedTime}${isPageSender ? " · " + gbEscapeText(msg.sent_by_username || "Chưa ghi nhận") : ""}</span></span>`;
 
       let textContentHtml = '';
       if (msg.message) {
-        const formattedMessage = msg.message.replace(/\n/g, '<br>');
+        const formattedMessage = (isZalo ? gbEscapeText(msg.message) : msg.message).replace(/\n/g, '<br>');
         textContentHtml = `<div class="message-text-content">${formattedMessage}</div>`;
       }
 
@@ -585,7 +595,7 @@
 
           for (const url of mediaUrls) {
             if (url) {
-              let fileType = msg.fileType || await getMimeTypeFromUrl(url);
+              let fileType = isZalo ? 'image/jpeg' : (msg.fileType || await getMimeTypeFromUrl(url));
               let isAudio = false;
               let isVideo = false;
               let isImage = false;
@@ -637,7 +647,7 @@
 
       let statusHtml = '';
       if (isPageSender) {
-        if (msg.isread) {
+        if (Number(msg.isread)) {
           statusHtml = `<div class="message-status-read"><img src="${customerAvatarEl.src}" alt="Đã xem" class="avatar-seen"></div>`;
         } else {
           statusHtml = `<div class="message-status-sent"><i class="bi bi-check2"></i></div>`;
@@ -647,6 +657,7 @@
       messageRow.dataset.sender = msg.sender;
       messageRow.classList.add('message-row-messenger');
       messageRow.dataset.messageId = msg.id;
+      if (isZalo) messageRow.dataset.channel = 'zalo';
       if (msg.messid) {
         messageRow.dataset.msgId = msg.messid;
       }
@@ -727,7 +738,7 @@
 
       safeScrollToBottom();
 
-      if (msg.sender === GlobalPageID || msg.sender === GlobalPageID2) {
+      if (msg.localId && (msg.sender === GlobalPageID || msg.sender === GlobalPageID2)) {
         const statusIconWrapper = document.createElement('div');
         statusIconWrapper.classList.add('message-status-icon-wrapper');
         statusIconWrapper.dataset.status = 'sending';
@@ -738,6 +749,7 @@
       const images = messageRow.querySelectorAll('img.message-image');
       if (images.length > 0) {
         await Promise.all(Array.from(images).map(img => {
+          if (img.complete) return Promise.resolve();
           return new Promise(resolve => {
             img.addEventListener('load', resolve, { once: true });
             img.addEventListener('error', resolve, { once: true });
@@ -776,6 +788,7 @@
       if (!row) return;
       const wrapper = row.querySelector('.message-content-wrapper');
       if (!wrapper) return;
+      const entry = PendingMessages.getPending(currentCustomerId).find(item => item.localId === localId);
 
       setStatusIcon(row, 'error');
       const statusIconWrapper = row.querySelector('.message-status-icon-wrapper');
@@ -787,19 +800,33 @@
         badge.className = 'message-fail-badge';
         badge.innerHTML = `<i class="bi bi-exclamation-circle-fill"></i><span class="message-fail-reason"></span><i class="bi bi-arrow-clockwise"></i>`;
         badge.addEventListener('click', function () {
-          retryPendingMessage(localId);
+          if (badge.dataset.canRetry === 'true') retryPendingMessage(localId);
         });
         wrapper.appendChild(badge);
       }
       badge.querySelector('.message-fail-reason').textContent = reason || 'Gửi thất bại. Nhấn để gửi lại';
       badge.title = reason || 'Gửi thất bại. Nhấn để gửi lại';
       badge.style.display = 'flex';
+      badge.dataset.canRetry = String(!entry?.uncertain);
+      badge.lastElementChild.hidden = Boolean(entry?.uncertain);
+      let retryZalo = wrapper.querySelector('.message-retry-zalo');
+      if (!retryZalo) {
+        retryZalo = document.createElement('button');
+        retryZalo.type = 'button';
+        retryZalo.className = 'message-retry-zalo btn btn-link btn-sm py-0 px-1';
+        retryZalo.textContent = 'Thử lại bằng Zalo';
+        retryZalo.addEventListener('click', () => retryPendingMessage(localId, 'zalo'));
+        wrapper.appendChild(retryZalo);
+      }
+      retryZalo.hidden = !entry || Boolean(entry.orderConfirmation || entry.uncertain);
     }
 
     function hideFailBadge(row) {
       if (!row) return;
       const badge = row.querySelector('.message-fail-badge');
       if (badge) badge.style.display = 'none';
+      const retryZalo = row.querySelector('.message-retry-zalo');
+      if (retryZalo) retryZalo.hidden = true;
     }
 
     function loadPendingMessagesFromStorage() {
@@ -811,8 +838,8 @@
         registerLocalMessage(entry.localId);
         const tempMessage = {
           sender: currentPageID,
-          message: entry.message || null,
-          image: imageFile ? createAndTrackBlobUrl(imageFile) : null,
+          message: entry.zaloTextSent ? null : (entry.message || null),
+          image: imageFile && !entry.zaloImageSent ? createAndTrackBlobUrl(imageFile) : null,
           fileType: imageFile ? imageFile.type : null,
           time: entry.createdAt,
           localId: entry.localId
@@ -822,67 +849,118 @@
       });
     }
 
-    async function retryPendingMessage(localId) {
-      if (retryingIds.has(localId)) return;
-      retryingIds.add(localId);
+    async function retryPendingMessage(localId, channel = 'facebook') {
+      const customerId = currentCustomerId;
+      const entry = PendingMessages.getPending(customerId).find(item => item.localId === localId);
+      if (entry && !entry.uncertain) await submitPendingMessage(customerId, entry.pageId || currentPageID, entry, channel);
+    }
 
+    async function submitPendingMessage(customerId, pageId, entry, channel) {
+      const { localId } = entry;
+      if (retryingIds.has(localId)) return;
       const row = findMessageRowByLocalId(localId);
-      const entry = PendingMessages.getPending(currentCustomerId).find(e => e.localId === localId);
-      if (!entry) {
-        retryingIds.delete(localId);
+      const needsImage = entry.hasImage && !entry.imagePartSent;
+      const image = needsImage ? pendingImageFiles.get(localId) : null;
+      const text = entry.textPartSent ? '' : (entry.message || '');
+      if (needsImage && !image) {
+        showFailBadge(row, localId, 'Ảnh đã mất do tải lại trang. Vui lòng chọn lại ảnh.');
         return;
       }
 
+      retryingIds.add(localId);
       hideFailBadge(row);
       setStatusIcon(row, 'sending');
-
-      const needsImage = entry.hasImage && !entry.imagePartSent;
-      const imageFile = needsImage ? (pendingImageFiles.get(localId) || null) : null;
-      const textToSend = entry.textPartSent ? '' : (entry.message || '');
-
-      if (needsImage && !imageFile) {
-        retryingIds.delete(localId);
-        showFailBadge(row, localId, 'Ảnh đã mất do tải lại trang — vui lòng chọn lại ảnh và gửi tin mới.');
-        return;
-      }
-
-      const formData = new FormData();
+      const form = new FormData();
       registerLocalMessage(localId);
-      formData.append('clientMessageId', localId);
-      formData.append('customerId', currentCustomerId);
-      formData.append('currentPageID', currentPageID);
-      if (textToSend) formData.append('message', textToSend);
-      if (imageFile) formData.append('image', imageFile);
-
+      form.append('clientMessageId', localId);
+      form.append('customerId', customerId);
+      form.append('currentPageID', pageId);
+      if (entry.orderConfirmation) form.append('orderConfirmation', '1');
+      if (channel === 'zalo') form.append('deliveryChannel', 'zalo');
+      if (text) form.append('message', text);
+      if (image) form.append('image', image);
       try {
-        const response = await fetch('/api/send-message', { method: 'POST', body: formData });
+        const response = await fetch('/api/send-message', { method: 'POST', body: form });
         const data = await response.json();
         reconcileSendResponse(localId, data);
-        const ok = !!data.success;
-        const imagePartSent = entry.imagePartSent || (entry.hasImage ? !!data.imageSent : true);
-        const textPartSent = entry.textPartSent || (entry.message ? !!data.textSent : true);
-
-        if (ok) {
-          PendingMessages.remove(currentCustomerId, localId);
+        entry.imagePartSent ||= Boolean(data.imageSent && image);
+        entry.textPartSent ||= Boolean(data.textSent && text);
+        entry.facebookPartSent ||= Boolean(data.messageIds?.length);
+        entry.zaloImageSent ||= Boolean(data.zaloImageSent);
+        entry.zaloTextSent ||= Boolean(data.zaloTextSent);
+        entry.uncertain = Boolean(data.uncertain);
+        const currentRow = findMessageRowByLocalId(localId);
+        if (entry.zaloImageSent) currentRow?.querySelector('.message-images-container')?.remove();
+        if (entry.zaloTextSent) currentRow?.querySelector('.message-text-messenger')?.remove();
+        if (data.success) {
+          PendingMessages.remove(customerId, localId);
           pendingImageFiles.delete(localId);
-          setStatusIcon(row, 'sent');
+          if ((entry.zaloImageSent || entry.zaloTextSent) && !entry.facebookPartSent) currentRow?.remove();
+          else setStatusIcon(currentRow, 'sent');
         } else {
-          PendingMessages.save(currentCustomerId, Object.assign({}, entry, {
-            failReason: data.error || 'Không thể gửi tin nhắn.',
-            imagePartSent,
-            textPartSent
-          }));
-          showFailBadge(row, localId, data.error);
+          entry.failReason = data.error || 'Không thể gửi tin nhắn.';
+          PendingMessages.save(customerId, entry);
+          if (String(currentCustomerId) === String(customerId)) showFailBadge(currentRow, localId, entry.failReason);
         }
-      } catch (err) {
-        PendingMessages.save(currentCustomerId, Object.assign({}, entry, {
-          failReason: 'Không thể kết nối máy chủ.'
-        }));
-        showFailBadge(row, localId, 'Không thể kết nối máy chủ.');
+        if (data.zaloImageSent || data.zaloTextSent) void pollZaloMessages();
+      } catch (_) {
+        entry.failReason = 'Mất kết nối máy chủ. Chưa xác nhận được tin đã gửi.';
+        entry.uncertain = true;
+        PendingMessages.save(customerId, entry);
+        if (String(currentCustomerId) === String(customerId)) showFailBadge(row, localId, entry.failReason);
       } finally {
         retryingIds.delete(localId);
       }
     }
+
+    let zaloHistory;
+    let zaloPollBusy = false;
+    async function pollZaloMessages() {
+      const history = zaloHistory;
+      if (zaloPollBusy || chatState.isFetchingMessages || !history || !messageModalEl.classList.contains('show')) return;
+      zaloPollBusy = true;
+      try {
+        const pending = new Map();
+        let oldestPendingId = 0n;
+        for (const row of modalMessagesContainer.querySelectorAll('.message-sent-messenger[data-channel="zalo"]')) {
+          const status = row.querySelector('.message-status-sent');
+          if (!status) continue;
+          const id = row.dataset.messageId;
+          const numericId = BigInt(id);
+          pending.set(id, status);
+          if (!oldestPendingId || numericId < oldestPendingId) oldestPendingId = numericId;
+        }
+        const response = await fetch('/api/messages/' + encodeURIComponent(history.customerId) +
+          '?afterZaloId=' + encodeURIComponent(history.cursor) + '&zaloReadFromId=' + encodeURIComponent(oldestPendingId),
+          { cache: 'no-store' });
+        if (!response.ok || history !== zaloHistory) return;
+        const { messages, readIds } = await response.json();
+        if (history !== zaloHistory) return;
+        for (const id of readIds) {
+          const status = pending.get(id);
+          if (!status) continue;
+          const avatar = document.createElement('img');
+          avatar.src = customerAvatarEl.src;
+          avatar.alt = 'Đã xem';
+          avatar.className = 'avatar-seen';
+          status.className = 'message-status-read';
+          status.replaceChildren(avatar);
+        }
+        for (const msg of messages) {
+          if (history !== zaloHistory) break;
+          history.cursor = msg.id;
+          if (!findRowByMsgId(msg.messid)) {
+            await addMessageToContainer(msg);
+            chatState.messageOffset += 1;
+          }
+        }
+      } catch (_) {
+        // The next poll retries.
+      } finally {
+        zaloPollBusy = false;
+      }
+    }
+    setInterval(pollZaloMessages, 4000);
 
     async function prependMessages(messages) {
       if (messages.length === 0) {
@@ -922,6 +1000,7 @@
 
         const images = messageRow.querySelectorAll('img.message-image');
         images.forEach(img => {
+          if (img.complete) return;
           imagesToLoad.push(new Promise(resolve => {
             img.addEventListener('load', resolve, { once: true });
             img.addEventListener('error', resolve, { once: true });
@@ -988,6 +1067,7 @@
         return;
       }
       chatState.isFetchingMessages = true;
+      const customerId = currentCustomerId;
 
       try {
         const response = await fetch(`/api/messages/${currentCustomerId}?offset=0&limit=${chatState.pageSize}`);
@@ -995,6 +1075,8 @@
           throw new Error(`HTTP error! status: ${response.status}`);
         }
         const messages = await response.json();
+        if (customerId !== currentCustomerId || !messageModalEl.classList.contains('show')) return;
+        zaloHistory = { customerId, cursor: messages[0]?.id || 0 };
 
         modalMessagesContainer.innerHTML = '';
 
@@ -1050,7 +1132,8 @@
 
           const images = messageRow.querySelectorAll('img.message-image');
           images.forEach(img => {
-            imagesToLoad.push(new Promise(resolve => {
+            if (img.complete) return;
+          imagesToLoad.push(new Promise(resolve => {
               img.addEventListener('load', resolve, { once: true });
               img.addEventListener('error', resolve, { once: true });
             }));
@@ -1063,10 +1146,6 @@
 
         chatState.messageOffset = sortedMessages.length;
         safeScrollToBottom();
-        const lastMessage = modalMessagesContainer.lastElementChild;
-        if (lastMessage && lastMessage.id !== 'load-more-btn') {
-          lastMessage.classList.add('show-timestamp');
-        }
 
       } catch (error) {
         console.error('Lỗi khi fetch API hoặc render tin nhắn:', error);
@@ -1142,104 +1221,37 @@
       });
     }
 
-    function sendMessage() {
-      const messageText = messageInput.value.trim();
-      if (!messageText && !currentImageFile) return;
+    async function sendMessage() {
+      const text = messageInput.value.trim();
+      const image = currentImageFile;
+      if (!text && !image) return;
+      const customerId = currentCustomerId;
+      const pageId = currentPageID;
       const localId = 'local_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
       registerLocalMessage(localId);
-      const tempMessageText = messageInput.value;
-      const tempImageFile = currentImageFile;
-
+      const entry = {
+        localId, pageId, message: text || null, hasImage: Boolean(image), createdAt: Date.now(),
+        orderConfirmation: Boolean(text) && (orderConfirmationDraft || /(?:^|\\n)\\s*Đơn hàng chị có\\s*:/iu.test(text.normalize('NFC')))
+      };
+      orderConfirmationDraft = false;
       messageInput.value = '';
       currentImageFile = null;
       imagePreviewContainer.style.display = 'none';
       autoResizeInput();
-
-      if (tempImageFile) {
-        pendingImageFiles.set(localId, tempImageFile);
-      }
-
-      PendingMessages.save(currentCustomerId, {
-        localId: localId,
-        message: tempMessageText || null,
-        hasImage: !!tempImageFile,
-        createdAt: Date.now(),
-        failReason: null,
-        imagePartSent: false,
-        textPartSent: false
-      });
-
-      const formData = new FormData();
-      registerLocalMessage(localId);
-      formData.append('clientMessageId', localId);
-      formData.append('customerId', currentCustomerId);
-      formData.append('currentPageID', currentPageID);
-      if (tempMessageText) formData.append('message', tempMessageText);
-      if (tempImageFile) formData.append('image', tempImageFile);
+      if (image) pendingImageFiles.set(localId, image);
+      PendingMessages.save(customerId, entry);
 
       const tempMessage = {
-        sender: currentPageID,
-        message: tempMessageText || null,
-        image: tempImageFile ? createAndTrackBlobUrl(tempImageFile) : null,
-        fileType: tempImageFile ? tempImageFile.type : null,
-        time: Date.now(),
-        sent_by_username: <%- JSON.stringify(typeof user !== 'undefined' && user && user.username ? user.username : null).replace(/</g, '\\u003c') %>,
-        localId: localId
+        sender: pageId, message: entry.message, image: image ? createAndTrackBlobUrl(image) : null,
+        fileType: image?.type, time: entry.createdAt, localId,
+        sent_by_username: <%- JSON.stringify(typeof user !== 'undefined' && user && user.username ? user.username : null).replace(/</g, '\\u003c') %>
       };
-
-      addMessageToContainer(tempMessage).then(row => {
-        if (modalMessagesContainer) {
-          modalMessagesContainer.scrollTop = modalMessagesContainer.scrollHeight;
-        }
-
+      // Insert the row before starting the request so an immediate failure can show its retry controls.
+      await addMessageToContainer(tempMessage);
+      if (String(customerId) === String(currentCustomerId) && messageModalEl.classList.contains('show')) {
         messageInput.focus({ preventScroll: true });
-      });
-      messageInput.focus();
-      fetch('/api/send-message', {
-        method: 'POST',
-        body: formData
-      })
-        .then(response => response.json())
-        .then(data => {
-          const row = findMessageRowByLocalId(localId);
-          reconcileSendResponse(localId, data);
-        const ok = !!data.success;
-          const imagePartSent = tempImageFile ? !!data.imageSent : true;
-          const textPartSent = tempMessageText ? !!data.textSent : true;
-
-          if (ok) {
-            PendingMessages.remove(currentCustomerId, localId);
-            pendingImageFiles.delete(localId);
-            setStatusIcon(row, 'sent');
-          } else {
-            console.error('Lỗi khi gửi tin nhắn:', data.error);
-            PendingMessages.save(currentCustomerId, {
-              localId: localId,
-              message: tempMessageText || null,
-              hasImage: !!tempImageFile,
-              createdAt: Date.now(),
-              failReason: data.error || 'Không thể gửi tin nhắn.',
-              imagePartSent: imagePartSent,
-              textPartSent: textPartSent
-            });
-            showFailBadge(row, localId, data.error);
-          }
-        })
-        .catch(error => {
-          console.error('Lỗi fetch:', error);
-
-          const row = findMessageRowByLocalId(localId);
-          PendingMessages.save(currentCustomerId, {
-            localId: localId,
-            message: tempMessageText || null,
-            hasImage: !!tempImageFile,
-            createdAt: Date.now(),
-            failReason: 'Không thể kết nối máy chủ.',
-            imagePartSent: false,
-            textPartSent: false
-          });
-          showFailBadge(row, localId, 'Không thể kết nối máy chủ.');
-        });
+      }
+      await submitPendingMessage(customerId, pageId, entry, 'facebook');
     }
 
     async function fetchLastOrder(customerId) {
@@ -1423,6 +1435,7 @@
     });
 
     messageModalEl.addEventListener('hidden.bs.modal', function () {
+      zaloHistory = undefined;
       modalMessagesContainer.innerHTML = '';
       lastOrderEl.innerHTML = '';
       chatState.isFetchingMessages = false;
@@ -1504,9 +1517,9 @@
           } else if (msg.messageImg.includes('mp4')) {
             classtag = 'message-video';
             Tags = medias.map(url => `<video class="message-video" src="${url}" onerror="tryAgain(this)">`).join('');
-          } else if (msg.messageImg.includes('jpg') || msg.messageImg.includes('png')) {
+          } else if (msg.channel === 'zalo' || msg.messageImg.includes('jpg') || msg.messageImg.includes('png')) {
             classtag = 'message-images';
-            Tags = medias.map(url => `<img src="${url}" onerror="tryAgain(this)">`).join('');
+            Tags = medias.map(url => `<img src="${gbEscapeText(url).replace(/"/g, '&quot;')}" onerror="tryAgain(this)">`).join('');
           }
           imagesHtml = `<div class="${classtag}">${Tags}</div>`;
           if (!messageText || messageText.trim() === '') {
@@ -1530,7 +1543,7 @@
         ${customerAvatar}
         <div class="chat-info">
             <p class="chat-name">${customerName} ${PIcon} ${msg.label}</p>
-            <p class="last-message">${isPageSender ? 'Bạn: ' : ''}${messageText}</p>
+            <p class="last-message">${msg.channel === 'zalo' ? '<span class="zalo-message-icon" title="Zalo" aria-label="Zalo">Z</span> ' : ''}${isPageSender ? 'Bạn: ' : ''}${msg.channel === 'zalo' ? gbEscapeText(messageText) : messageText}</p>
             ${imagesHtml}
         </div>
     `;
@@ -1561,7 +1574,8 @@
               fbname: msg.ten_khach,
               messageImg: msg.image,
               template: msg.template_json,
-              label: msg.label
+              label: msg.label,
+              channel: msg.channel
             };
             addMessageToTop(formattedMsg);
           });
@@ -1595,7 +1609,7 @@
 
     function updateAuditLabel(data) {
       const row = findRowByMsgId(data.messid);
-      const time = row && row.querySelector('.message-timestamp');
+      const time = row && row.querySelector('.message-timestamp-text');
       if (time && data.sent_by_username) {
         if (!time.dataset.baseTime) time.dataset.baseTime = time.textContent.split(' · ')[0];
         time.textContent = time.dataset.baseTime + ' · ' + data.sent_by_username;

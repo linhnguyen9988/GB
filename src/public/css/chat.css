@@ -284,27 +284,44 @@
 }
 
 .message-timestamp {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
     font-size: 0.6rem;
     color: #65676b;
     margin-top: 2px;
     white-space: nowrap;
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 0.3s ease-in-out, opacity 0.3s ease-in-out;
-    opacity: 0;
 }
 
-.message-row-messenger.show-timestamp .message-timestamp {
-    max-height: 20px;
-    opacity: 1;
+.messenger-message-icon {
+    color: #0866ff;
+    font-size: 11px;
+    line-height: 1;
 }
+
+.zalo-message-icon {
+    display: inline-grid;
+    place-items: center;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    background: #0068ff;
+    color: #fff;
+    font-size: 8px;
+    font-weight: 700;
+}
+
+.message-retry-zalo[hidden] { display: none; }
 
 .message-status-time-wrapper {
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: flex-end;
     gap: 5px;
-    margin-top: -5px;
+}
+
+.message-row-messenger.show-timestamp .message-status-time-wrapper {
+    display: flex;
 }
 
 .message-status-read,
@@ -382,9 +399,7 @@
 }
 
 .message-fail-badge .message-fail-reason {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
 }
 
 .message-row-messenger.message-received-messenger.no-avatar {

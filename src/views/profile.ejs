@@ -1,36 +1,6 @@
 <%- include('headerafterlogin'); -%>
   <br>
-  <div class="modal" tabindex="-1" role="dialog" id="modalpass">
-    <div class="modal-dialog" role="document">
-      <div class="modal-content rounded-4 shadow">
-        <div class="modal-header p-5 pb-4 border-bottom-0">
-          <!-- <h5 class="modal-title">Modal title</h5> -->
-          <h2 class="fw-bold mb-0">Password</h2>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-
-        <div class="modal-body p-5 pt-0">
-          <form method="POST" novalidate="" autocomplete="off" action="/changepass">
-            <div class="form-floating mb-3">
-              <input type="hidden" id="username" value="<%= user.username %>">
-              <input type="password" class="form-control rounded-3" id="oldpassword" placeholder="Password">
-              <label for="oldpassword">Old Password</label>
-            </div>
-            <div class="form-floating mb-3">
-              <input type="password" class="form-control rounded-3" id="newpassword" placeholder="Password">
-              <label for="newpassword">New Password</label>
-            </div>
-            <div class="form-floating mb-3">
-              <input type="password" class="form-control rounded-3" id="confirmpassword" placeholder="Password">
-              <label class="form-label" for="confirmpassword"> Confirm Password</label>
-            </div>
-            <button class="w-100 mb-2 btn btn-lg rounded-3 btn-primary" type="submit">Change</button>
-            <small class="text-muted">Please remember your new password.</small>
-          </form>
-        </div>
-      </div>
-    </div>
-  </div>
+  
   <div class="container">
     <div class="main-body">
       <div class="row">
@@ -103,86 +73,8 @@
           </div>
         </div>
         <div class="col-lg-8">
-          <div class="card">
-            <div class="card-body">
-              <div class="row mb-3">
-                <div class="col-sm-3">
-                  <h6 class="mb-0">Tên</h6>
-                </div>
-                <div class="col-sm-9 text-secondary">
-                  <input type="text" class="form-control" value="<%= user.fullname %>">
-                </div>
-              </div>
-              <div class="row mb-3">
-                <div class="col-sm-3">
-                  <h6 class="mb-0">Tên tài khoản</h6>
-                </div>
-                <div class="col-sm-9 text-secondary">
-                  <input type="text" class="form-control" value="<%= user.username %>" disabled>
-                </div>
-              </div>
-              <div class="row mb-3">
-                <div class="col-sm-3">
-                  <h6 class="mb-0">Điện thoại</h6>
-                </div>
-                <div class="col-sm-9 text-secondary">
-                  <input type="text" class="form-control" value="<%= user.phone %>">
-                </div>
-              </div>
-              <div class="row mb-3">
-                <div class="col-sm-3">
-                  <h6 class="mb-0">Địa chỉ</h6>
-                </div>
-                <div class="col-sm-9 text-secondary">
-                  <input type="text" class="form-control" value="<%= user.diachi %>">
-                </div>
-              </div>
-              <div class="row">
-                <div class="col-sm-3"></div>
-                <div class="col-sm-9 text-secondary">
-                  <input type="button" class="btn btn-primary px-4" value="Đổi thông tin">
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="row">
-            <div class="col-sm-12">
-              <div class="card">
-                <div class="card-body">
-                  <h5 class="d-flex align-items-center mb-3">Project Status</h5>
-                  <p>Web Design</p>
-                  <div class="progress mb-3" style="height: 5px">
-                    <div class="progress-bar bg-primary" role="progressbar" style="width: 80%" aria-valuenow="80"
-                      aria-valuemin="0" aria-valuemax="100"></div>
-                  </div>
-                  <p>Website Markup</p>
-                  <div class="progress mb-3" style="height: 5px">
-                    <div class="progress-bar bg-danger" role="progressbar" style="width: 72%" aria-valuenow="72"
-                      aria-valuemin="0" aria-valuemax="100"></div>
-                  </div>
-                  <p>One Page</p>
-                  <div class="progress mb-3" style="height: 5px">
-                    <div class="progress-bar bg-success" role="progressbar" style="width: 89%" aria-valuenow="89"
-                      aria-valuemin="0" aria-valuemax="100"></div>
-                  </div>
-                  <p>Mobile Template</p>
-                  <div class="progress mb-3" style="height: 5px">
-                    <div class="progress-bar bg-warning" role="progressbar" style="width: 55%" aria-valuenow="55"
-                      aria-valuemin="0" aria-valuemax="100"></div>
-                  </div>
-                  <p>Backend API</p>
-                  <div class="progress" style="height: 5px">
-                    <div class="progress-bar bg-info" role="progressbar" style="width: 66%" aria-valuenow="66"
-                      aria-valuemin="0" aria-valuemax="100"></div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
           <%- include('shippingAccounts'); -%>
           <%- include('zaloConnection'); -%>
-
           <div class="card mt-3" id="viettelAccountPanel">
             <div class="card-body">
               <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
@@ -567,38 +459,6 @@
       });
     }
 
-    const htmlx = `<html><head>
-      <style>
-      body {
-      width: 360;
-      margin: 2mm 0mm 2mm 2mm;
-      line-height: 1.6;
-      }
-      table {
-      width: 360;
-      font-family: "tahoma";
-      border-collapse: collapse;
-      }
-      @media print{@page {size: landscape}}
-      *, html {margin:0;padding:0;}
-      </style>
-      </head>
-      <body> 
-      <table>
-      <tr><td colspan="2">Tỉnh/TP: <p style="font-size:14px;display:inline;font-weight: bold;">Long An</p></td></tr>
-      <tr><td colspan="2">Quận/Huyện: <p style="font-size:13px;display:inline;font-weight: bold;">HUYỆN ĐỨC HUỆ</p></td></tr>
-      <tr><td colspan="2">Phường/Xã: <p style="font-size:13px;display:inline;font-weight: bold;">XÃ MỸ QUÝ TÂY</p></td></tr>
-      <tr><td colspan="2" align="right"><p style="font-size:10px;display:inline;">0.5 KG</p></td></tr>
-      <tr><td colspan="2"><center><img src="data:image/png;base64,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"/><svg viewBox="0 0 12 13" width="16" height="16" fill="currentColor" style="--color: var(--accent);"><g fill-rule="evenodd" transform="translate(-98 -917)"><path d="m106.853 922.354-3.5 3.5a.499.499 0 0 1-.706 0l-1.5-1.5a.5.5 0 1 1 .706-.708l1.147 1.147 3.147-3.147a.5.5 0 1 1 .706.708m3.078 2.295-.589-1.149.588-1.15a.633.633 0 0 0-.219-.82l-1.085-.7-.065-1.287a.627.627 0 0 0-.6-.603l-1.29-.066-.703-1.087a.636.636 0 0 0-.82-.217l-1.148.588-1.15-.588a.631.631 0 0 0-.82.22l-.701 1.085-1.289.065a.626.626 0 0 0-.6.6l-.066 1.29-1.088.702a.634.634 0 0 0-.216.82l.588 1.149-.588 1.15a.632.632 0 0 0 .219.819l1.085.701.065 1.286c.014.33.274.59.6.604l1.29.065.703 1.088c.177.27.53.362.82.216l1.148-.588 1.15.589a.629.629 0 0 0 .82-.22l.701-1.085 1.286-.064a.627.627 0 0 0 .604-.601l.065-1.29 1.088-.703a.633.633 0 0 0 .216-.819"></path></g></svg><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAN4AAAAyCAYAAAAz4WVOAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAA3qADAAQAAAABAAAAMgAAAAApulscAAAB9klEQVR4Ae3dwWrkQBQDwDjs//9yEhZ0WNNiQljFl5pLY7n9eigs5hLI9fH1efMhQOBXBd5/9TSHESDwV0DxvAgEHhBQvAfQHUlA8bwDBB4QULwH0B1JQPG8AwQeEFC8B9AdSUDxvAMEHhBQvAfQHUngz3cJruv6Z2v+4CV5rrMpea6ztn0tvz/3v+e+mv/qe7Xn89z9+ybPc1mz734/efa9un/fd38+97NmXva16+zP2vbnfubk+r7en8/9lt/v5zrn/PS5zMmaObnO2s6578++PNdWv3hNRk5gKKB4Q1yjCTQBxWsycgJDAcUb4hpNoAkoXpORExgKKN4Q12gCTUDxmoycwFBA8Ya4RhNoAorXZOQEhgKKN8Q1mkATULwmIycwFFC8Ia7RBJqA4jUZOYGhgOINcY0m0AQUr8nICQwFFG+IazSBJqB4TUZOYCigeENcowk0AcVrMnICQwHFG+IaTaAJKF6TkRMYCijeENdoAk1A8ZqMnMBQQPGGuEYTaAKK12TkBIYCijfENZpAE1C8JiMnMBRQvCGu0QSagOI1GTmBocD19d9NPobzjSZA4CDgF++AIiKwFlC8tbD5BA4CindAERFYCyjeWth8AgcBxTugiAisBRRvLWw+gYOA4h1QRATWAoq3FjafwEFA8Q4oIgJrgU9nvFxdGjnS1wAAAABJRU5ErkJggg=="/><br><p style="font-size:10px;display:inline;vertical-align: top;">131654149770</p></center></td></tr>
-      <tr><td colspan="2"><h5>Nguyễn Hương • 0792100629</h4></td></tr>
-      <tr><td colspan="2"><p style="font-size:10px;display:inline;vertical-align: top;">Ấp 2, Xã Mỹ Quý Tây, Huyện Đức Huệ, Long An</p></td></tr>
-      <tr><td><p style="font-size:10px;display:inline;vertical-align: top;">Cho xem hàng, không nhận thu 30k</p><br>
-      <p style="font-size:10px;display:inline;">1 x Vải</p><br>
-      <p style="font-size:18px;display:inline;">Tiền thu hộ: <b>129.000 đ</b></p></td> 
-      <td><img src="data:image/gif;base64,R0lGODdhYwBjAIAAAAAAAP///ywAAAAAYwBjAAAC/4yPqcvtD6OctNqLs968+w+G4kiW5omm6sq27gvH8kxzwI3n+n7wxg68KYLEnK1Y7OmUSGGiSTxCfQHqFDC8Lje4SffnRHzFWzJWMs6kH+N1Ncx0uxvzSn3RhoPPZrnececVFrWXZVSI+MaXB8QkFVfmd6jomMho9WdxGfmHuTgI+tmYqBbqCTlqRmfKyVcqerpHqMqwORmIxnqrS1WJxxv6KNuK2kv6BCwqrBjLHGS4CkvMlezbBF1bfXyBS0s5LO2KLA6YaWf+qwyOGi1IromO/e0c3p77fq7FaB1sqd8N4d8+f+rmCYx37x+/ggPpXalxTx5EE5Imoqho0Zsve//cnq0jgbEcvgizjIEIyRFeKpMqG3Jk+ZHexm0t+4lkl22XTokYmr0sY8jWzHmvQja840noOClGbSJtpVRjT6AEF0aLahLg1JW6eDqcJhOkR4NUiYJrBrNDya5Lx62tR41hsqRlcZq9q9Lq2bGzgtocmrfqXq6p/BYEHCIrW7I7cyI+WRbr4qeHxU5aeBSsPK033SJ5/LhbWneG3wZEJ7puvtJ8EeKl6XlkzcZS0w1FadknbG+4X0Mm7HVzp+Gy46bl/FbhbnfHXReb+3l5QtW+WYd7KD2F6cEpY8bY/nWkJM4lwPdt28c5m4NeFcsFblxf+8hOWxcnyR69Xb3hQUen/I/fZbtd4wFy6oVV23MCamDgffsNGJ1a2vh2kBblTUhZhQSOYItLsWk4lggd1gdXeoVtQ95615H4YHi9pdhZf4IhqOCLB562YmUI0qUTZcuAZxePUQW3GncoQoUhdTASaZt+BKW24AcNzlfiVTcWGSCVLRp2oUBMNlXiaNNZ6GRtmfV4ZTrKJXjke0NmBGeccs5JZ5123olnnnruyWeffv4JaKAWFAAAOw==" width="99" height="99"/></td></tr>
-      </table>
-      </body></html>`;
-    const pdfBase64 = "";
     async function GetUserToken(button) {
       button.disabled = true;
       button.textContent = 'Đang lấy token...';

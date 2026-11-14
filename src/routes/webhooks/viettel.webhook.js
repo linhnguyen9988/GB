@@ -2,7 +2,7 @@
 const DBConnection = require("../../configs/DBConnection");
 const fs = require('fs');
 const path = require('path');
-const { SendCanhBao } = require('../../services/shipmentAlertService');
+const { SendCanhBao, suppressCustomerShipmentAlert } = require('../../services/shipmentAlertService');
 const { VIETTEL_WEBHOOK_TOKEN } = require('../../configs/constants');
 const { sendFcmToUser } = require('../fcm');
 const zaloAlerts = require('../../services/zaloShipmentAlerts');
@@ -201,7 +201,9 @@ module.exports = function registerViettelWebhook(router) {
                                 noti_id: notiId
                             };
                             if (!note.includes('hẹn phát lại') && !note.includes('Áo dài Gia Bảo')) {
-                                SendCanhBao(orderNumber, data.EMPLOYEE_NAME, phone, money, note || statustext);
+                                if (!suppressCustomerShipmentAlert(note, statustext)) {
+                                    SendCanhBao(orderNumber, data.EMPLOYEE_NAME, phone, money, note || statustext);
+                                }
                                 await sendFcmToUser(db, userId, title, body, payload);
                             }
                         }

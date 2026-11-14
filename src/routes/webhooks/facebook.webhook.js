@@ -386,7 +386,7 @@ module.exports = function registerFacebookWebhook(router) {
                 const watermark = value.read.watermark;
                 const senderId = value.sender.id;
                 DBConnection.query(
-                    'UPDATE messaging SET isread = 1 WHERE recipient = ? AND timestamp <= ?',
+                    "UPDATE messaging SET isread = 1 WHERE recipient = ? AND timestamp <= ? AND channel = 'facebook'",
                     [senderId, watermark],
                     (error, results) => {
                         if (error) {
