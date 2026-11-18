@@ -5,7 +5,8 @@ const socket = require('../../socket');
 const { AKA_SQL } = require('../../services/akaService');
 const { AVA_DIR } = require('../../configs/constants');
 const { LocDau } = require('../../utils/text');
-const { download } = require('../../utils/download');
+const { downloadAvatar } = require('../../utils/download');
+const { fetchFbProfile } = require('../../services/facebookService');
 
 module.exports = function registerStreamlabsWebhook(router) {
     router.post('/streamlabs', async function (req, res) {
@@ -20,17 +21,18 @@ module.exports = function registerStreamlabsWebhook(router) {
             }
 
             const userid = payload.from?.id;
-            const fbname = payload.from?.name;
+            let fbname = typeof payload.from.name === 'string' ? payload.from.name : '';
             const message = payload.message;
             const cmtid = payload.id;
-            const picture = payload.from?.picture?.data?.url;
-            if (picture) download(picture, userid, AVA_DIR).catch(() => { });
+            const suppliedPicture = payload.from.picture?.data;
+            let picture = suppliedPicture?.is_silhouette ? '' : suppliedPicture?.url || '';
             const timelocal = new Date(payload.created_time)
                 .toLocaleString("en-US", { timeZone: "Asia/Saigon" });
 
             if (!userid || !message) {
                 return res.status(400).json({ success: false, message: "Thiếu userid/message" });
             }
+            if (picture) downloadAvatar(picture, userid, AVA_DIR).catch(() => { });
             const liveid = cmtid.split('_')[0];
 
             const db = DBConnection.promise();
@@ -44,12 +46,20 @@ module.exports = function registerStreamlabsWebhook(router) {
             const [customerData] = await db.query(
                 'SELECT * FROM khachhang WHERE userid = ? LIMIT 1', [userid]
             );
+            const oldAvatar = customerData[0]?.avalink;
+            if (!picture && (!oldAvatar || oldAvatar === 'none')) {
+                const profile = await fetchFbProfile(userid, pageid, { saveAvatar: false });
+                picture = profile?.pic || '';
+                fbname ||= profile?.name || '';
+                if (picture) downloadAvatar(picture, userid, AVA_DIR).catch(() => { });
+            }
+            fbname ||= customerData[0]?.fbname || '';
 
             if (customerData.length > 0) {
                 const oldCus = customerData[0];
                 const khachhangSql = SqlString.format('INSERT INTO khachhang (userid,fbname,phone,diachi,avalink,uname,gender,label,pageid,fbnamex,realfbid) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE fbname=?, fbnamex=?, realfbid=?, avalink=?;',
                     [userid, fbname, oldCus.phone, oldCus.diachi, oldCus.avalink || picture, oldCus.uname, oldCus.gender, oldCus.label, pageid, LocDau(fbname), oldCus.realfbid,
-                        fbname, LocDau(fbname), oldCus.realfbid, picture]);
+                        fbname || oldCus.fbname || '', LocDau(fbname || oldCus.fbname || ''), oldCus.realfbid, picture || oldCus.avalink]);
                 await db.query(khachhangSql);
             } else {
                 const khachhangSql = SqlString.format('INSERT INTO khachhang (userid,fbname,phone,diachi,avalink,uname,gender,label,pageid,fbnamex,realfbid) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE fbname=?, fbnamex=?, realfbid=?, avalink=?;',

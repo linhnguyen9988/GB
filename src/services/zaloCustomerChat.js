@@ -60,15 +60,27 @@ async function resolveCustomer(session, customerId, pageId) {
     return uid;
 }
 
-async function sendPart(session, uid, { customerId, pageId, clientMessageId, actor, text, image }) {
+async function sendPart(session, uid, { customerId, pageId, clientMessageId, actor, text, image, link }) {
     const key = keyFor(session.accountId, pageId, customerId, clientMessageId, image ? 'image' : 'text');
-    const [claim] = await db.query('INSERT IGNORE INTO gb_zalo_chat_delivery (send_key) VALUES (?)', [key]);
-    if (!claim.affectedRows) {
-        const [[row]] = await db.query('SELECT state FROM gb_zalo_chat_delivery WHERE send_key = ?', [key]);
-        return row?.state === 'sent' ? 'sent' : 'uncertain';
+    const captionKey = image && text ? keyFor(session.accountId, pageId, customerId, clientMessageId, 'text') : null;
+    const keys = captionKey ? [key, captionKey] : [key];
+    if (captionKey) {
+        try {
+            await db.query('INSERT INTO gb_zalo_chat_delivery (send_key) VALUES (?), (?)', keys);
+        } catch (error) {
+            // Reserve both parts in one statement. An existing part must not be sent again in a caption.
+            if (error.code === 'ER_DUP_ENTRY') return 'existing';
+            throw error;
+        }
+    } else {
+        const [claim] = await db.query('INSERT IGNORE INTO gb_zalo_chat_delivery (send_key) VALUES (?)', [key]);
+        if (!claim.affectedRows) {
+            const [[row]] = await db.query('SELECT state FROM gb_zalo_chat_delivery WHERE send_key = ?', [key]);
+            return row?.state === 'sent' ? 'sent' : 'uncertain';
+        }
     }
     if (!await zalo.isSavedSessionCurrent(session)) {
-        await db.query('DELETE FROM gb_zalo_chat_delivery WHERE send_key = ?', [key]);
+        await db.query('DELETE FROM gb_zalo_chat_delivery WHERE send_key IN (?)', [keys]);
         throw new zalo.ZaloActionError(409, 'Kết nối Zalo vừa thay đổi. Vui lòng thử lại.');
     }
     let providerMessageId;
@@ -76,19 +88,23 @@ async function sendPart(session, uid, { customerId, pageId, clientMessageId, act
         if (image) {
             const { data, info } = image;
             const result = await session.api.sendMessage({
-                msg: '',
+                msg: text || '',
                 attachments: [{ data, filename: 'anh-don.jpg', metadata: { totalSize: data.length, width: info.width, height: info.height } }]
             }, uid, session.userThread);
             const attachment = result?.attachment?.find(item => item.msgId != null);
             if (!attachment) return 'uncertain';
             providerMessageId = eventId(attachment.msgId);
+        } else if (link) {
+            const result = await session.api.sendLink({ link, msg: text }, uid, session.userThread);
+            if (result?.msgId == null) return 'uncertain';
+            providerMessageId = eventId(result.msgId);
         } else {
             const result = await zalo.sendText(session, uid, text, session.userThread);
             providerMessageId = result.messageId;
         }
     } catch (error) {
         if (error.status === 422 || (error.name === 'ZcaApiError' && Number(error.code) > 0)) {
-            await db.query('DELETE FROM gb_zalo_chat_delivery WHERE send_key = ?', [key]);
+            await db.query('DELETE FROM gb_zalo_chat_delivery WHERE send_key IN (?)', [keys]);
             return 'rejected';
         }
         return 'uncertain';
@@ -109,10 +125,13 @@ async function sendPart(session, uid, { customerId, pageId, clientMessageId, act
                 );
                 isRead = receipt.is_seen;
             }
-            await saveMessage(conn, { mid: 'zalo:' + key, customerId, pageId, text,
+            await saveMessage(conn, { mid: 'zalo:' + key, customerId, pageId, text: link ? `${text}\n${link}` : text,
                 image: image ? '/api/messages/zalo-image/' + key : null, timestamp: Date.now(), actor, isRead });
             await conn.query("UPDATE gb_zalo_chat_delivery SET state = 'sent', image_data = ? WHERE send_key = ?",
                 [image?.data ?? null, key]);
+            if (captionKey) {
+                await conn.query("UPDATE gb_zalo_chat_delivery SET state = 'sent' WHERE send_key = ?", [captionKey]);
+            }
         });
     } catch (_) {
         return 'uncertain';
@@ -120,7 +139,7 @@ async function sendPart(session, uid, { customerId, pageId, clientMessageId, act
     return 'sent';
 }
 
-async function sendCustomerMessage({ customerId, pageId, clientMessageId, actor, text, file }) {
+async function sendCustomerMessage({ customerId, pageId, clientMessageId, actor, text, file, link }) {
     const result = { imageSent: false, textSent: false, uncertain: false };
     try {
         if (!isId(customerId) || !isId(pageId) || !/^[a-zA-Z0-9_-]{1,100}$/.test(clientMessageId || '')) {
@@ -143,16 +162,21 @@ async function sendCustomerMessage({ customerId, pageId, clientMessageId, actor,
         if (!session) throw new zalo.ZaloActionError(409, 'GB chưa kết nối tài khoản Zalo.');
         const uid = await resolveCustomer(session, customerId, pageId);
         const input = { customerId, pageId, clientMessageId, actor };
-        if (image) {
-            const status = await sendPart(session, uid, { ...input, image });
-            result.imageSent = status === 'sent';
-            result.uncertain = status === 'uncertain';
+        let imageStatus, textStatus;
+        if (image && text && !link) {
+            const combined = await sendPart(session, uid, { ...input, image, text });
+            if (combined !== 'existing') imageStatus = textStatus = combined;
         }
-        if (text) {
-            const status = await sendPart(session, uid, { ...input, text });
-            result.textSent = status === 'sent';
-            result.uncertain ||= status === 'uncertain';
+        if (!imageStatus && !textStatus) {
+            const results = await Promise.allSettled([
+                image ? sendPart(session, uid, { ...input, image }) : null,
+                text ? sendPart(session, uid, { ...input, text, link }) : null
+            ]);
+            [imageStatus, textStatus] = results.map(part => part.status === 'fulfilled' ? part.value : 'uncertain');
         }
+        result.imageSent = imageStatus === 'sent';
+        result.textSent = textStatus === 'sent';
+        result.uncertain = imageStatus === 'uncertain' || textStatus === 'uncertain';
         if (result.uncertain) result.error = 'Chưa xác nhận được kết quả gửi Zalo. Kiểm tra cuộc trò chuyện trước khi gửi lại.';
         else if ((file && !result.imageSent) || (text && !result.textSent)) result.error = 'Zalo từ chối gửi ảnh hoặc nội dung tin nhắn.';
     } catch (error) {

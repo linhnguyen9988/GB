@@ -29,7 +29,8 @@
       visible: visible, winnerId: winnerId, winnerPhone: wp
     };
   }
-  function sync() { var s = sock(); if (s) s.emit('lucky-sync', key, state()); }
+  var hasLocalChanges = false;
+  function sync() { hasLocalChanges = true; var s = sock(); if (s && s.connected) s.emit('lucky-sync', key, state()); }
   function rnd(n) { var a = new Uint32Array(1); crypto.getRandomValues(a); return a[0] % n; }
 
   var css = document.createElement('style');
@@ -224,7 +225,8 @@
     var dur = spinEnd - now;
     save(); render();
     msg(was ? '🔀 Đã đổi người trúng — vòng vẫn đang quay...' : '🎰 Đang quay...');
-    var s = sock(); if (s) s.emit('lucky-spin', key, state(), dur);
+    var s = sock(); hasLocalChanges = true;
+    if (s && s.connected) s.emit('lucky-spin', key, state(), dur);
     clearTimeout(spinTimer);
     spinTimer = setTimeout(function () { finishSpin(win); }, dur + 500);
   }
@@ -272,7 +274,12 @@
   })(w, w.querySelector('.lh'));
 
   var s0 = sock();
-  if (s0) s0.on('connect', function () { if (players.length || visible) sync(); });
+  if (s0) {
+    s0.on('connect', function () {
+      if (hasLocalChanges || players.length || visible) sync();
+    });
+    if (s0.connected && (players.length || visible)) sync();
+  }
   render();
   loadBlocked();
 })();

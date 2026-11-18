@@ -15,11 +15,6 @@ function OnUpdateLiveNote() {
         }
     });
 }
-function getRowIdx() {
-    return $('#comment_table').DataTable().cell({
-        focused: true
-    }).index().row;
-}
 $("#gia").on("keydown", function (e) {
     var keyCode = (e.keyCode ? e.keyCode : e.which);
     if (keyCode == 67 && e.shiftKey) {
@@ -34,6 +29,7 @@ $("#gia").on("keydown", function (e) {
     }
 });
 var initkey = 0;
+let mobileChotCommentId = null;
 
 function UpdateCommentCustomerRow({ userid, phone, diachi, label, note, nn }) {
     if (!$.fn.dataTable.isDataTable('#comment_table')) return;
@@ -70,40 +66,8 @@ function OpenMessenger(pageid, realid) {
 function isFakeCommentId(id) {
     return !!id && (String(id).match(/_/g) || []).length !== 1;
 }
-function UpdateComment(openmess) {
-    var x = $('#comment_table').DataTable().row(getRowIdx()).data();
-    if (x && isFakeCommentId(x[8])) {
-        if (openmess == 1) ShowCenterToast('info', 'Bình luận này đến từ tin nhắn nên chưa có ID Facebook để mở hộp thư.', 3500);
-        return;
-    }
-    $.ajax({
-        url: "/detailcomment",
-        method: "POST",
-        data: { commentid: x[8], userid: x[12] },
-        dataType: "JSON",
-        success: function (data) {
-            if (!data.data) { ShowCenterToast('danger', data.error || 'Không cập nhật được bình luận', 3000); return; }
-            if (data.data.skipped) { return; }
-            if (data.data.hasOwnProperty('error')) {
-                ShowCenterToast('danger', IsDeletedCommentError(data.data.error) ? 'Bình luận đã bị xóa.' : data.data.error.message, 3000);
-                return;
-            }
-            var table = $('#comment_table').DataTable();
-            var xx = table.row(getRowIdx()).data();
-            table.rows().every(function (rowIdx, tableLoop, rowLoop) {
-                if (table.cell(rowIdx, 8).data() == xx[8]) {
-                    var timecmt = new Date(data.data.live_broadcast_timestamp * 1000).toISOString().substring(11, 19);
-                    table.cell(rowIdx, 23).data(data.data.from.id);//realfbid
-                    table.cell(rowIdx, 14).data(timecmt);
-                    table.cell(rowIdx, 7).data(data.data.live_broadcast_timestamp);
-                }
-            }).draw(false);
-            if (openmess == 1) {
-                OpenMessenger(x[18], data.data.from.id);
-            }
-            ShowCenterToast('success', 'Đã cập nhật bình luận, có thể mở hộp thư hoặc xem live.', 3000);
-        }
-    });
+function UpdateComment(openmess, selectedRow) {
+    RefreshCommentCustomer(openmess, selectedRow, 22, 26);
 }
 
 function InItKeys() {
@@ -205,7 +169,7 @@ function InItKeys() {
         } else if (keyCode == 88) {
             XaHang();
         } else if (keyCode == 84) {//Nut T
-            UpdateComment(0);
+            UpdateComment(0, x);
         } else if (keyCode == 190) {
             SendWelcome();
         } else {
@@ -216,7 +180,7 @@ function InItKeys() {
     initkey = 1;
 }
 async function LoadLive() {
-    start();
+    mobileChotCommentId = null;
     var xxx = document.getElementById(e.value);
     document.getElementById("btnloadlive").disabled = true;
     document.getElementById("btnloadlive").innerHTML = '<span class="spinner-grow" style="width: 0.8rem; height: 0.8rem;" role="status"></span>&nbsp;Load';
@@ -228,6 +192,7 @@ async function LoadLive() {
     }
 
     var liveid = e.value;
+    if (currentPostId && currentPostId !== liveid) LeaveLiveRoom();
     if (document.getElementById("liveidinput").value.length > 0 && document.getElementById("liveidinput").value != liveid) {
         document.getElementById("liveidinput").value += ',' + liveid;
     } else {
@@ -416,7 +381,7 @@ async function LoadLive() {
                 }
                 document.getElementById("btnloadlive").disabled = false;
                 document.getElementById("btnloadlive").innerHTML = 'Load';
-                ShowCenterToast('success', 'Load xong trong ' + end() + ' mili giây', 3000);
+                ShowCenterToast('success', 'Đã tải bình luận', 3000);
             }
             $('#comment_table tbody').html(html);
             $('#comment_table').DataTable(
@@ -662,7 +627,6 @@ async function ScanComment(soluong) {
     if (xxxx.length == 0) {
         return;
     }
-    start();
     var t = $('#comment_table').DataTable();
     $.ajax({
         url: "/scancomment",
@@ -810,7 +774,7 @@ async function ScanComment(soluong) {
                     }
                 }
             }
-            ShowCenterToast('success', 'Quét xong trong ' + end() + ' mili giây', 3000);
+            ShowCenterToast('success', 'Đã quét bình luận', 3000);
             scancount++;
             if (scancount > 50) {
                 RC();
@@ -837,10 +801,10 @@ socket.on('live-status', (data) => {
     }
 });
 
-socket.on('new-comment', (data) => {
+function AddLiveComment(data, backfill = false) {
     var t = $('#comment_table').DataTable();
     var cmtidcol = t.column(8).data().toArray();
-    if (cmtidcol.includes(data.cmtid)) return;
+    if (cmtidcol.some(id => String(id) === String(data.cmtid))) return;
 
     var note = data.customerInfo.note;
     if (note === undefined || note === null) {
@@ -942,24 +906,24 @@ socket.on('new-comment', (data) => {
     const oldinfo = t.page.info();
     const oldTotalRowFilter = oldinfo.recordsDisplay;
 
-    t.row.add([
+    var added = t.row.add([
         "",
         name,
         message,
         phone,
         zlabel,
-        "",
-        "",
-        0,
+        backfill && data.chot ? `<center><span class="badge ${data.chot.includes('CHỐT') ? 'bg-primary' : 'bg-danger'}">${gbEscapeText(data.chot)}</span></center>` : "",
+        backfill && data.gia ? `<center>${ChotPriceTags(data.gia, data.slchot, data.gia2, data.slchot2)}${XaBadgeHtml()}</center>` : "",
+        backfill ? data.count || 0 : 0,
         data.cmtid,
         timesort,
         data.customerInfo.diachi,
         buttonchat + buttonpage1 + buttonpage2,
         data.customerInfo.userid,
         data.timelocal,
-        0,
+        backfill ? data.timecomment || 0 : 0,
         data.customerInfo.fbnamex,
-        0,
+        backfill ? data.luotin || 0 : 0,
         data.liveid,
         idpage,
         note,
@@ -971,7 +935,9 @@ socket.on('new-comment', (data) => {
         data.customerInfo.id,
         data.customerInfo.fbname,
         data.idx
-    ]).draw(false);
+    ]);
+    if (backfill) return;
+    added.draw(false);
     const newinfo = t.page.info();
     const newTotalRowFilter = newinfo.recordsDisplay;
     const focusedCell = t.cell({ focused: true });
@@ -983,48 +949,17 @@ socket.on('new-comment', (data) => {
             t.keys.move('down');
         }
     }
+}
+
+socket.on('new-comment', data => {
+    if (currentPostId === String(data.liveid)) AddLiveComment(data);
 });
 
-let currentPostId = null;
-
-function UpdateLiveStatusBadge(status) {
-    var badge = document.getElementById("liveStatusBadge");
-    if (!badge) return;
-    if (status === 'LIVE') {
-        badge.className = 'badge bg-danger live-badge-pulse';
-        badge.innerHTML = 'Live';
-    } else if (status) {
-        badge.className = 'badge bg-secondary';
-        badge.innerHTML = 'Kết thúc';
-    } else {
-        badge.className = 'badge bg-light text-dark border';
-        badge.innerHTML = 'Chưa rõ trạng thái';
-    }
-}
-
-function JoinLiveRoom(liveid) {
-    if (!liveid || currentPostId === liveid) return;
-    if (currentPostId) {
-        socket.emit('leave-live-stream', currentPostId);
-    }
-    socket.emit('join-live-stream', liveid);
-    currentPostId = liveid;
-    console.log(`Đã kết nối realtime cho live ID: ${liveid}`);
-}
-
-function LeaveLiveRoom() {
-    if (currentPostId) {
-        socket.emit('leave-live-stream', currentPostId);
-        console.log(`Đã ngắt kết nối realtime cho live ID: ${currentPostId}`);
-        currentPostId = null;
-    }
-}
-
-async function UpdatePhone() {
-    var table = $('#comment_table').DataTable();
-    var data = table.row(getRowIdx()).data();
+async function UpdatePhone(selectedRow) {
+    var data = selectedRow || $('#comment_table').DataTable().row(getRowIdx()).data();
+    if (!data) return;
     var phone = '';
-    var oldphone = data[3];
+    var oldphone = String(data[3] || '');
     var userid = data[12];
     var diachi = data[10];
     var realfbid = data[22];
@@ -1032,7 +967,7 @@ async function UpdatePhone() {
 
     var regexp = "0[98735]([0-9]|\s|-|\.){8,12}";
     let phone_numbers = [];
-    phone_numbers = [...data[2].matchAll(regexp)];
+    phone_numbers = [...String(data[2] || '').matchAll(regexp)];
     for (const match of phone_numbers) {
         phone = match[0].replaceAll(' ', '').replace(/\D/g, '');
     }
@@ -1042,7 +977,7 @@ async function UpdatePhone() {
 
     if (phone.length > 0) {
         if (oldphone.length < 9) {
-            SendWelcome();
+            SendWelcome(data);
         }
         await sendPhoneUpdate(userid, phone, realfbid, diachi, liveid);
     }
@@ -1112,131 +1047,11 @@ function highAndLow(numbers) {
     }
     return largest;
 }
-async function Chotxxx(buttongia) {
-    var table = $('#comment_table').DataTable();
-    if (table.rows().count() === 0) {
-        return;
-    }
-    var gia = 0;
-    var zz = table.column(16).data().toArray();
-    var luotincuoi = highAndLow(zz.toString().replaceAll('&nbsp;', '0'));
-    var luotcuoi = 0;
-    var luotcuoilive = 0;
-    var data = table.row(getRowIdx()).data();
-    var xx = data[16];
-    var realid = data[22];
-    var id = data[25];
-    var slchot = document.getElementById("slchot").value;
-    if (slchot > 20) {
-        ShowCenterToast('danger', 'Số lượng chốt quá lớn! ', 3000);
-        return;
-    }
-    if (xx == '&nbsp;') {
-        xx = 0;
-    }
-    if (xx === 0) {
-        luotcuoi = luotincuoi + 1;
-        luotcuoilive = luotcuoi;
-    } else {
-        luotcuoi = parseInt(data[16]);
-        luotcuoilive = luotincuoi;
-    }
-    let str = document.getElementById(data[17]).innerHTML;
-    document.getElementById(data[17]).innerHTML = str.split('-')[0] + '- ' + luotcuoilive;
-    UpdatePhone();
-    if (realid.length < 1) {
-        UpdateComment(0);
-    }
-    if (buttongia > 0) {
-        gia = buttongia;
-        document.getElementById("gia").value = buttongia;
-    } else {
-        gia = document.getElementById("gia").value;
-    }
-    var name = data[1];
-    var avabase64 = '';
-    toDataUrl(`/images/ava/${data[12]}.jpg`, function (myBase64) {
-        avabase64 = myBase64;
-    });
-    await WaitUntil(_ => avabase64 != '');
-    name = name.replace(`/images/ava/${data[12]}.jpg`, avabase64);
-    var message = data[2];
-    var phone = data[3];
-    var diachi = data[10];
-    var commentid = data[8];
-    var note = document.getElementById("livenote").value;
-    $phone = ``;
-    $diachi = ``;
-    $note = ``;
-    var xgia = ``;
-    if (gia.toString().length > 0) {
-        xgia = `<tr>
-                    <td><p style="font-size:17px;"><svg width="20px" height="20px" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="bi bi-cash"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <path d="M8 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"></path> <path d="M0 4a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V4zm3 0a2 2 0 0 1-2 2v4a2 2 0 0 1 2 2h10a2 2 0 0 1 2-2V6a2 2 0 0 1-2-2H3z"></path> </g></svg> • ${gia.toString().replace(/^0+/, '').replaceAll("c", "")}.000đ</p></td>
-                </tr>`;
-    }
-    if (phone.length > 0) {
-        $phone = `<tr>
-                    <td><p style="font-size:17px; font-weight: bold;"><svg width="20px" height="20px" viewBox="0 0 24.00 24.00" fill="none" xmlns="http://www.w3.org/2000/svg"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <rect x="5.75" y="1.75" width="12.5" height="20.5" rx="1.75" stroke="currentColor" stroke-width="1.512"></rect> <path d="M12 19.25C12.6904 19.25 13.25 18.6904 13.25 18C13.25 17.3096 12.6904 16.75 12 16.75C11.3096 16.75 10.75 17.3096 10.75 18C10.75 18.6904 11.3096 19.25 12 19.25Z" fill="currentColor" stroke="currentColor" stroke-width="1.512"></path> </g></svg>• ${phone}</p></td>
-                </tr>`;
-    }
-    if (note.length > 0) {
-        $note = `<tr>
-                    <td><b><font size='1.5'><center>${note}</center></font></b></td>
-                </tr>`;
-    }
-    if (diachi.length > 0) {
-        $diachi = `<tr>
-                    <td><p style="font-size:15px"><i class="fas fa-comment"></i> • ${diachi}</p></td>
-                </tr>`;
-    }
-
-    $html = `<table>
-                <tr>
-                    <td><p class="lead"><b>Áo Dài Gia Bảo </b>• ${ToDay()}<b> • ${luotcuoi}</b></p></td>
-                </tr>
-                <tr>
-                    <td style="display: flex; align-items: center; justify-content: space-between;">
-                        <p style="font-size:22px; font-weight: bold;">${name.replace('<img ', '<img class="top"').replace('class="avatar"', '').split('<br>')[0]}</p>
-                        <!--<img src="https://api.qrserver.com/v1/create-qr-code/?size=50x50&data=${id}" style="width: 50px; height: 50px;">-->
-                    </td>
-                </tr>
-
-                `+ $phone + ` 
-                <tr>
-                    <td><p style="font-size:17px;"><svg width="16px" height="16px" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><g id="SVGRepo_bgCarrier" stroke-width="0"></g><g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g><g id="SVGRepo_iconCarrier"> <g clip-path="url(#clip0_901_991)"> <path d="M9 17.0001H15M9 9.0001H23M9 13.0001H23M22 23.004C22 23.004 28 29.006 29 30.006C30.609 31.616 31 31.008 31 30.008V2.008C31 1.456 30.553 1 30 1H2C1.447 1 1 1.456 1 2.008V24.008C1 24.561 1.447 25 2 25H20" stroke="currentColor" stroke-width="1.6640000000000001" stroke-linecap="round" stroke-linejoin="round"></path> </g> <defs> <clipPath id="clip0_901_991"> <rect width="32" height="32" fill="white"></rect> </clipPath> </defs> </g></svg> • ${message}</p></td>
-                </tr>
-                ${xgia}
-                <tr><td><center><img src="${IDToBarcode(id, 20)}"/></center></td></tr>
-                `+ $note + `
-                </table>
-                `;
-    //<img src="${IDToBarcode(id)}"/>
-    //${MakeQRCode(id,'Numeric')}
-    for (var k = 0; k < slchot; k++) {
-        PrintLabelx($html);
-    }
-    table.rows().every(function (rowIdx, tableLoop, rowLoop) {
-        if (table.cell(rowIdx, 8).data() == data[8]) {
-            table.cell(rowIdx, 5).data("<center><span class='badge bg-primary'>CHỐT</span></center>");
-            table.cell(rowIdx, 6).data("<center><span class='badge bg-success'>" + gia + "</span></center>");
-            table.cell(rowIdx, 16).data(luotcuoi);
-        }
-    }).draw(false);
-    document.getElementById("slchot").value = 1;
-    $.ajax({
-        url: "/updatechot",
-        method: "POST",
-        data: { commentid: commentid, chot: "CHỐT", gia: gia, luotincuoi: luotcuoi, liveid: data[17], luotcuoilive: luotcuoilive, slchot: slchot },
-        dataType: "JSON",
-        success: function (data) { }
-    });
-};
-
-var pendingChot = {};
+const pendingChot = Object.create(null);
 
 async function Chot(buttongia, extra) {
     var table = $('#comment_table').DataTable();
-    if (table.rows().count() === 0) return;
+    if (table.rows().count() === 0) return false;
 
     var data = null;
     if (extra && extra.commentid) {
@@ -1247,12 +1062,12 @@ async function Chot(buttongia, extra) {
     } else {
         data = table.row(getRowIdx()).data();
     }
-    if (!data) return;
+    if (!data) return false;
 
     var commentid = data[8];
     var liveid = data[17];
     if (pendingChot[commentid]) {
-        return;
+        return false;
     }
 
     var id = data[25];
@@ -1276,9 +1091,9 @@ async function Chot(buttongia, extra) {
         gia = buttongia > 0 ? buttongia : document.getElementById("gia").value;
     }
     var cleanPrice = gia.toString().replace(/[^0-9]/g, "");
-    UpdatePhone();
-    if (realid.length < 1) {
-        UpdateComment(0);
+    void UpdatePhone(data).catch(error => console.error('Lỗi cập nhật số điện thoại khi chốt:', error));
+    if (!realid) {
+        UpdateComment(0, data);
     }
 
     table.rows().every(function (rowIdx) {
@@ -1315,6 +1130,7 @@ async function Chot(buttongia, extra) {
             FailChot(commentid, 'Gửi yêu cầu chốt đơn thất bại.');
         }
     });
+    return true;
 }
 
 function FailChot(commentid, message) {
@@ -1624,16 +1440,16 @@ function IsRealCommentId(cid) {
     return typeof cid === 'string' && (cid.match(/_/g) || []).length === 1;
 }
 
-function SendWelcome() {
-    var d = $('#comment_table').DataTable().row(getRowIdx()).data();
+function SendWelcome(selectedRow) {
+    var d = selectedRow || $('#comment_table').DataTable().row(getRowIdx()).data();
     if (!d || !IsRealCommentId(String(d[8]))) {
         return;
     }
-    SendMessage("Chào chị, để gửi hàng nhanh nhất, em xin địa chỉ để khi chốt hàng em xác nhận đơn và chuyển hàng liền cho chị ạ. Em cám ơn!");
+    SendMessage("Chào chị, để gửi hàng nhanh nhất, em xin địa chỉ để khi chốt hàng em xác nhận đơn và chuyển hàng liền cho chị ạ. Em cám ơn!", d);
 }
 
-function SendMessage(chat) {
-    var data = $('#comment_table').DataTable().row(getRowIdx()).data();
+function SendMessage(chat, selectedRow) {
+    var data = selectedRow || $('#comment_table').DataTable().row(getRowIdx()).data();
     var commentid = data[8];
     var userid = data[12];//neu ko co thi dung streamlabs id
     var pageid = data[18];
@@ -1665,17 +1481,6 @@ function SendMessage(chat) {
         }
     });
 };
-var startTime, endTime;
-
-function start() {
-    startTime = performance.now();
-};
-
-function end() {
-    endTime = performance.now();
-    var timeDiff = endTime - startTime;
-    return timeDiff.toFixed(0);
-}
 document.addEventListener('DOMContentLoaded', (event) => {
     const holdToastCheckbox = document.getElementById('holdToast');
     if (holdToastCheckbox && lockToast === 1) {
@@ -1769,32 +1574,57 @@ async function handlePrintLabel(rowElement) {
     }, true);*/
 })();
 
-function ChotMobile() {
+async function ChotMobile() {
     var giaM = document.getElementById('gia_m');
     var slM = document.getElementById('slchot_m');
     var gia = (giaM.value || '').trim();
-    var sl = parseInt(slM.value) || 1;
+    var sl = parseInt(slM.value, 10) || 1;
     if (gia.length === 0) {
         ShowCenterToast('danger', 'Vui lòng nhập giá', 2000);
         giaM.focus();
         return;
     }
-    try {
-        getRowIdx();
-    } catch (err) {
-        ShowCenterToast('danger', 'Vui lòng chọn dòng cần chốt', 2000);
+    if (!mobileChotCommentId) {
+        ShowCenterToast('danger', 'Chạm vào bình luận cần chốt trước', 2500);
         return;
     }
+    if (pendingChot[mobileChotCommentId]) return;
     document.getElementById('gia').value = gia;
     document.getElementById('slchot').value = sl;
-    Chot();
-    slM.value = 1;
+    try {
+        if (await Chot(0, { commentid: mobileChotCommentId })) {
+            slM.value = 1;
+        } else {
+            ShowCenterToast('warning', 'Không tìm thấy dòng đã chọn. Chạm lại bình luận cần chốt.', 3500);
+        }
+    } catch (error) {
+        console.error('Lỗi chốt trên điện thoại:', error);
+        ShowCenterToast('danger', 'Không chốt được. Vui lòng thử lại.', 3500);
+    }
 }
 
 function InitMobileChot() {
     if (document.getElementById('chot_mobile_box')) return;
     var anchor = document.getElementById('liveStatusBadge');
     if (!anchor) return;
+    const comments = $('#comment_table');
+    function highlightMobileSelection(table) {
+        table.rows({ page: 'current' }).every(function () {
+            const row = this.data();
+            this.node()?.classList.toggle('table-active', Boolean(mobileChotCommentId && row && String(row[8]) === mobileChotCommentId));
+        });
+    }
+    comments.on('click.gbMobileChot', 'tbody tr', function () {
+        if (!window.matchMedia('(max-width: 767.98px)').matches || !$.fn.dataTable.isDataTable(comments[0])) return;
+        const table = comments.DataTable();
+        const row = table.row(this).data();
+        if (!row || !row[8]) return;
+        mobileChotCommentId = String(row[8]);
+        highlightMobileSelection(table);
+    });
+    comments.on('draw.dt.gbMobileChot', function (event, settings) {
+        if (mobileChotCommentId) highlightMobileSelection(new $.fn.dataTable.Api(settings));
+    });
     anchor.insertAdjacentHTML('afterend',
         `<div id="chot_mobile_box" class="d-md-none ms-2 align-middle" style="display:inline-block;">
             <div class="d-flex align-items-center gap-1">

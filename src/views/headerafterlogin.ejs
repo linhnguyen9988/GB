@@ -18,15 +18,16 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 
   <link rel="stylesheet" href="/css/style.css">
-  <link rel="stylesheet" href="/css/chat.css?v=20261112-chat-channel-on-click">
+  <link rel="stylesheet" href="/css/chat.css?v=20261117-chat-review">
   <link rel="stylesheet" href="/css/pod-viewer.css">
   <link rel="stylesheet" href="/css/all.min.css">
   <link rel="stylesheet" href="/css/tw.css">
   <link rel="stylesheet" href="/css/label.css">
   <link rel="stylesheet" href="/css/pane.css">
   <script src="/js/bs5utils.js"></script>
+  <script src="/js/shipping-order-submit.js"></script>
   <script src="/js/order-status.js?v=20261109-status-contrast"></script>
-  <script src="/js/customer-detail-modal.js?v=20261110"></script>
+  <script src="/js/customer-detail-modal.js?v=20261116-comment-profile"></script>
   <script src="/js/pod-viewer.js" defer></script>
   <script src="/js/orderstatusrefresh.js?v=20261109-status-contrast"></script>
   <script src="/js/editorderviettel.js"></script>
@@ -55,7 +56,7 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap5-toggle@5.0.4/js/bootstrap5-toggle.jquery.min.js"></script>
   <link rel="stylesheet" type="text/css"
     href="https://cdn.datatables.net/keytable/2.7.0/css/keyTable.bootstrap5.min.css" />
-  <script type="text/javascript" src="/js/html5-qrcode.min.js"></script>
+  <script src="/js/customer-scan-code.js?v=20261118-start-fix"></script>
   <script type="text/javascript" src="/js/qrcode.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.3/JsBarcode.all.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
@@ -1367,13 +1368,9 @@
     cod = cod.toString().replaceAll('.', '');
     kg = parseFloat(kg);
 
-    pushBtn.disabled = true;
-
-    $.ajax({
-      url: "/pushorderjtex",
-      method: "POST",
-      contentType: "application/json",
-      data: JSON.stringify({
+    return submitShippingOrder('jt', {
+      button: pushBtn,
+      payload: {
         fbname: fbnamex,
         phone: phone,
         address: address,
@@ -1386,24 +1383,8 @@
         huyen: huyenjt,
         xa: xajt,
         ...(document.getElementById('qrJtExchange')?.checked ? { isExchange: '1' } : {})
-      }),
-      success: function (data) {
-        pushBtn.disabled = false;
-        if (data.success) {
-          resetQROrderAfterSuccess(kgInput);
-          if (data.printDispatched === false) {
-            ShowCenterToast('warning', gbEscapeText(`Đã lên đơn J&T ${data.order_code}. ${data.printMessage || 'Chưa gửi được lệnh in.'} Bạn có thể in lại từ danh sách đơn.`), 5000);
-          } else {
-            ShowCenterToast('success', gbEscapeText('Đã lên đơn J&T ' + data.order_code), 5000);
-          }
-        } else {
-          ShowCenterToast(data.order_created ? 'warning' : 'danger', gbEscapeText(data.message || 'Không tạo được đơn J&T.'), 5000);
-        }
       },
-      error: function (xhr) {
-        pushBtn.disabled = false;
-        ShowCenterToast('danger', gbEscapeText(xhr.responseJSON?.message || 'Không nhận được phản hồi. Kiểm tra đơn J&T trước khi gửi lại.'), 5000);
-      }
+      onCreated: () => resetQROrderAfterSuccess(kgInput)
     });
   }
 
@@ -1437,30 +1418,10 @@
       return;
     }
 
-    pushBtn.disabled = true;
-
-    $.ajax({
-      url: "/createorderviettel",
-      method: "POST",
-      dataType: "JSON",
-      data: { fbname: fbnameSend, phone: phone, address: address, cod: cod, kg: kg, khid: khidSend, userid: useridSend, realfbid: realidSend },
-      success: function (data) {
-        pushBtn.disabled = false;
-        if (!data.realorderid) {
-          ShowCenterToast('danger', gbEscapeText(data.error || 'GB chưa xác nhận được đơn Viettel.'), 5000);
-          return;
-        }
-        resetQROrderAfterSuccess(kgInput);
-        if (data.printed) {
-          ShowCenterToast('success', gbEscapeText('Đã lên đơn Viettel ' + data.realorderid), 5000);
-        } else {
-          ShowCenterToast('warning', gbEscapeText('Đã lên đơn Viettel ' + data.realorderid + '. ' + (data.printMessage || 'Chưa gửi được lệnh in.') + ' Bạn có thể in lại từ danh sách đơn.'), 5000);
-        }
-      },
-      error: function (xhr) {
-        pushBtn.disabled = false;
-        ShowCenterToast('danger', gbEscapeText(xhr.responseJSON?.error || 'Không nhận được phản hồi. Kiểm tra đơn Viettel trước khi gửi lại.'), 5000);
-      }
+    return submitShippingOrder('viettel', {
+      button: pushBtn,
+      payload: { fbname: fbnameSend, phone: phone, address: address, cod: cod, kg: kg, khid: khidSend, userid: useridSend, realfbid: realidSend },
+      onCreated: () => resetQROrderAfterSuccess(kgInput)
     });
   }
 
@@ -1876,7 +1837,7 @@
 
   function loadCustomerInfoByKhachId(khachId) {
     var mySeq = ++_qrReqSeq;
-    khid = khachId;
+    khid = '';
     fbnamex = '';
     userid = '';
     realid = '';
@@ -1892,6 +1853,11 @@
             handleQRNotFound('Không tìm thấy khách hàng hoặc đơn hàng ứng với mã QR này.');
             return;
           }
+          if (String(data.data[0].id) !== khachId) {
+            handleQRNotFound('Mã khách trả về không khớp. Vui lòng quét lại tem.');
+            return;
+          }
+          khid = khachId;
           var bomxa = '';
           var note;
           if (data.data[0].note === undefined || data.data[0].note === null || data.data[0].note == 'null') {
@@ -2144,61 +2110,73 @@
   }
 
   function setResult(result) {
-    if (result.data.length < 5) {
-      $('#qrresult').empty();
+    const code = result.data;
+    const isDonHang = !code.includes(';') && (code.length >= 12 || code.includes('1P1'));
+    const legacyCustomerId = /^[1-9]\d{4,10}$/.test(code) ? code : null;
+    const legacyParts = code.split(';');
+
+    if (!isDonHang && !legacyCustomerId &&
+        !(legacyParts.length === 2 && /^\d+$/.test(legacyParts[0]) && legacyParts[1].trim())) {
+      ShowCenterToast('warning', 'Không nhận diện được mã. Vui lòng quét lại đúng tem.', 4000);
       return;
     }
 
-    var code = result.data;
+    _stopRot();
     scanner.stop();
     document.getElementById("video-container").style.display = "none";
-
-    var isDonHang = code.length >= 12 || code.includes('1P1');
-    var isKhachHang = !isDonHang && isNumeric(code);
 
     if (isDonHang) {
       DetailDonHang(code, function () {
         document.getElementById("video-container").style.display = "block";
-        window.scanner && window.scanner.start();
+        window.scanner && window.scanner.start().then(_startRot);
       });
-    } else if (isKhachHang) {
-      loadCustomerInfoByKhachId(code);
+    } else if (legacyCustomerId) {
+      loadCustomerInfoByKhachId(legacyCustomerId);
     } else {
-      var searchkh = document.getElementById("tenkhach");
-      var qrarray = code.split(';');
-      searchkh.value = qrarray[1];
-      document.getElementById("COD").value = qrarray[0];
+      document.getElementById("tenkhach").value = legacyParts[1];
+      document.getElementById("COD").value = legacyParts[0];
       document.getElementById("searchkhach").click();
       $('#modalQR2').modal('hide');
     }
   }
   $('#modalQR2').on('hidden.bs.modal', function () { scanner.stop(); _stopRot(); resetQRCustomerInfo(); });
 
-  var _rotLast = '';
-  var _rotCool = false;
+  const scanConfirmation = GBCustomerScanCode.createConfirmation();
+  let scanAccepting = false;
 
-  function _startRot() { }
-  function _stopRot() { }
+  function _startRot() {
+    scanConfirmation.reset();
+    scanAccepting = true;
+  }
+  function _stopRot() {
+    scanAccepting = false;
+    scanConfirmation.reset();
+  }
+
+  window._startRot = _startRot;
+  window._stopRot = _stopRot;
 
   const scanner = new QrScanner(video, function (result) {
-    if (!_rotCool && result.data !== _rotLast) {
-      _rotLast = result.data;
-      _rotCool = true;
-      setTimeout(function () { _rotCool = false; _rotLast = ''; }, 300);
-      setResult(result);
-    }
+    if (!scanAccepting) return;
+    const confirmedCode = scanConfirmation.read(result.data);
+    if (confirmedCode !== null) setResult({ data: confirmedCode });
   }, {
     onDecodeError: function () { },
     highlightScanRegion: true,
     highlightCodeOutline: true,
-    maxScansPerSecond: 15, 
+    maxScansPerSecond: 15,
     calculateScanRegion: function (v) {
+      const videoWidth = v.videoWidth || 640;
+      const videoHeight = v.videoHeight || 480;
+      const width = Math.round(videoWidth * 0.85);
+      const height = Math.round(videoHeight * 0.55);
       return {
-        x: 0, y: 0,
-        width: v.videoWidth || 640,
-        height: v.videoHeight || 480,
-        downScaledWidth: Math.min(v.videoWidth || 640, 640),
-        downScaledHeight: Math.min(v.videoHeight || 480, 480),
+        x: Math.floor((videoWidth - width) / 2),
+        y: Math.floor((videoHeight - height) / 2),
+        width: width,
+        height: height,
+        downScaledWidth: Math.min(width, 960),
+        downScaledHeight: Math.round(height * Math.min(width, 960) / width),
       };
     },
   });
@@ -2216,6 +2194,7 @@
   window.scanner = scanner;
 
   camList.addEventListener('change', event => {
+    scanConfirmation.reset();
     scanner.setCamera(event.target.value);
   });
 
@@ -2290,7 +2269,7 @@
     })();
   </script>
 
-    <div class="modal fade" id="message-modal" tabindex="-1" aria-labelledby="customer-name" aria-hidden="true">
+    <div class="modal fade" id="message-modal" data-chat-username="<%= user.username || '' %>" tabindex="-1" aria-labelledby="customer-name" aria-hidden="true">
       <div class="modal-dialog modal-fullscreen-sm-down modal-dialog-centered">
         <div class="modal-content modal-content-messenger">
           <div class="modal-header modal-header-messenger">
@@ -2313,17 +2292,7 @@
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
 
-          <div id="modal-messages-container" class="modal-body messages-container-messenger">
-            <div id="pull-to-refresh-indicator" class="pull-to-refresh-indicator">
-              <i class="bi bi-arrow-repeat pull-icon"></i>
-              <span class="pull-text">Kéo xuống nữa để tải...</span>
-            </div>
-            <div id="load-more-btn" class="text-center load-more-btn" style="cursor: pointer; display: none;">
-              <i class="bi bi-arrow-clockwise spinner-icon" style="display: none;"></i>
-              <span class="load-more-text">Tải thêm tin nhắn...</span>
-            </div>
-
-          </div>
+          <div id="modal-messages-container" class="modal-body messages-container-messenger" tabindex="0" aria-label="Lịch sử tin nhắn"></div>
 
           <div class="modal-footer message-input-container">
             <div class="messenger-file-buttons">
@@ -2442,6 +2411,7 @@
           <div class="modal-body text-center">
             <div id="video-container">
               <video id="qr-video" width="85%"></video>
+              <div class="small text-muted mt-2">Đặt một tem vào giữa khung, giữ yên để xác nhận mã.</div>
             </div>
             <div id="qrcontainer">
               <div id="qrresult"></div>

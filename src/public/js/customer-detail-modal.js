@@ -80,7 +80,7 @@ function EditOpenJourney(button, name, userid, phone) {
     OrderJourney(orderNumber, name, userid, phone);
 }
 
-function ShowCustomerDetails({ name, userid, phone, diachi, note, label, realfbid, nn, trigger, onSaved }) {
+function ShowCustomerDetails({ name, userid, phone, diachi, note, label, realfbid, nn, trigger, onSaved, readOnly = false }) {
     if (document.getElementById('modaledit')) return;
     name = name || 'Khách hàng';
     var labels = ['Thân thiết', 'Bom hàng', 'Xả hàng', 'Có vấn đề'];
@@ -152,8 +152,8 @@ function ShowCustomerDetails({ name, userid, phone, diachi, note, label, realfbi
           </div>
 
           <div class="d-flex gap-2 mt-4">
-            <button class="btn btn-outline-secondary flex-grow-1" type="button" data-bs-dismiss="modal">Hủy</button>
-            <button class="btn btn-primary flex-grow-1" type="submit"><i class="bi bi-check-lg"></i> Lưu</button>
+            <button class="btn btn-outline-secondary flex-grow-1" type="button" data-bs-dismiss="modal">${readOnly ? 'Đóng' : 'Hủy'}</button>
+            ${readOnly ? '' : '<button class="btn btn-primary flex-grow-1" type="submit"><i class="bi bi-check-lg"></i> Lưu</button>'}
           </div>
         </form>
       </div>
@@ -162,8 +162,13 @@ function ShowCustomerDetails({ name, userid, phone, diachi, note, label, realfbi
     const modal = document.getElementById('modaledit');
     const instance = bootstrap.Modal.getOrCreateInstance(modal);
     const form = modal.querySelector('form');
+    if (readOnly) {
+        for (const field of form.querySelectorAll('input, textarea')) field.readOnly = true;
+        for (const field of form.querySelectorAll('select')) field.disabled = true;
+    }
     form.addEventListener('submit', async function (event) {
         event.preventDefault();
+        if (readOnly) return;
         const button = form.querySelector('[type="submit"]');
         if (button.disabled) return;
         const details = Object.fromEntries(new FormData(form));
@@ -188,4 +193,72 @@ function ShowCustomerDetails({ name, userid, phone, diachi, note, label, realfbi
     }, { once: true });
     instance.show();
     LoadEditRecentOrders(modal.querySelector('#edit-recent-orders'), userid, realfbid, name, phone);
+}
+
+function RefreshCommentCustomer(openmess, selectedRow, facebookIdColumn, nameColumn) {
+    var x = selectedRow || $('#comment_table').DataTable().row(getRowIdx()).data();
+    if (!x) return;
+    if (x && isFakeCommentId(x[8])) {
+        if (openmess == 1) ShowCenterToast('info', 'Bình luận này đến từ tin nhắn nên chưa có ID Facebook để mở hộp thư.', 3500);
+        return;
+    }
+    $.ajax({
+        url: "/detailcomment",
+        method: "POST",
+        data: { commentid: x[8], userid: x[12], ...(selectedRow ? { refreshProfile: '1' } : {}) },
+        dataType: "JSON",
+        success: function (data) {
+            if (!data.data) { ShowCenterToast('danger', data.error || 'Không cập nhật được bình luận', 3000); return; }
+            if (data.data.skipped) { return; }
+            if (data.data.hasOwnProperty('error')) {
+                ShowCenterToast('danger', IsDeletedCommentError(data.data.error) ? 'Bình luận đã bị xóa.' : data.data.error.message, 3000);
+                return;
+            }
+            var table = $('#comment_table').DataTable();
+            if (!data.data.from?.id) { ShowCenterToast('warning', 'Facebook chưa trả thông tin người bình luận.', 3000); return; }
+            const timestamp = data.data.live_broadcast_timestamp;
+            const date = new Date(Number(timestamp) * 1000);
+            const profile = data.profile;
+            const avatarVersion = Date.now();
+            table.rows().every(function (rowIdx) {
+                if (String(table.cell(rowIdx, 8).data()) === String(x[8])) {
+                    table.cell(rowIdx, facebookIdColumn).data(data.data.from.id);
+                    if (timestamp != null && Number.isFinite(date.getTime())) {
+                        table.cell(rowIdx, 14).data(date.toISOString().slice(11, 19));
+                        table.cell(rowIdx, 7).data(timestamp);
+                    }
+                }
+                if (!profile || String(table.cell(rowIdx, 12).data()) !== String(x[12]) ||
+                    String(table.cell(rowIdx, 18).data()) !== String(x[18])) return;
+                const display = document.createElement('div');
+                display.innerHTML = table.cell(rowIdx, 1).data();
+                const image = display.querySelector('img');
+                if (profile.avatarSaved && image) image.src = '/images/ava/' + encodeURIComponent(x[12]) + '.jpg?t=' + avatarVersion;
+                if (profile.name) {
+                    const nameNode = Array.from(display.childNodes).find(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+                    if (nameNode) nameNode.textContent = profile.name;
+                    else if (image) image.after(document.createTextNode(profile.name));
+                    table.cell(rowIdx, 15).data(profile.searchName);
+                    if (nameColumn !== undefined) table.cell(rowIdx, nameColumn).data(profile.name);
+                    const actions = document.createElement('div');
+                    actions.innerHTML = table.cell(rowIdx, 11).data();
+                    const chat = actions.querySelector('.open-message-modal');
+                    if (chat) chat.dataset.customerName = profile.name;
+                    table.cell(rowIdx, 11).data(actions.innerHTML);
+                }
+                table.cell(rowIdx, 1).data(display.innerHTML);
+            }).draw(false);
+            if (openmess == 1) {
+                OpenMessenger(x[18], data.data.from.id);
+            }
+            if (profile && !profile.avatarSaved) {
+                ShowCenterToast('warning', profile.name ? 'Đã cập nhật bình luận và tên khách. Chưa lấy được avatar.' : 'Đã cập nhật bình luận. Chưa lấy được tên và avatar.', 3500);
+            } else {
+                ShowCenterToast('success', profile ? 'Đã cập nhật bình luận và avatar khách.' : 'Đã cập nhật bình luận, có thể mở hộp thư hoặc xem live.', 3000);
+            }
+        },
+        error: function (xhr) {
+            ShowCenterToast('danger', xhr.responseJSON?.error || 'Không cập nhật được bình luận.', 3500);
+        }
+    });
 }

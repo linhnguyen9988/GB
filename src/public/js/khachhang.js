@@ -108,13 +108,9 @@ function LenDonKhachHang() {
         return;
     }
 
-    if (btn) btn.disabled = true;
-
-    $.ajax({
-        url: "/createorderviettel",
-        method: "POST",
-        dataType: "JSON",
-        data: {
+    return submitShippingOrder('viettel', {
+        button: btn,
+        payload: {
             fbname: fbnameNow,
             phone: phone,
             address: address,
@@ -124,24 +120,8 @@ function LenDonKhachHang() {
             userid: useridNow,
             realfbid: realfbid
         },
-        success: function (data) {
-            if (!data.realorderid) {
-                if (btn) btn.disabled = false;
-                ShowCenterToast('danger', gbEscapeText(data.error || 'GB chưa xác nhận được đơn Viettel.'), 5000);
-                return;
-            }
-            ResetLenDonKhachHang(useridNow);
-            if (btn) btn.disabled = false;
-            if (data.printed) {
-                ShowCenterToast('success', `${fbnameNow} • ${data.realorderid} • ${(+cod).toLocaleString()} đ`, 4000);
-            } else {
-                ShowCenterToast('warning', gbEscapeText(`Đã lên đơn Viettel ${data.realorderid}. ${data.printMessage || 'Chưa gửi được lệnh in.'} Bạn có thể in lại từ danh sách đơn.`), 5000);
-            }
-        },
-        error: function (xhr) {
-            if (btn) btn.disabled = false;
-            ShowCenterToast('danger', gbEscapeText(xhr.responseJSON?.error || 'Không nhận được phản hồi. Kiểm tra đơn Viettel trước khi gửi lại.'), 5000);
-        }
+        onCreated: () => ResetLenDonKhachHang(useridNow),
+        successMessage: code => `${fbnameNow} • ${code} • ${(+cod).toLocaleString()} đ`
     });
 }
 
@@ -197,13 +177,9 @@ function LenDonKhachHangJT() {
         return;
     }
 
-    if (btn) btn.disabled = true;
-
-    $.ajax({
-        url: "/pushorderjtex",
-        method: "POST",
-        contentType: "application/json",
-        data: JSON.stringify({
+    return submitShippingOrder('jt', {
+        button: btn,
+        payload: {
             fbname: fbnameNow,
             phone: phone,
             address: address,
@@ -216,24 +192,9 @@ function LenDonKhachHangJT() {
             huyen: huyenjt,
             xa: xajt,
             ...(document.getElementById('customerJtExchange')?.checked ? { isExchange: '1' } : {})
-        }),
-        success: function (data) {
-            if (btn) btn.disabled = false;
-            if (data.success) {
-                ResetLenDonKhachHang(useridNow);
-                if (data.printDispatched === false) {
-                    ShowCenterToast('warning', gbEscapeText(`Đã lên đơn J&T ${data.order_code}. ${data.printMessage || 'Chưa gửi được lệnh in.'} Bạn có thể in lại từ danh sách đơn.`), 5000);
-                } else {
-                    ShowCenterToast('success', `${fbnameNow} • ${data.order_code} • ${(+cod).toLocaleString()} đ`, 4000);
-                }
-            } else {
-                ShowCenterToast(data.order_created ? 'warning' : 'danger', gbEscapeText(data.message || 'Không tạo được đơn J&T.'), 5000);
-            }
         },
-        error: function (xhr) {
-            if (btn) btn.disabled = false;
-            ShowCenterToast('danger', gbEscapeText(xhr.responseJSON?.message || 'Không nhận được phản hồi. Kiểm tra đơn J&T trước khi gửi lại.'), 5000);
-        }
+        onCreated: () => ResetLenDonKhachHang(useridNow),
+        successMessage: code => `${fbnameNow} • ${code} • ${(+cod).toLocaleString()} đ`
     });
 }
 

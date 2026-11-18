@@ -1,9 +1,19 @@
 'use strict';
 const PDFDocument = require('pdfkit');
-const axios = require('axios');
+const { readFile } = require('node:fs/promises');
 const bwipjs = require('bwip-js');
 const path = require('path');
 const sharp = require('sharp');
+const { AVA_DIR } = require('../configs/constants');
+
+async function readPrintAvatar(source) {
+    if (/^(?:https?:\/\/|\/)/i.test(source)) {
+        const url = new URL(source, 'http://localhost');
+        const file = /^\/images\/ava\/([A-Za-z0-9_-]+\.jpg)$/.exec(url.pathname)?.[1];
+        return file ? readFile(path.join(AVA_DIR, file)) : null;
+    }
+    return Buffer.from(source.split(';base64,').pop(), 'base64');
+}
 
 async function createGiaBaoLabel(data) {
     return new Promise(async (resolve, reject) => {
@@ -41,18 +51,13 @@ async function createGiaBaoLabel(data) {
             let avatarSize = 35;
             let nameX = 52;
 
-            if (data.avabase64 && data.avabase64.length > 10) {
+            if (typeof data.avabase64 === 'string' && data.avabase64.length > 10) {
                 try {
-                    let rawBuffer;
-                    if (data.avabase64.startsWith('http')) {
-                        const response = await axios({ method: 'get', url: data.avabase64, responseType: 'arraybuffer', headers: { 'User-Agent': 'Mozilla/5.0' } });
-                        rawBuffer = Buffer.from(response.data);
-                    } else {
-                        const base64Data = data.avabase64.split(';base64,').pop();
-                        rawBuffer = Buffer.from(base64Data, 'base64');
+                    const rawBuffer = await readPrintAvatar(data.avabase64);
+                    if (rawBuffer) {
+                        const processedImg = await sharp(rawBuffer).resize(100, 100).grayscale().modulate({ contrast: 1.5 }).png().toBuffer();
+                        doc.image(processedImg, 15, commonY, { width: avatarSize, height: avatarSize });
                     }
-                    const processedImg = await sharp(rawBuffer).resize(100, 100).grayscale().modulate({ contrast: 1.5 }).png().toBuffer();
-                    doc.image(processedImg, 15, commonY, { width: avatarSize, height: avatarSize });
                 } catch (e) {
                     doc.lineWidth(0.5).rect(15, commonY, avatarSize, avatarSize).stroke();
                 }

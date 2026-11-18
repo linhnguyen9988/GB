@@ -8,7 +8,8 @@ const socket = require('../../socket');
 const { AVA_DIR, GlobalPageID } = require('../../configs/constants');
 const { LocDau } = require('../../utils/text');
 const { attachAka } = require('../../services/akaService');
-const { download } = require('../../utils/download');
+const { downloadAvatar } = require('../../utils/download');
+const { fetchFbProfile } = require('../../services/facebookService');
 const { getBrowser } = require('../../services/browserService');
 const { getPageToken } = require('../../services/pageTokenService');
 const { isFakeCommentId } = require('../../services/fakeComment');
@@ -97,7 +98,7 @@ module.exports = function registerLiveCommentRoutes(router) {
                         ]
                     );
                     sb.appendLine().append(sql);
-                    download(result.comments.data[i].from.picture.data.url, result.comments.data[i].from.id, AVA_DIR);
+                    downloadAvatar(result.comments.data[i].from.picture.data.url, result.comments.data[i].from.id, AVA_DIR).catch(() => {});
                 }
             }
 
@@ -151,6 +152,47 @@ module.exports = function registerLiveCommentRoutes(router) {
         });
     });
 
+    router.get('/api/live-comments/catch-up', jwtAuth, async (req, res) => {
+        const { liveId, after } = req.query;
+        if (typeof liveId !== 'string' || !/^[0-9_]{1,100}$/.test(liveId) ||
+            typeof after !== 'string' || !/^\d{1,20}$/.test(after)) {
+            return res.status(400).json({ error: 'Mã live hoặc mốc bình luận không hợp lệ.' });
+        }
+
+        try {
+            const [rows] = await DBConnection.query(
+                `SELECT CAST(l.idx AS CHAR) AS idx, l.commentid AS cmtid, l.name AS fbname, l.message,
+                        l.datecreate AS timelocal, l.liveid, l.pageid, l.userid, l.chot, l.gia, l.slchot,
+                        l.luotin, l.count, l.timecomment,
+                        ${hasChot2() ? 'l.gia2, l.slchot2,' : ''}
+                        k.id AS khid, k.fbname AS customer_name, k.phone, k.diachi, k.label,
+                        k.note, k.aka, k.nuocngoai, k.realfbid, k.threadid, k.fbnamex
+                 FROM livecomment l
+                 LEFT JOIN khachhang k ON k.id = COALESCE(
+                     (SELECT MAX(c.id) FROM khachhang c WHERE c.userid = l.userid AND c.pageid = l.pageid),
+                     (SELECT MAX(c.id) FROM khachhang c WHERE c.userid = l.userid)
+                 )
+                 WHERE l.liveid = ? AND l.idx > CAST(? AS UNSIGNED) ORDER BY l.idx ASC LIMIT 101`,
+                [liveId, after]
+            );
+            const comments = rows.slice(0, 100).map(row => ({
+                idx: row.idx, cmtid: row.cmtid, liveid: row.liveid, pageid: row.pageid, fbname: row.fbname,
+                message: row.message, timelocal: row.timelocal, chot: row.chot, gia: row.gia, slchot: row.slchot,
+                gia2: row.gia2, slchot2: row.slchot2, luotin: row.luotin, count: row.count, timecomment: row.timecomment,
+                customerInfo: {
+                    id: row.khid, userid: row.userid, pageid: row.pageid, fbname: row.customer_name || row.fbname || '',
+                    phone: row.phone || '', diachi: row.diachi || '', label: row.label || '', note: row.note || '',
+                    aka: row.aka || '', nuocngoai: row.nuocngoai || '', realfbid: row.realfbid || '',
+                    threadid: row.threadid || '', fbnamex: row.fbnamex || ''
+                }
+            }));
+            return res.json({ comments, hasMore: rows.length > comments.length });
+        } catch (error) {
+            console.error('[live] Không tải bù được bình luận:', error.code || error.name);
+            return res.status(500).json({ error: 'Không tải bù được bình luận.' });
+        }
+    });
+
     router.post("/action", jwtAuth, function (request, response, next) {
         var liveid = request.body.liveid;
         DBConnection.query(' SELECT livecomment.idx, livecomment.mess, livecomment.userid, livecomment.timecomment, livecomment.name, livecomment.message, livecomment.datecreate, livecomment.chot, livecomment.gia, livecomment.commentid, livecomment.luotin, livecomment.count, livecomment.app, livecomment.liveid, livecomment.pageid, livecomment.updateava, livecomment.realfbid, livecomment.slchot,' + selectCols('livecomment.') + ' khachhang.id, khachhang.phone, khachhang.diachi, khachhang.avalink, khachhang.label, khachhang.note, khachhang.fbnamex, khachhang.aka, khachhang.nuocngoai, khachhang.realfbid, khachhang.threadid FROM livecomment INNER JOIN khachhang ON livecomment.userid=khachhang.userid AND liveid= ? ', liveid,
@@ -170,88 +212,94 @@ module.exports = function registerLiveCommentRoutes(router) {
             });
     });
 
-    router.post('/detailcomment', jwtAuth, function (req, res) {
-        var cmtid = req.body.commentid;
-        var userid = req.body.userid;
-        if (isFakeCommentId(cmtid)) {
+    router.post('/detailcomment', jwtAuth, async function (req, res) {
+        const { commentid, userid, refreshProfile } = req.body;
+        if (isFakeCommentId(commentid)) {
             return res.json({ data: { skipped: true, message: 'Comment ảo, bỏ qua.' } });
         }
-        DBConnection.query(" SELECT token FROM usertoken WHERE id=1",
-            async function (error, data) {
-                if (error) {
-                    throw error;
+        if (typeof commentid !== 'string' || !/^\d+_\d+$/.test(commentid) ||
+            typeof userid !== 'string' || !/^\d+$/.test(userid)) {
+            return res.status(400).json({ error: 'Mã bình luận hoặc khách hàng không hợp lệ.' });
+        }
+
+        let page;
+        try {
+            const [[comment]] = await DBConnection.query(
+                'SELECT CAST(pageid AS CHAR) AS pageid FROM livecomment WHERE commentid = ? AND userid = ? LIMIT 1',
+                [commentid, userid]
+            );
+            if (!comment) return res.status(404).json({ error: 'Không tìm thấy bình luận của khách này.' });
+            const [[account]] = await DBConnection.query('SELECT token FROM usertoken WHERE id = 1');
+            if (!account?.token) return res.status(503).json({ error: 'Thiếu token Facebook để cập nhật bình luận.' });
+
+            const browser = await getBrowser();
+            page = await browser.newPage();
+            const updateProfile = refreshProfile === '1';
+            const fields = 'from,id,created_time,live_broadcast_timestamp,message,application';
+            async function readComment(fieldList) {
+                const params = new URLSearchParams({ fields: fieldList, access_token: account.token });
+                await page.goto(`https://graph.facebook.com/v16.0/${commentid}?${params}`, { timeout: 15000 });
+                return JSON.parse(await page.$eval('*', element => element.innerText));
+            }
+            let data = await readComment(updateProfile ? fields.replace('from,', 'from{id,name,picture{url,is_silhouette}},') : fields);
+            if (updateProfile && data.error) data = await readComment(fields);
+            if (!data.from?.id) return res.json({ data });
+
+            const realId = String(data.from.id);
+            const timestamp = data.live_broadcast_timestamp == null ? NaN : Number(data.live_broadcast_timestamp);
+            const hasTimestamp = Number.isFinite(timestamp) && timestamp >= 0 && timestamp <= 8640000000000;
+            const time = hasTimestamp ? new Date(timestamp * 1000).toISOString().slice(11, 19) : null;
+            let profile;
+            if (updateProfile) {
+                const picture = data.from.picture?.data;
+                let avatar = picture?.is_silhouette ? '' : picture?.url || '';
+                let name = data.from.name || '';
+                let avatarSaved = false;
+                if (avatar) {
+                    avatarSaved = await downloadAvatar(avatar, userid, AVA_DIR).then(() => true, () => false);
                 }
-                else {
-                    let token = data[0].token;
-                    let bodyx;
-                    let page;
-                    try {
-                        const browser = await getBrowser();
-                        page = await browser.newPage();
-                        await page.goto(`https://graph.facebook.com/v16.0/${cmtid}?fields=from,id,created_time,live_broadcast_timestamp,message,application&access_token=${token}`);
-                        const body = await page.$eval('*', (el) => el.innerText);
-                        bodyx = JSON.parse(body);
-                    } catch (e) {
-                        console.error('[detailcomment] Lỗi đọc Graph API:', e.message);
-                        return res.json({ error: 'Lỗi Token' });
-                    } finally {
-                        if (page) await page.close().catch(() => { });
-                    }
-                    if (error) {
-                        res.json({
-                            error: 'Lỗi Token'
-                        });
-                    } else {
-                        if (bodyx.hasOwnProperty('from')) {
-                            var timecmt = 0;
-                            if (bodyx.hasOwnProperty('live_broadcast_timestamp')) {
-                                timecmt = new Date(bodyx.live_broadcast_timestamp * 1000).toISOString().substring(11, 19);
-                            }
-                            res.json({
-                                data: bodyx
-                            });
-                            const realfbid_moi = bodyx.from.id;
-                            const userid_hientai = userid;
-
-                            const sql_select = SqlString.format('SELECT phone, diachi, note, nuocngoai FROM khachhang WHERE realfbid = ? AND userid != ? LIMIT 1', [realfbid_moi, userid_hientai]);
-
-                            DBConnection.query(sql_select, (error, results) => {
-                                if (error) {
-                                    console.error('Lỗi khi SELECT khách hàng cũ:', error);
-                                    return;
-                                }
-                                let sql_update_khachhang = '';
-                                if (results && results.length > 0) {
-                                    const old_customer = results[0];
-
-                                    sql_update_khachhang = SqlString.format(
-                                        'UPDATE khachhang SET realfbid=?, phone=?, diachi=?, note=?, nuocngoai=? WHERE userid=?',
-                                        [realfbid_moi, old_customer.phone, old_customer.diachi, old_customer.note, old_customer.nuocngoai, userid_hientai]
-                                    );
-                                } else {
-                                    sql_update_khachhang = SqlString.format(
-                                        'UPDATE khachhang SET realfbid=? WHERE userid=?',
-                                        [realfbid_moi, userid_hientai]
-                                    );
-                                }
-
-                                let sql_update_livecmt = SqlString.format(
-                                    'UPDATE livecomment SET realfbid=?, count=?, timecomment=?, app=? WHERE commentid=?',
-                                    [realfbid_moi, bodyx.live_broadcast_timestamp, timecmt, bodyx.application.name, cmtid]
-                                );
-
-                                let sql_final = sql_update_livecmt + '; ' + sql_update_khachhang;
-                                DBConnection.query(sql_final);
-                            });
-
-                        } else {
-                            res.json({
-                                data: bodyx
-                            });
-                        }
+                if (!avatarSaved || !name) {
+                    const fallback = await fetchFbProfile(userid, comment.pageid, { saveAvatar: false });
+                    name ||= fallback?.name || '';
+                    if (!avatarSaved && fallback?.pic && fallback.pic !== avatar) {
+                        avatar = fallback.pic;
+                        avatarSaved = await downloadAvatar(avatar, userid, AVA_DIR).then(() => true, () => false);
                     }
                 }
-            });
+                profile = { name, searchName: name ? LocDau(name) : '', avatarSaved };
+                if (name || avatarSaved) {
+                    await DBConnection.query(
+                        `UPDATE khachhang SET fbname = COALESCE(?, fbname), fbnamex = COALESCE(?, fbnamex),
+                            avalink = COALESCE(?, avalink) WHERE userid = ? AND pageid = ?`,
+                        [name || null, profile.searchName || null, avatarSaved ? avatar : null, userid, comment.pageid]
+                    );
+                }
+            }
+
+            const [[oldCustomer]] = await DBConnection.query(
+                'SELECT phone, diachi, note, nuocngoai FROM khachhang WHERE realfbid = ? AND userid != ? LIMIT 1',
+                [realId, userid]
+            );
+            if (oldCustomer) {
+                await DBConnection.query(
+                    'UPDATE khachhang SET realfbid=?, phone=?, diachi=?, note=?, nuocngoai=? WHERE userid=?',
+                    [realId, oldCustomer.phone, oldCustomer.diachi, oldCustomer.note, oldCustomer.nuocngoai, userid]
+                );
+            } else {
+                await DBConnection.query('UPDATE khachhang SET realfbid=? WHERE userid=?', [realId, userid]);
+            }
+            await DBConnection.query(
+                `UPDATE livecomment SET realfbid=?, count=COALESCE(?, count), timecomment=COALESCE(?, timecomment),
+                    app=COALESCE(?, app), name=COALESCE(?, name) WHERE commentid=? AND userid=?`,
+                [realId, hasTimestamp ? timestamp : null, time, data.application?.name || null, profile?.name || null, commentid, userid]
+            );
+            return res.json({ data, profile });
+        } catch (error) {
+            console.error('[detailcomment] Lỗi cập nhật:', error.code || error.name);
+            return res.status(502).json({ error: 'Không cập nhật được bình luận từ Facebook hoặc database.' });
+        } finally {
+            if (page) await page.close().catch(() => {});
+        }
     });
 
     router.post('/replycomment', jwtAuth, function (req, res) {

@@ -4,14 +4,15 @@ const SqlString = require('sqlstring');
 const { AKA_SQL } = require('./akaService');
 const { REAL_COMMENT_ID_SQL_REGEXP, makeFakeCommentId } = require('./fakeComment');
 
-const getRecentCommentIdsFromDB = (userId) => {
+const getRecentCommentIdsFromDB = (userId, pageId) => {
     return new Promise((resolve, reject) => {
         if (!userId) {
             console.warn('userId không được cung cấp, không thể truy vấn database.');
             return resolve([]);
         }
-        const sql = `SELECT commentid FROM livecomment WHERE userid = ? AND commentid REGEXP ? ORDER BY idx DESC LIMIT 10`;
-        DBConnection.query(sql, [userId, REAL_COMMENT_ID_SQL_REGEXP], (err, rows) => {
+        const sql = `SELECT commentid FROM livecomment WHERE userid = ? AND commentid REGEXP ?${pageId ? ' AND pageid = ?' : ''} ORDER BY idx DESC LIMIT 10`;
+        const params = pageId ? [userId, REAL_COMMENT_ID_SQL_REGEXP, pageId] : [userId, REAL_COMMENT_ID_SQL_REGEXP];
+        DBConnection.query(sql, params, (err, rows) => {
             if (err) {
                 console.error('Lỗi khi truy vấn database để lấy comment ID:', err);
                 return reject(err);

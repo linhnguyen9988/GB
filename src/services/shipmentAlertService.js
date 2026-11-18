@@ -1,12 +1,19 @@
 'use strict';
+const { createHash } = require('node:crypto');
 const DBConnection = require("../configs/DBConnection");
 const axios = require('axios');
 const { getPageToken } = require('./pageTokenService');
 const { toE164VN } = require('../utils/text');
+const { sendCustomerMessage } = require('./zaloCustomerChat');
 
 function suppressCustomerShipmentAlert(...reasons) {
     return reasons.some(reason => typeof reason === 'string' &&
         /phân sai|hàng chưa đến/.test(reason.normalize('NFC').toLowerCase().replace(/\s+/g, ' ')));
+}
+
+function isOutsideMessagingWindow(error) {
+    const { code, error_subcode: subcode } = error.response?.data?.error || {};
+    return code === 2018286 || (code === 10 && [2018278, 2018065, 2534022].includes(subcode));
 }
 
 async function SendCanhBao(orderNumber, shipper_name, shipper_phone, cod, issue, carrier = 'Viettel Post') {
@@ -15,26 +22,22 @@ async function SendCanhBao(orderNumber, shipper_name, shipper_phone, cod, issue,
         const db = DBConnection.promise();
 
         const [orders] = await db.query(
-            `SELECT userid FROM lendon WHERE realorderid = ?${jt ? " AND provider = 'J&T'" : ''} LIMIT 1`,
+            `SELECT CAST(userid AS CHAR) AS userid FROM lendon WHERE realorderid = ?${jt ? " AND provider = 'J&T'" : ''} LIMIT 1`,
             [orderNumber]
         );
         if (orders.length === 0) return;
 
         const [users] = await db.query(
-            'SELECT pageid FROM khachhang WHERE userid = ? LIMIT 1',
+            'SELECT CAST(pageid AS CHAR) AS pageid FROM khachhang WHERE userid = ? LIMIT 1',
             [orders[0].userid]
         );
         if (users.length === 0) {
-            if (jt) console.warn('[J&T Messenger]', orderNumber, 'Thiếu thông tin Page của khách.');
+            console.warn(`[${carrier} Messenger]`, orderNumber, 'Thiếu thông tin Page của khách.');
             return;
         }
 
         const pageId = users[0].pageid;
         const token = await getPageToken(pageId);
-        if (jt && !token) {
-            console.warn('[J&T Messenger]', orderNumber, 'Thiếu token của Page.');
-            return;
-        }
         const recipientId = orders[0].userid;
         const shipperPhoneE164 = toE164VN(shipper_phone);
         const text = [
@@ -61,10 +64,11 @@ async function SendCanhBao(orderNumber, shipper_name, shipper_phone, cod, issue,
                 payload: shipperPhoneE164
             });
         }
-        const tryingSend = async (messaging_type, tag = null) => {
+        const sendMessenger = async (humanAgent = false) => {
             const payload = {
                 recipient: { id: recipientId },
-                messaging_type,
+                messaging_type: humanAgent ? 'MESSAGE_TAG' : 'UPDATE',
+                ...(humanAgent ? { tag: 'HUMAN_AGENT' } : {}),
                 message: {
                     attachment: {
                         type: 'template',
@@ -74,8 +78,7 @@ async function SendCanhBao(orderNumber, shipper_name, shipper_phone, cod, issue,
                             buttons
                         }
                     }
-                },
-                ...(tag ? { tag } : {})
+                }
             };
             if (jt) {
                 await axios.post(`https://graph.facebook.com/v25.0/${encodeURIComponent(pageId)}/messages`, payload, {
@@ -83,26 +86,43 @@ async function SendCanhBao(orderNumber, shipper_name, shipper_phone, cod, issue,
                     timeout: 10000
                 });
             } else {
-                await axios.post(`https://graph.facebook.com/v19.0/me/messages?access_token=${token}`, payload);
+                await axios.post('https://graph.facebook.com/v19.0/me/messages', payload, {
+                    headers: { Authorization: `Bearer ${token}` }, timeout: 10000
+                });
             }
         };
 
-        try {
-            await tryingSend('UPDATE');
-        } catch (err) {
-            const code = err.response?.data?.error?.code;
-            if (!jt && (code === 2018286 || code === 10)) {
-                await tryingSend('MESSAGE_TAG', 'HUMAN_AGENT');
-            } else {
-                throw err;
+        if (token) {
+            try {
+                try {
+                    await sendMessenger();
+                } catch (error) {
+                    if (!isOutsideMessagingWindow(error)) throw error;
+                    await sendMessenger(true);
+                }
+                return;
+            } catch (error) {
+                const status = error.response?.status;
+                const metaError = error.response?.data?.error;
+                if (!(status >= 400 && status < 500 && metaError)) throw error;
+                console.warn(`[${carrier} Messenger]`, orderNumber, 'Meta từ chối · chuyển sang Zalo',
+                    metaError.code, metaError.error_subcode ?? '-');
             }
         }
+
+        const zaloText = `${text}\nXem đơn hàng: ${journeyUrl}`;
+        const clientMessageId = jt
+            ? 'jt-shipment-' + createHash('sha256').update(text).digest('hex')
+            : 'viettel-shipment-' + createHash('sha256').update(zaloText).digest('hex');
+        const result = await sendCustomerMessage({
+            customerId: recipientId, pageId, clientMessageId,
+            actor: { username: 'Hệ thống' }, text, link: journeyUrl
+        });
+        if (!result.textSent) console.warn(`[${carrier} Zalo]`, orderNumber, result.error || 'Chưa xác nhận được kết quả gửi.');
     } catch (error) {
-        if (jt) {
-            const metaError = error.response?.data?.error;
-            console.warn('[J&T Messenger]', orderNumber, 'Gửi thất bại.',
-                'HTTP:', error.response?.status ?? '-', 'Meta:', metaError?.code ?? '-', 'chi tiết:', metaError?.error_subcode ?? '-');
-        }
+        const metaError = error.response?.data?.error;
+        console.warn(`[${carrier} Messenger]`, orderNumber, 'Gửi thất bại.',
+            'HTTP:', error.response?.status ?? '-', 'Meta:', metaError?.code ?? '-', 'chi tiết:', metaError?.error_subcode ?? '-');
     }
 }
 

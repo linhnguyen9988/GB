@@ -1,32 +1,9 @@
 'use strict';
 const DBConnection = require("../../configs/DBConnection");
-const fs = require('fs');
-const path = require('path');
 const { SendCanhBao, suppressCustomerShipmentAlert } = require('../../services/shipmentAlertService');
 const { VIETTEL_WEBHOOK_TOKEN } = require('../../configs/constants');
 const { sendFcmToUser } = require('../fcm');
 const zaloAlerts = require('../../services/zaloShipmentAlerts');
-
-    const POD_LOG_FILE = path.join(__dirname, '..', 'pod-webhooks.txt');
-
-function logPodWebhookToFile(rawBody, orderNumber, podImages) {
-    const timestamp = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Saigon' });
-    const lines = [
-        '='.repeat(80),
-        `Thời gian ghi: ${timestamp}`,
-        `Đơn hàng: ${orderNumber}`,
-        `Số ảnh POD: ${podImages.length}`,
-        `Link ảnh: ${podImages.join(', ')}`,
-        '--- Toàn bộ payload webhook ---',
-        JSON.stringify(rawBody, null, 2),
-        '='.repeat(80),
-        '', ''
-    ].join('\n');
-
-    fs.appendFile(POD_LOG_FILE, lines, (err) => {
-        if (err) console.error('Lỗi ghi file pod-webhooks.txt:', err);
-    });
-}
 
 function weightStatusTime(value) {
     const match = /^(\d{2})\/(\d{2})\/(\d{4}) ((?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d)$/.exec(value);
@@ -58,16 +35,9 @@ module.exports = function registerViettelWebhook(router) {
             const reasonCode = data.REASON_CODE || null;
 
             const podImages = data.POD?.IMAGES || [];
-            if (podImages.length > 0) {
-                console.log(`[POD] Đơn ${data.ORDER_NUMBER} ĐÃ CÓ ${podImages.length} ảnh POD:`, podImages);
-                logPodWebhookToFile(body, data.ORDER_NUMBER, podImages);
-            } else {
-                //console.log(`[POD] Đơn ${data.ORDER_NUMBER} chưa có ảnh POD (mảng rỗng)`);
-            }
             const podImagesJson = podImages.length > 0 ? JSON.stringify(podImages) : null;
 
             const orderNumber = data.ORDER_NUMBER;
-            //logPodWebhookToFile(body, data.ORDER_NUMBER, podImages);//de xem webhook thoi, sau nay bo di
             const db = DBConnection.promise();
             const rawWeight = data.PRODUCT_WEIGHT;
             const weightGrams = typeof rawWeight === 'number' || typeof rawWeight === 'string'

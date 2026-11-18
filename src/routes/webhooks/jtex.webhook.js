@@ -104,8 +104,8 @@ async function storeFeedback(data) {
                     body: issue ? row.scantypename + ' - ' + issue : row.scantypename,
                     phone: row.scanbycontact,
                     time,
-                    suppressMessenger: suppressCustomerShipmentAlert(issue, event.scanTypeName) ||
-                        [issue, event.scanTypeName].some(reason => normalizeReason(reason) === 'người mua hẹn lại ngày nhận')
+                    notifyCustomer: /từ chối|không liên lạc được/.test(normalizeReason(issue)) &&
+                        !suppressCustomerShipmentAlert(issue, event.scanTypeName)
                 });
             }
         }
@@ -130,7 +130,7 @@ async function storeFeedback(data) {
         }
         for (const [code, alert] of alerts) {
             if (storedNewest === null || alert.time >= storedNewest) {
-                notices.set(code, { body: alert.body, phone: alert.phone, push: true, messenger: !alert.suppressMessenger });
+                notices.set(code, { body: alert.body, phone: alert.phone, push: true, messenger: alert.notifyCustomer });
             }
         }
         await conn.commit();

@@ -81,8 +81,21 @@
     cursor: pointer;
 }
 
+body.gb-chat-open {
+    overflow: hidden !important;
+    overscroll-behavior-y: none;
+}
+
+#message-modal {
+    overflow: hidden;
+    overscroll-behavior: contain;
+}
+
 .modal-body.messages-container-messenger {
-    flex: 1;
+    flex: 1 1 auto;
+    min-height: 0;
+    overscroll-behavior-y: none;
+    touch-action: pan-y;
     overflow-y: auto;
     overflow-x: hidden;
     padding: 20px;
@@ -90,7 +103,37 @@
     flex-direction: column;
 }
 
+.messages-container-messenger.chat-following-latest,
+.messages-container-messenger.chat-anchoring-history {
+    overflow-anchor: none;
+}
+
+.chat-message-list {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.chat-quote-context {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    border-radius: inherit;
+    overflow: hidden;
+}
+
+.chat-quote-context-body {
+    min-height: 0;
+    flex: 1;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+}
+
 .message-row-messenger {
+    flex-shrink: 0;
     display: flex;
     align-items: flex-start;
     margin-bottom: 3px;
@@ -311,7 +354,8 @@
     font-weight: 700;
 }
 
-.message-retry-zalo[hidden] { display: none; }
+.message-retry-zalo[hidden],
+.message-replace-attachment[hidden] { display: none; }
 
 .message-status-time-wrapper {
     display: none;
@@ -785,68 +829,12 @@
     color: #ffffff;
 }
 
-.load-more-btn.loading {
-    cursor: default;
-    background-color: #ddd;
-    color: #666;
-}
-
-.load-more-btn.loading:hover {
-    background-color: #ddd;
-    color: #666;
-}
-
-.load-more-btn .spinner-icon {
-    font-size: 1.2em;
-    margin-right: 8px;
-    animation: spin 1s linear infinite;
-}
-
-.load-more-btn .load-more-text {
-    display: inline;
-}
-
-.pull-to-refresh-indicator {
-    display: none;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    color: #888;
-    padding: 15px 10px;
-    font-size: 0.9rem;
-    flex-shrink: 0;
-    transition: all 0.3s ease-in-out;
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    background-color: #f8f9fa;
-    z-index: 10;
-}
-
-.pull-icon {
-    font-size: 1.2rem;
-}
-
-.pull-icon::before {
+.load-more-btn[hidden] {
     display: none;
 }
 
-.pull-to-refresh-indicator.refreshing .pull-icon {
-    position: relative;
-    width: 1.2em;
-    height: 1.2em;
-}
-
-.pull-to-refresh-indicator.refreshing .pull-icon::before {
-    content: "\F130";
-    font-family: "bootstrap-icons";
-    display: block;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    animation: spinner-rotate 1s linear infinite;
+.load-more-btn:disabled {
+    opacity: .7;
 }
 
 @keyframes spin {
@@ -856,16 +844,6 @@
 
     to {
         transform: rotate(360deg);
-    }
-}
-
-@keyframes spinner-rotate {
-    from {
-        transform: translate(-50%, -50%) rotate(0deg);
-    }
-
-    to {
-        transform: translate(-50%, -50%) rotate(360deg);
     }
 }
 

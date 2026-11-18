@@ -13,8 +13,6 @@
                                     <input type="text" id="liveidinput" class="form-control input-sm"
                                         placeholder="Nhập liveid vào" aria-label="LiveID"
                                         aria-describedby="basic-addon1" required hidden>
-                                    <!--<button type="button" class="btn btn-primary" id="scancomment"
-                                    onclick="ScanComment()">Quét</button>-->
                                     <button type="button" class="btn btn-primary" id="btnbot"
                                         onclick="ScrollBot()">BOT</button>
                                         <button type="button" class="btn btn-primary" id="btnads"
@@ -24,7 +22,7 @@
                             <div class="d-none d-md-block">
                                 <div class="input-group mb-3">
                                     <input type="text" id="livenote" class="form-control input-sm"
-                                        onfocusout="OnUpdateLiveNote()" placeholder="Ghi chú live">
+                                        readonly placeholder="Ghi chú live">
                                 </div>
                             </div>
                         </div>
@@ -44,8 +42,6 @@
                                 </select>
                                 <button type="button" class="btn btn-primary" id="btnloadlive"
                                     onclick="LoadLive()">Load</button>
-                                <!--<button type="button" class="btn btn-primary" id="btnloadlive"
-                                onclick="DeleteLive()">Del</button>-->
                             </div>
                             <div class="mt-1">
                                 <span id="liveStatusBadge" class="badge bg-light text-dark border">Chưa chọn live</span>
@@ -93,6 +89,7 @@
         </div>
 
     </div>
-    <script src="/js/readcomment.js?v=20261110-customer-details"></script>
-<script src="/js/lucky.js"></script>
+    <script src="/js/live-comment-shared.js?v=20261117-rejoin"></script>
+    <script src="/js/readcomment.js?v=20261117-rejoin"></script>
+<script src="/js/lucky.js?v=20261117-rejoin"></script>
     <%- include('footer'); -%>

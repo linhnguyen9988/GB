@@ -2,7 +2,7 @@
 const { apiAuth, webAuth, requireAdmin } = require('./jwtAuth');
 const { REGISTER_PATH } = require('../configs/constants');
 // These operations belong to the former /profile administration screen.
-const adminPaths = new Set(['/gettoken', '/getvietteltoken', '/restartchrome', '/getalladdress', '/sendnoti', '/printviettelmanual', '/deleteallpost', '/deletelive', '/scancomment']);
+const adminPaths = new Set(['/gettoken', '/getvietteltoken', '/restartchrome', '/sendnoti', '/printviettelmanual', '/deleteallpost', '/deletelive', '/scancomment']);
 module.exports = function routePermissions(req, res, next) {
  const p = req.path.toLowerCase().replace(/\/+$/, '') || '/';
  if (['/login', '/logout', '/journey'].includes(p) || p.startsWith('/journey/')) return next();

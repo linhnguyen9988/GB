@@ -165,13 +165,19 @@ module.exports = function registerOrderRoutes(router) {
     });
 
     router.post('/getfullinfo', jwtAuth, function (req, response) {
-        var id = req.body.id;
-        DBConnection.query(` SELECT * FROM khachhang WHERE id='${id}'`,
-            async function (error, data) {
-                response.json({
-                    data: data
-                });
-            });
+        const rawId = req.body.id;
+        if ((typeof rawId !== 'string' && typeof rawId !== 'number') ||
+            (typeof rawId === 'number' && !Number.isSafeInteger(rawId))) {
+            return response.status(400).json({ data: [], error: 'Mã khách hàng không hợp lệ.' });
+        }
+        const id = String(rawId);
+        if (!/^[1-9]\d{0,19}$/.test(id)) {
+            return response.status(400).json({ data: [], error: 'Mã khách hàng không hợp lệ.' });
+        }
+        DBConnection.query('SELECT * FROM khachhang WHERE id = ? LIMIT 1', [id], function (error, data) {
+            if (error) return response.status(500).json({ data: [], error: 'Không tra cứu được khách hàng.' });
+            return response.json({ data: data });
+        });
     });
 
     router.post('/updatediachilendon', jwtAuth, function (req, response) {

@@ -17,13 +17,20 @@ const initSocket = (server) => {
     });
 
     io.on('connection', (socket) => {
-        socket.on('join-live-stream', (postId) => {
-            socket.join(postId);
-            //console.log(`User joined live stream room: ${postId}`);
+        socket.on('join-live-stream', async (postId, acknowledge) => {
+            if (Number.isSafeInteger(postId)) postId = String(postId);
+            if (typeof postId !== 'string' || !postId) return;
+            try {
+                await socket.join(postId);
+                if (typeof acknowledge === 'function') acknowledge({ joined: true });
+            } catch (error) {
+                console.error('[live] Không vào được phòng bình luận:', error.message);
+                if (typeof acknowledge === 'function') acknowledge({ joined: false });
+            }
         });
 
         socket.on('leave-live-stream', (postId) => {
-            socket.leave(postId);
+            socket.leave(String(postId));
             //console.log(`User left live stream room: ${postId}`);
         });
 

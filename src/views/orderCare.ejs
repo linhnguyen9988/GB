@@ -34,7 +34,7 @@
                     </dl>
                     <dl class="care-fields">
                         <div><dt>Mã vận đơn</dt><dd class="care-code-line"><span id="care-waybill"><%= order.journeyCode || '—' %></span>
-                            <% if (order.journeyCode) { %><button type="button" class="btn btn-sm btn-outline-secondary" data-care-copy aria-label="Sao chép mã vận đơn" title="Sao chép mã vận đơn"><i class="bi bi-copy" aria-hidden="true"></i></button><% } %>
+                            <% if (order.journeyCode) { %><button type="button" class="btn btn-sm btn-outline-secondary" data-care-copy aria-label="Sao chép mã vận đơn" title="Sao chép mã vận đơn"><i class="bi bi-files" aria-hidden="true"></i></button><% } %>
                         </dd></div>
                         <div><dt>Mã nội bộ · Người lên đơn</dt><dd><%= order.internalCode || '—' %> · <%= order.creator || 'Chưa ghi nhận' %></dd></div>
                         <div><dt>Người nhận</dt><dd><%= order.name || '—' %></dd></div>

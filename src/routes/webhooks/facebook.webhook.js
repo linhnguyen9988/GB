@@ -10,7 +10,7 @@ const { CreateOrderID } = require('../../utils/orderId');
 const { GetUserToken, ShareToPage2, fetchFbProfile, runGetConversations } = require('../../services/facebookService');
 const { LocDau, normalizePhone } = require('../../utils/text');
 const { codeToEmoji, decodeEmoji, emojiToCode } = require('../../utils/emoji');
-const { download } = require('../../utils/download');
+const { download, downloadAvatar } = require('../../utils/download');
 const { emitReactionSummary } = require('../../services/reactionService');
 const { formatFbTime } = require('../../utils/dateTime');
 const { getNextCloudinary } = require('../../services/cloudinaryService');
@@ -31,12 +31,36 @@ module.exports = function registerFacebookWebhook(router) {
 
     router.post('/facebook', async function (req, res) {
         res.sendStatus(200);
+        const entries = req.body?.entry;
+        if (!Array.isArray(entries)) return;
         const io = socket.getIo();
+        for (const entry of entries) {
+            // Meta batches Page entries. Each Messenger entry carries one messaging event.
+            if (entry?.messaging?.[0]) {
+                try {
+                    await handleEntry(io, entry, entry.messaging[0], null);
+                } catch (error) {
+                    console.error('[FB webhook] Lỗi xử lý Messenger:', error.message);
+                }
+            }
+            for (const change of Array.isArray(entry?.changes) ? entry.changes : []) {
+                if (!change?.value || typeof change.value !== 'object') continue;
+                try {
+                    await handleEntry(io, entry, null, change);
+                } catch (error) {
+                    console.error('[FB webhook] Lỗi xử lý Page:', error.message);
+                }
+            }
+        }
+    });
+
+    async function handleEntry(io, entry, event, change) {
         const EmitMessage = async (id, phone, picture, sender, recipient, text, timemess, fbname, messageImg, label, pageid, diachi, nuocngoai, is_echo, note, messid, templateJson, replyTo) => {
             const newMessageData = {
                 id: id,
                 messid: messid || null,
                 client_message_id: auditActor ? auditActor.client_message_id || null : null,
+                part: auditActor?.part || null,
                 sent_by_user_id: auditActor ? auditActor.user_id : null,
                 sent_by_username: auditActor ? auditActor.username : null,
                 phone: phone,
@@ -45,6 +69,7 @@ module.exports = function registerFacebookWebhook(router) {
                 recipientId: recipient,
                 messageText: text,
                 timestamp: timemess,
+                message_timestamp: event?.timestamp || null,
                 fbname: fbname,
                 messageImg: messageImg,
                 label: label,
@@ -59,8 +84,8 @@ module.exports = function registerFacebookWebhook(router) {
             };
             io.emit('new-message', newMessageData);
         }
-        if (req.body.entry[0].hasOwnProperty('messaging')) {
-            const value = req.body.entry[0].messaging[0];
+        if (event) {
+            const value = event;
             var messid, sender, recipient, text, timemess = '', khachhang, pageid, token;
 
             if (value.hasOwnProperty('message')) {
@@ -342,7 +367,7 @@ module.exports = function registerFacebookWebhook(router) {
                                         var prof = await fbRes.json();
                                         fbname = prof.name || 'Khách hàng';
                                         picture = (prof.picture && prof.picture.data) ? prof.picture.data.url : '';
-                                        if (picture) download(picture, khachhang, AVA_DIR).catch(() => { });
+                                        if (picture) downloadAvatar(picture, khachhang, AVA_DIR).catch(() => { });
                                     } catch (e) { }
 
                                     if (text && !text.includes('/')) {
@@ -385,9 +410,11 @@ module.exports = function registerFacebookWebhook(router) {
             } else if (value.hasOwnProperty('read')) {
                 const watermark = value.read.watermark;
                 const senderId = value.sender.id;
+                const pageId = value.recipient?.id || entry.id;
+                if (!senderId || !pageId || !Number.isFinite(Number(watermark))) return;
                 DBConnection.query(
-                    "UPDATE messaging SET isread = 1 WHERE recipient = ? AND timestamp <= ? AND channel = 'facebook'",
-                    [senderId, watermark],
+                    "UPDATE messaging SET isread = 1 WHERE recipient = ? AND sender = ? AND timestamp <= ? AND channel = 'facebook'",
+                    [senderId, pageId, watermark],
                     (error, results) => {
                         if (error) {
                             console.error('Lỗi khi cập nhật trạng thái đã đọc:', error);
@@ -398,6 +425,7 @@ module.exports = function registerFacebookWebhook(router) {
                 );
                 io.emit('read', {
                     senderId: senderId,
+                    pageId: pageId,
                     watermark: watermark,
                 });
                 return;
@@ -467,8 +495,7 @@ module.exports = function registerFacebookWebhook(router) {
                     });
                 });
             }
-        } else if (req.body.entry[0].hasOwnProperty('changes')) {
-            const change = req.body.entry[0].changes[0];
+        } else if (change) {
             const { value } = change;//cai nay phai {} moi dc
             if (value.hasOwnProperty('verb')) {
                 if (value.verb === 'add' && value.item != 'comment') {
@@ -494,7 +521,6 @@ module.exports = function registerFacebookWebhook(router) {
                         }
                     }
                     //value.item - status - photo - video - dang tim them
-                    //console.log(req.body.entry[0]);
                     //console.log(value);
                 } else if (value.item == 'comment' && value.verb == 'add') {
                     if (!value.hasOwnProperty('from')) {
@@ -505,9 +531,9 @@ module.exports = function registerFacebookWebhook(router) {
                     var parent_id = '';
                     var fbname = '';
                     var idx = '';
-                    var token = '';
-                    var pageid = req.body.entry[0].id;
-                    var pic = 'none';
+                    var pageid = entry.id;
+                    const suppliedPicture = value.from.picture?.data;
+                    let picture = suppliedPicture?.is_silhouette ? '' : suppliedPicture?.url || '';
                     var userid = value.from.id;
                     var message = value.message;
                     var cmtid = value.comment_id;
@@ -517,20 +543,7 @@ module.exports = function registerFacebookWebhook(router) {
                     if (value.parent_id) {
                         parent_id = value.parent_id;
                     }
-                    token = await getPageToken(pageid);
-
-                    if (!value.from.hasOwnProperty('name')) {
-                        const prof = await fetchFbProfile(value.from.id, pageid);
-                        if (prof) {
-                            pic = prof.pic || pic;
-                            fbname = prof.name;
-                        }
-                    } else {
-                        fbname = value.from.name;
-                    }
-                    if (fbname == '') {
-                        console.log('[comment] Không lấy được tên khách:', JSON.stringify(value.from));
-                    }
+                    fbname = value.from.name || '';
 
                     if (message == null || message == undefined) {
                         message = '';
@@ -548,6 +561,13 @@ module.exports = function registerFacebookWebhook(router) {
 
                     try {
                         const customerData = await queryAsync(`SELECT * FROM khachhang WHERE userid='${userid}' LIMIT 1`);
+                        const oldAvatar = customerData[0]?.avalink;
+                        if ((!picture && (!oldAvatar || oldAvatar === 'none')) || (!fbname && !customerData[0]?.fbname)) {
+                            const profile = await fetchFbProfile(userid, pageid, { saveAvatar: false });
+                            picture ||= profile?.pic || '';
+                            fbname ||= profile?.name || '';
+                        }
+                        if (picture) downloadAvatar(picture, userid, AVA_DIR).catch(() => { });
 
                         if (customerData.length > 0) {
                             if (!fbname) fbname = customerData[0].fbname || '';
@@ -556,18 +576,10 @@ module.exports = function registerFacebookWebhook(router) {
                             const results = await queryAsync(cmtSql);
                             idx = results.insertId;
                             if (results.affectedRows === 0) return;
-                            const khachhangSql = SqlString.format('INSERT INTO khachhang (userid,fbname,phone,diachi,avalink,uname,gender,label,pageid,fbnamex,realfbid) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE fbname=?, fbnamex=?, realfbid=?;',
-                                [userid, fbname, customerData[0].phone, customerData[0].diachi, pic, customerData[0].uname, customerData[0].gender, customerData[0].label, pageid, LocDau(fbname), customerData[0].realfbid, fbname, LocDau(fbname), customerData[0].realfbid]);
+                            const khachhangSql = SqlString.format('INSERT INTO khachhang (userid,fbname,phone,diachi,avalink,uname,gender,label,pageid,fbnamex,realfbid) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE fbname=?, fbnamex=?, realfbid=?, avalink=COALESCE(NULLIF(?, \'\'), avalink);',
+                                [userid, fbname, customerData[0].phone, customerData[0].diachi, picture || oldAvatar, customerData[0].uname, customerData[0].gender, customerData[0].label, pageid, LocDau(fbname), customerData[0].realfbid, fbname, LocDau(fbname), customerData[0].realfbid, picture]);
                             await queryAsync(khachhangSql);
                         } else {
-                            var picture = pic !== 'none' ? pic : '';
-                            if (!picture || !fbname) {
-                                const prof = await fetchFbProfile(userid, pageid);
-                                if (prof) {
-                                    picture = prof.pic || picture;
-                                    if (!fbname) fbname = prof.name;
-                                }
-                            }
                             const cmtSql = SqlString.format('INSERT IGNORE INTO livecomment (commentid,liveid,userid,name,message,chot,gia,timecomment,datecreate,luotin,count,app,pageid,parent_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?);',
                                 [cmtid, liveid, userid, fbname, message, '', '', 0, timelocal, 0, 0, 'Linh', pageid, parent_id]);
                             const results = await queryAsync(cmtSql);
@@ -598,10 +610,10 @@ module.exports = function registerFacebookWebhook(router) {
                     }
                 }
             } else {
-                if (req.body.entry[0].changes[0].field == 'live_videos') {
-                    const pageId = req.body.entry[0].id;
+                if (change.field == 'live_videos') {
+                    const pageId = entry.id;
 
-                    DBConnection.query("SELECT accesstoken FROM pageinfo WHERE pageid='" + pageId + "'", async function (error, data) {
+                    DBConnection.query("SELECT accesstoken FROM pageinfo WHERE pageid = ?", [pageId], async function (error, data) {
                         if (error) {
                             console.error('Lỗi DB pageinfo:', error);
                             return;
@@ -661,7 +673,7 @@ module.exports = function registerFacebookWebhook(router) {
                 }
             }
         }
-    });
+    }
 
     router.post('/instagram', function (req, res) {
         console.log('Instagram request body:');

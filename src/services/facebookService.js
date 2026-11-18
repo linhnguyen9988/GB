@@ -7,7 +7,7 @@ const fbToken = require('../fb-token');
 const request = require('request');
 const { AVA_DIR, GlobalPageID2 } = require('../configs/constants');
 const { LocDau } = require('../utils/text');
-const { download } = require('../utils/download');
+const { downloadAvatar } = require('../utils/download');
 const { getBrowser } = require('./browserService');
 const { getPageToken, isTokenError, refreshPageTokensOnce } = require('./pageTokenService');
 
@@ -79,7 +79,7 @@ async function UpdateUToken(id, token) {
     );
 }
 
-async function fetchFbProfile(fbuserid, pageid) {
+async function fetchFbProfile(fbuserid, pageid, { saveAvatar = true } = {}) {
     for (let attempt = 0; attempt < 2; attempt++) {
         const token = await getPageToken(pageid);
         if (!token) {
@@ -88,15 +88,18 @@ async function fetchFbProfile(fbuserid, pageid) {
         }
         let res, data;
         try {
-            res = await fetch(`https://graph.facebook.com/${fbuserid}/?fields=picture{url},name&access_token=${token}`);
+            res = await fetch(`https://graph.facebook.com/${encodeURIComponent(fbuserid)}/?fields=picture{url,is_silhouette},name&access_token=${token}`, {
+                signal: AbortSignal.timeout(10000)
+            });
             data = await res.json().catch(() => null);
         } catch (e) {
             console.error(`[fetchFbProfile] ${fbuserid}: ${e.message}`);
             return null;
         }
         if (res.ok && data && !data.error) {
-            const picUrl = data.picture && data.picture.data && data.picture.data.url;
-            if (picUrl) download(picUrl, data.id, AVA_DIR).catch(() => { });
+            const picture = data.picture?.data;
+            const picUrl = picture?.is_silhouette ? '' : picture?.url;
+            if (picUrl && saveAvatar) downloadAvatar(picUrl, fbuserid, AVA_DIR).catch(() => { });
             return { id: data.id, name: data.name || '', pic: picUrl || '' };
         }
         const e = (data && data.error) || {};
