@@ -8,7 +8,7 @@ const VIETTEL_BASE = 'https://partner.viettelpost.vn';
 const DRAFT_TTL_MS = 10 * 60 * 1000;
 const drafts = new Map();
 const ACCOUNT_RUNTIME_COLUMNS = `userid, app_user_id, token_enc, expiration, groupaddressid, cusid,
-    warehouse_name, warehouse_address, senderphone_enc, order_service, order_service_name,
+    warehouse_name, warehouse_address, senderphone_enc, sender_name, sender_address, sender_phone_enc, order_service, order_service_name,
     order_service_price, order_service_time, is_default, is_active`;
 
 function getEncryptionKey() {
@@ -350,24 +350,55 @@ async function listAccounts(appUserId) {
     const [rows] = await DBConnection.query(
         `SELECT userid AS accountId, username_enc, groupaddressid, cusid AS cusId, warehouse_name, warehouse_address,
                 order_service, order_service_name, order_service_price, order_service_time,
-                expiration, is_default
+                expiration, is_default, senderphone_enc, sender_name, sender_address, sender_phone_enc
          FROM vietteltoken WHERE app_user_id=? AND is_active=1 ORDER BY is_default DESC, userid ASC`,
         [Number(appUserId)]
     );
     return rows.map(row => {
-        const { username_enc, ...safeRow } = row;
-        return { ...safeRow, username: username_enc ? decryptSecret(username_enc) : '' };
+        const { username_enc, senderphone_enc, sender_phone_enc, ...safeRow } = row;
+        return { ...safeRow, username: username_enc ? decryptSecret(username_enc) : '', sender: senderDetails(row) };
     });
+}
+
+function senderDetails(row) {
+    const phoneEnc = row.sender_phone_enc || row.senderphone_enc;
+    return {
+        name: row.sender_name || row.warehouse_name || '',
+        address: row.sender_address || row.warehouse_address || '',
+        phone: phoneEnc ? decryptSecret(phoneEnc) : ''
+    };
 }
 
 function hydrateAccount(row) {
     if (!row) return null;
-    const { token_enc, senderphone_enc, ...safeRow } = row;
+    const { token_enc, senderphone_enc, sender_phone_enc, ...safeRow } = row;
+    const sender = senderDetails(row);
     return {
         ...safeRow,
         token: token_enc ? decryptSecret(token_enc) : '',
-        senderphone: senderphone_enc ? decryptSecret(senderphone_enc) : ''
+        warehouse_name: sender.name,
+        warehouse_address: sender.address,
+        senderphone: sender.phone
     };
+}
+
+async function updateSender(appUserId, accountId, details = {}) {
+    const name = typeof details.name === 'string' ? details.name.trim() : '';
+    const address = typeof details.address === 'string' ? details.address.trim() : '';
+    let phone = typeof details.phone === 'string' ? details.phone.replace(/[\s().-]/g, '') : '';
+    phone = phone.replace(/^(?:\+84|84)(?=\d{9,10}$)/, '0');
+    if (!name || name.length > 255) throw new Error('Tên người gửi phải có từ 1 đến 255 ký tự.');
+    if (address.length < 10 || address.length > 1000) throw new Error('Địa chỉ người gửi phải có từ 10 đến 1000 ký tự.');
+    if (!/^0\d{9,10}$/.test(phone)) throw new Error('Số điện thoại người gửi phải có 10 hoặc 11 chữ số, bắt đầu bằng 0.');
+    if (!/^\d{1,20}$/.test(String(accountId))) throw new Error('Tài khoản Viettel không hợp lệ.');
+
+    const [result] = await DBConnection.query(
+        `UPDATE vietteltoken SET sender_name = ?, sender_address = ?, sender_phone_enc = ?
+         WHERE app_user_id = ? AND userid = ? AND is_active = 1`,
+        [name, address, encryptSecret(phone), Number(appUserId), String(accountId)]
+    );
+    if (!result.affectedRows) throw new Error('Không tìm thấy tài khoản Viettel đang hoạt động thuộc admin này.');
+    return { name, address, phone };
 }
 
 async function getDefaultAccount(appUserId) {
@@ -467,6 +498,7 @@ module.exports = {
     loadServicesForDraft,
     commitPreparedAccount,
     listAccounts,
+    updateSender,
     getDefaultAccount,
     getAccountForOrder,
     getActiveAccountById,

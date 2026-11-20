@@ -1,10 +1,17 @@
 'use strict';
 
-const { createHash } = require('node:crypto');
+const { createHash, randomUUID } = require('node:crypto');
 const sharp = require('sharp');
 const db = require('../configs/DBConnection');
 const zalo = require('./zaloConnection');
 const { eventId } = zalo;
+const { readZaloContent } = require('./zaloMessageContent');
+const { storeZaloImage } = require('./zaloMediaStorage');
+const { archiveZaloMessage } = require('./zaloIncomingMediaStorage');
+const { resolveSticker } = require('./zaloStickerService');
+const reactions = require('./zaloReactionService');
+const social = require('./zaloSocialService');
+const { scheduleFriendRequest } = require('./zaloFriendRequest');
 
 const isId = value => typeof value === 'string' && /^\d{1,64}$/.test(value);
 const keyFor = (...parts) => createHash('sha256').update(JSON.stringify(parts)).digest('hex');
@@ -12,14 +19,42 @@ const debugReceive = process.env.ZALO_CHAT_DEBUG === '1';
 const isOrderConfirmation = text => typeof text === 'string' &&
     /(?:^|\n)\s*Đơn hàng chị có\s*:/iu.test(text.normalize('NFC'));
 
-async function saveMessage(conn, { mid, customerId, pageId, text, image, timestamp, actor, isRead = 0 }) {
+const outgoingByThread = new Map();
+
+function beginOutgoing(accountId, uid) {
+    const key = accountId + ':' + uid;
+    const jobs = outgoingByThread.get(key) || new Set();
+    let done;
+    const job = new Promise(resolve => { done = resolve; });
+    jobs.add(job);
+    outgoingByThread.set(key, jobs);
+    return () => {
+        done();
+        jobs.delete(job);
+        if (!jobs.size) outgoingByThread.delete(key);
+    };
+}
+
+async function findMappedCustomer(session, uid) {
+    const [customers] = await db.query(
+        `SELECT CAST(userid AS CHAR) AS customer_id, CAST(pageid AS CHAR) AS page_id, phone, zalo_phone, fbname
+         FROM khachhang WHERE zalo_account_id = ? AND zaloid = ?
+         ORDER BY zalo_linked_at DESC, id DESC`, [session.accountId, uid]
+    );
+    return customers.find(row => {
+        try { return isId(row.customer_id) && isId(row.page_id) && zalo.normalizePhone(row.phone) === row.zalo_phone; }
+        catch (_) { return false; }
+    });
+}
+
+async function saveMessage(conn, { mid, customerId, pageId, text, image, timestamp, actor, isRead = 0, template = null }) {
     await conn.query(
         `INSERT IGNORE INTO messaging
-            (messid, sender, recipient, message, image, time, timestamp, is_echo, sent_by_user_id, sent_by_username, isread, channel)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'zalo')`,
+            (messid, sender, recipient, message, image, time, timestamp, is_echo, sent_by_user_id, sent_by_username, isread, channel, template_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'zalo', ?)`,
         [mid, actor ? pageId : customerId, actor ? customerId : pageId, text || null, image || null,
             new Date(timestamp).toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' }), timestamp,
-            actor ? 1 : 0, actor?.id ?? null, actor?.username ?? null, isRead]
+            actor ? 1 : 0, actor?.id ?? null, actor?.username ?? null, isRead, template ? JSON.stringify(template) : null]
     );
 }
 
@@ -57,6 +92,9 @@ async function resolveCustomer(session, customerId, pageId) {
         [uid, session.accountId, phone, customer.id, customer.phone, customerId, pageId]
     );
     if (!updated.affectedRows) throw new zalo.ZaloActionError(409, 'Thông tin khách vừa thay đổi. Vui lòng thử lại.');
+    void require('./zaloCustomerProfileSync').enqueueWhere(db, 'k.id = ?', [String(customer.id)]).catch(error => {
+        console.warn('[Hồ sơ Zalo] Chưa xếp được lượt đồng bộ:', error.code || error.name);
+    });
     return uid;
 }
 
@@ -83,6 +121,8 @@ async function sendPart(session, uid, { customerId, pageId, clientMessageId, act
         await db.query('DELETE FROM gb_zalo_chat_delivery WHERE send_key IN (?)', [keys]);
         throw new zalo.ZaloActionError(409, 'Kết nối Zalo vừa thay đổi. Vui lòng thử lại.');
     }
+    scheduleFriendRequest(session, uid);
+    const capability = require('./zaloMessageCapability');
     let providerMessageId;
     try {
         if (image) {
@@ -103,36 +143,42 @@ async function sendPart(session, uid, { customerId, pageId, clientMessageId, act
             providerMessageId = result.messageId;
         }
     } catch (error) {
+        capability.recordSend(session, uid, false, error);
         if (error.status === 422 || (error.name === 'ZcaApiError' && Number(error.code) > 0)) {
             await db.query('DELETE FROM gb_zalo_chat_delivery WHERE send_key IN (?)', [keys]);
             return 'rejected';
         }
         return 'uncertain';
     }
+    if (!providerMessageId) return 'uncertain';
+    capability.recordSend(session, uid, true);
     try {
+        const imageUrl = image ? await storeZaloImage(image.data, key) : null;
+        let mid;
         await withTransaction(async conn => {
-            let isRead = 0;
-            if (providerMessageId) {
-                const receiptKey = [session.accountId, uid, providerMessageId];
-                await conn.query(
-                    `INSERT INTO gb_zalo_chat_receipt (account_id, thread_id, message_id, send_key)
-                     VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE send_key = ?`,
-                    [...receiptKey, key, key]
-                );
-                const [[receipt]] = await conn.query(
-                    'SELECT is_seen FROM gb_zalo_chat_receipt WHERE account_id = ? AND thread_id = ? AND message_id = ? FOR UPDATE',
-                    receiptKey
-                );
-                isRead = receipt.is_seen;
-            }
-            await saveMessage(conn, { mid: 'zalo:' + key, customerId, pageId, text: link ? `${text}\n${link}` : text,
-                image: image ? '/api/messages/zalo-image/' + key : null, timestamp: Date.now(), actor, isRead });
-            await conn.query("UPDATE gb_zalo_chat_delivery SET state = 'sent', image_data = ? WHERE send_key = ?",
-                [image?.data ?? null, key]);
+            const receipt = await reactions.linkMessage(conn, session.accountId, uid, [providerMessageId], key);
+            mid = 'zalo:' + receipt.key;
+            const storedText = link ? `${text || ''}
+${link}` : text;
+            const template = imageUrl ? { template_type: 'zalo_media',
+                attachments: [{ url: imageUrl, kind: 'image', stored: true }] } : null;
+            await saveMessage(conn, { mid, customerId, pageId, text: storedText,
+                image: imageUrl, timestamp: Date.now(), actor, isRead: receipt.isRead, template });
+            await conn.query(
+                `UPDATE messaging SET message = COALESCE(?, message), image = COALESCE(?, image),
+                 template_json = COALESCE(?, template_json), sent_by_user_id = ?, sent_by_username = ?,
+                 isread = GREATEST(isread, ?) WHERE messid = ? AND channel = 'zalo' AND is_echo = 1`,
+                [storedText || null, imageUrl, template ? JSON.stringify(template) : null,
+                    actor?.id ?? null, actor?.username ?? null, receipt.isRead, mid]
+            );
+            await reactions.projectReactions(conn, session.accountId, uid, mid);
+            await conn.query("UPDATE gb_zalo_chat_delivery SET state = 'sent', image_url = ?, image_data = NULL WHERE send_key = ?",
+                [imageUrl, key]);
             if (captionKey) {
                 await conn.query("UPDATE gb_zalo_chat_delivery SET state = 'sent' WHERE send_key = ?", [captionKey]);
             }
         });
+        reactions.publish(mid);
     } catch (_) {
         return 'uncertain';
     }
@@ -141,6 +187,7 @@ async function sendPart(session, uid, { customerId, pageId, clientMessageId, act
 
 async function sendCustomerMessage({ customerId, pageId, clientMessageId, actor, text, file, link }) {
     const result = { imageSent: false, textSent: false, uncertain: false };
+    let finishOutgoing;
     try {
         if (!isId(customerId) || !isId(pageId) || !/^[a-zA-Z0-9_-]{1,100}$/.test(clientMessageId || '')) {
             throw new zalo.ZaloActionError(400, 'Thiếu thông tin cuộc trò chuyện hoặc mã gửi Zalo.');
@@ -161,6 +208,7 @@ async function sendCustomerMessage({ customerId, pageId, clientMessageId, actor,
         const session = await zalo.openSavedSession(90000);
         if (!session) throw new zalo.ZaloActionError(409, 'GB chưa kết nối tài khoản Zalo.');
         const uid = await resolveCustomer(session, customerId, pageId);
+        finishOutgoing = beginOutgoing(session.accountId, uid);
         const input = { customerId, pageId, clientMessageId, actor };
         let imageStatus, textStatus;
         if (image && text && !link) {
@@ -181,42 +229,104 @@ async function sendCustomerMessage({ customerId, pageId, clientMessageId, actor,
         else if ((file && !result.imageSent) || (text && !result.textSent)) result.error = 'Zalo từ chối gửi ảnh hoặc nội dung tin nhắn.';
     } catch (error) {
         result.error = error instanceof zalo.ZaloActionError ? error.message : 'Không hoàn tất được thao tác gửi Zalo.';
+    } finally {
+        finishOutgoing?.();
     }
     return result;
 }
 
 async function receiveMessage(session, event) {
-    if (!event || event.isSelf || event.type !== session.userThread) return;
+    if (!event || event.type !== session.userThread) return;
     const { content, ts, msgType } = event.data || {};
-    const uidFrom = eventId(event.data?.uidFrom);
-    const msgId = eventId(event.data?.msgId);
-    if (!uidFrom || !msgId) {
-        if (debugReceive) console.info('[Tin nhắn Zalo] Bỏ qua tin đến vì UID hoặc mã tin không hợp lệ.');
-        return;
+    const uid = event.isSelf ? eventId(event.threadId) || eventId(event.data?.idTo) : eventId(event.data?.uidFrom);
+    const msgId = [event.data?.msgId, event.data?.realMsgId].map(eventId).find(id => id && id !== '0');
+    if (!uid || uid === session.accountId || !msgId) return;
+    if (event.isSelf) {
+        const jobs = outgoingByThread.get(session.accountId + ':' + uid);
+        if (jobs) await Promise.all([...jobs]);
     }
     if (!await zalo.isSavedSessionCurrent(session)) return;
-    const [customers] = await db.query(
-        `SELECT CAST(userid AS CHAR) AS customer_id, CAST(pageid AS CHAR) AS page_id, phone, zalo_phone
-           FROM khachhang WHERE zalo_account_id = ? AND zaloid = ?
-           ORDER BY zalo_linked_at DESC, id DESC`,
-        [session.accountId, uidFrom]
-    );
-    const customer = customers.find(row => {
-        try { return zalo.normalizePhone(row.phone) === row.zalo_phone; } catch (_) { return false; }
-    });
-    if (!customer || !isId(customer.customer_id) || !isId(customer.page_id)) {
-        if (debugReceive) console.info('[Tin nhắn Zalo] Chưa ghép được khách cho UID đuôi', uidFrom.slice(-6),
-            'trên tài khoản đuôi', session.accountId.slice(-6), 'Số hồ sơ khớp UID:', customers.length);
+    const customer = await findMappedCustomer(session, uid);
+    if (!customer) {
+        if (debugReceive) console.info('[Tin nhắn Zalo] Chưa ghép được khách cho UID đuôi', uid.slice(-6));
         return;
     }
-    const url = msgType === 'share.photo' && (content?.href || content?.thumb);
-    const image = typeof url === 'string' && /^https:\/\/[^\s;"<>]+$/i.test(url) ? url : null;
-    const text = typeof content === 'string' ? content.slice(0, 8000) : (image ? null : '[Tệp đính kèm Zalo]');
+    let normalizedContent = content;
+    if (msgType === 'chat.sticker') {
+        try { normalizedContent = await resolveSticker(session, content); }
+        catch (error) { console.warn('[Sticker Zalo] Không lấy được chi tiết:', error.code || error.name); }
+    }
+    const { text, image, template } = readZaloContent(msgType, normalizedContent);
+    // friend_event already records the centered system notice. Zalo may also
+    // emit the same notice through its message stream, including the GB alias.
+    if (!event.isSelf && !image && !template &&
+        require('../public/js/zalo-system-notice').isFriendAdded(text, customer.fbname)) return;
     const time = Number(ts);
     const timestamp = Number.isSafeInteger(time) && time > 0 && time <= 8640000000000000 ? time : Date.now();
-    await saveMessage(db, { mid: 'zalo:' + keyFor(session.accountId, uidFrom, msgId),
-        customerId: customer.customer_id, pageId: customer.page_id, text, image, timestamp });
-    if (debugReceive) console.info('[Tin nhắn Zalo] Đã xử lý tin đến từ UID đuôi', uidFrom.slice(-6));
+    const ids = [msgId];
+    const clientId = eventId(event.data?.cliMsgId);
+    if (clientId && clientId !== '0' && clientId.length <= 62) ids.push('c:' + clientId);
+    let mid;
+    await withTransaction(async conn => {
+        const receipt = await reactions.linkMessage(conn, session.accountId, uid, ids, keyFor(session.accountId, uid, msgId));
+        mid = 'zalo:' + receipt.key;
+        await saveMessage(conn, { mid, customerId: customer.customer_id, pageId: customer.page_id,
+            text, image, template, timestamp, isRead: receipt.isRead,
+            actor: event.isSelf ? { id: null, username: 'Zalo' } : null });
+        await reactions.projectReactions(conn, session.accountId, uid, mid);
+    });
+    if (template?.template_type === 'zalo_media') {
+        await db.query(
+            `UPDATE messaging SET message = ? WHERE messid = ? AND channel = 'zalo'
+             AND message IN ('[Ảnh Zalo chưa có đường dẫn]', '[Tệp đính kèm Zalo]', '[Sticker Zalo chưa lấy được dữ liệu]')`,
+            [text || null, mid]
+        );
+        const [[stored]] = await db.query('SELECT sent_by_user_id FROM messaging WHERE messid = ? LIMIT 1', [mid]);
+        if (!event.isSelf || !stored?.sent_by_user_id) await archiveZaloMessage(db, mid, template);
+    }
+    if (event.isSelf) require('./zaloMessageCapability').recordSend(session, uid, true);
+    reactions.publish(mid);
+    if (debugReceive) console.info('[Tin nhắn Zalo] Đã lưu tin', event.isSelf ? 'shop gửi' : 'khách gửi', 'UID đuôi', uid.slice(-6));
+}
+
+async function receiveFriendEvent(session, event) {
+    await social.receiveFriendRequest(session, event);
+    const labels = {
+        0: name => 'Bạn vừa kết bạn với ' + name,
+        1: name => 'Bạn và ' + name + ' không còn là bạn bè',
+        2: name => event.isSelf ? 'Bạn đã gửi lời mời kết bạn tới ' + name : name + ' đã gửi lời mời kết bạn',
+        3: name => 'Lời mời kết bạn với ' + name + ' đã được thu hồi',
+        4: name => 'Lời mời kết bạn với ' + name + ' đã bị từ chối',
+        6: name => 'Bạn đã chặn ' + name, 7: name => 'Bạn đã bỏ chặn ' + name,
+        8: name => 'Bạn đã chặn cuộc gọi từ ' + name, 9: name => 'Bạn đã bỏ chặn cuộc gọi từ ' + name
+    };
+    if (!event || !labels[event.type] || !await zalo.isSavedSessionCurrent(session)) return;
+    const uid = [event.threadId, event.data?.fromUid, event.data?.toUid, event.data]
+        .map(eventId).find(id => id && id !== session.accountId);
+    if (!uid) return;
+    const customer = await findMappedCustomer(session, uid);
+    if (!customer) return;
+    if (Number(event.type) === 0) {
+        await require('./zaloFriendQueue').friendAccepted(session, uid);
+        const profiles = require('./zaloCustomerProfileSync');
+        await profiles.enqueueWhere(db, 'k.zalo_account_id = ? AND k.zaloid = ?', [session.accountId, uid]);
+        await profiles.wake(session.accountId, uid);
+    }
+    const text = labels[event.type](customer.fbname || customer.phone || 'khách hàng');
+    await withTransaction(async conn => {
+        await conn.query('INSERT IGNORE INTO gb_zalo_friend_state (account_id, thread_id) VALUES (?, ?)', [session.accountId, uid]);
+        const [[state]] = await conn.query(
+            'SELECT last_type FROM gb_zalo_friend_state WHERE account_id = ? AND thread_id = ? FOR UPDATE', [session.accountId, uid]
+        );
+        if (state.last_type !== null && Number(state.last_type) === Number(event.type)) return;
+        await conn.query('UPDATE gb_zalo_friend_state SET last_type = ? WHERE account_id = ? AND thread_id = ?',
+            [event.type, session.accountId, uid]);
+        await saveMessage(conn, {
+            mid: 'zalo:' + keyFor(session.accountId, uid, 'friend', randomUUID()),
+            customerId: customer.customer_id, pageId: customer.page_id, text, timestamp: Date.now(),
+            template: { template_type: 'zalo_system', text, event: Number(event.type) }
+        });
+    });
 }
 
 async function receiveSeenMessages(session, events) {
@@ -250,6 +360,14 @@ function startListener() {
     let current;
     let busy = false;
     let lastError;
+    let friendQueueBusy = false;
+    setInterval(async () => {
+        if (!current || friendQueueBusy) return;
+        friendQueueBusy = true;
+        try { await require('./zaloFriendQueue').tick(current); }
+        catch (error) { console.warn('[Hàng chờ kết bạn Zalo] Lỗi xử lý:', error.code || error.name); }
+        finally { friendQueueBusy = false; }
+    }, 1000).unref();
     setInterval(async () => {
         if (busy) return;
         busy = true;
@@ -264,6 +382,24 @@ function startListener() {
                 const listener = session.api.listener;
                 listener.on('message', event => receiveMessage(session, event).catch(error => {
                     console.warn('[Tin nhắn Zalo] Lỗi lưu tin đến:', error.code || error.name);
+                }));
+                listener.on('reaction', event => reactions.receiveReaction(session, event).catch(error => {
+                    console.warn('[Reaction Zalo] Lỗi lưu:', error.code || error.name);
+                }));
+                listener.on('old_reactions', (events, isGroup) => {
+                    if (isGroup || !Array.isArray(events)) return;
+                    for (const event of events) reactions.receiveReaction(session, event).catch(error => {
+                        console.warn('[Reaction Zalo] Lỗi lưu lịch sử:', error.code || error.name);
+                    });
+                });
+                listener.on('old_messages', (events, type) => {
+                    if (type !== session.userThread || !Array.isArray(events)) return;
+                    for (const event of events) receiveMessage(session, event).catch(error => {
+                        console.warn('[Tin nhắn Zalo] Lỗi lưu lịch sử:', error.code || error.name);
+                    });
+                });
+                listener.on('friend_event', event => receiveFriendEvent(session, event).catch(error => {
+                    console.warn('[Thông báo Zalo] Lỗi lưu:', error.code || error.name);
                 }));
                 listener.on('seen_messages', events => receiveSeenMessages(session, events).catch(error => {
                     console.warn('[Tin nhắn Zalo] Lỗi lưu trạng thái đã xem:', error.code || error.name);
@@ -280,6 +416,9 @@ function startListener() {
                 });
                 listener.start();
                 current = session;
+            }
+            if (current) {
+                await social.processPending(current);
             }
             lastError = undefined;
         } catch (error) {

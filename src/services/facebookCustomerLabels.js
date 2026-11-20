@@ -47,6 +47,7 @@ async function updateCustomers(where, keys, label, sql, values) {
                 [...jobs.flat(), desired]
             );
         }
+        await require('./zaloCustomerProfileSync').enqueueWhere(conn, where, keys);
         await conn.commit();
     } catch (error) {
         await conn.rollback();

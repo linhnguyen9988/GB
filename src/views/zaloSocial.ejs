@@ -1,0 +1,48 @@
+<div id="zaloSocial" class="mt-3 pt-3 border-top" hidden>
+  <%- include('zaloFriendQueue'); -%>
+  <h6>Bạn bè và thành viên nhóm</h6>
+  <p class="small text-body-secondary mb-2">GB tự động đồng ý lời mời kết bạn mới gửi tới. Các lượt thêm nhóm được lưu và xử lý lần lượt.</p>
+  <p data-social-auto class="small" role="status"></p>
+  <div class="mb-3">
+    <button type="button" data-social-sync-profiles class="btn btn-outline-primary btn-sm">Đồng bộ nhãn và biệt danh khách</button>
+    <p data-social-profile-status class="small mt-2 mb-0" role="status"></p>
+    <details data-social-profile-errors-wrap class="small mt-1" hidden>
+      <summary>Lỗi đồng bộ nhãn và biệt danh</summary>
+      <div data-social-profile-errors class="mt-1"></div>
+    </details>
+  </div>
+  <div class="d-flex gap-2 flex-wrap mb-2">
+    <button type="button" class="btn btn-outline-primary btn-sm" data-social-load>Tải bạn bè và nhóm</button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" data-social-refresh>Cập nhật tiến độ</button>
+  </div>
+  <label for="zaloMemberGroup" class="form-label">Nhóm cần thêm thành viên</label>
+  <select id="zaloMemberGroup" data-social-group class="form-select mb-3"><option value="">Tải danh sách nhóm để chọn</option></select>
+  <label for="zaloFriendFilter" class="form-label">Lọc bạn bè theo tên hoặc số điện thoại</label>
+  <input id="zaloFriendFilter" data-social-filter class="form-control mb-2" placeholder="Nhập để lọc danh sách bạn bè">
+  <div class="d-flex gap-2 align-items-center flex-wrap mb-2">
+    <button type="button" data-social-select-all class="btn btn-outline-secondary btn-sm">Chọn tất cả kết quả lọc</button>
+    <button type="button" data-social-clear class="btn btn-outline-secondary btn-sm">Bỏ chọn tất cả</button>
+    <span data-social-count class="small text-body-secondary"></span>
+  </div>
+  <div data-social-friends class="list-group mb-2"></div>
+  <div class="d-flex align-items-center gap-2 mb-3">
+    <button type="button" data-social-prev class="btn btn-outline-secondary btn-sm">Trước</button>
+    <span data-social-page class="small"></span>
+    <button type="button" data-social-next class="btn btn-outline-secondary btn-sm">Sau</button>
+  </div>
+  <label for="zaloMemberSearch" class="form-label">Tìm thêm khách trong GB hoặc tra số Zalo chưa kết bạn</label>
+  <input id="zaloMemberSearch" data-social-search class="form-control mb-2" placeholder="Tên khách hoặc số điện thoại" maxlength="100">
+  <div class="d-flex gap-2 flex-wrap mb-2">
+    <button type="button" data-social-search-customers class="btn btn-outline-primary btn-sm">Tìm khách trong GB</button>
+    <button type="button" data-social-find-phone class="btn btn-outline-primary btn-sm">Tra SĐT Zalo</button>
+  </div>
+  <div data-social-customers class="list-group mb-3"></div>
+  <button type="button" data-social-add class="btn btn-primary" disabled>Thêm những người đã chọn vào nhóm</button>
+  <p data-social-status class="small mt-2" role="status" aria-live="polite"></p>
+  <div data-social-jobs class="mt-3" aria-live="polite"></div>
+  <details data-social-failures-wrap class="small mt-2" hidden>
+    <summary>Chi tiết các trường hợp chưa thêm được</summary>
+    <div data-social-failures class="mt-2"></div>
+  </details>
+</div>
+<script src="/js/admin-zalo-social.js?v=20261120-profile-sync" defer></script>

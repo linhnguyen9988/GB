@@ -15,6 +15,19 @@ module.exports = function registerViettelAccountRoutes(router) {
         }
     });
 
+    router.patch('/api/viettel/accounts/:accountId/sender', jwtAuth, jwtAuth.requireAdmin, async (req, res) => {
+        try {
+            const sender = await accounts.updateSender(req.user.id, req.params.accountId, req.body);
+            return res.json({ success: true, sender, message: 'Đã lưu thông tin người gửi Viettel.' });
+        } catch (error) {
+            console.error('[viettel-account] sender:', error.code || error.message);
+            return res.status(400).json({
+                success: false,
+                message: error.code ? 'Không lưu được thông tin người gửi. Hãy kiểm tra migration DB.' : error.message
+            });
+        }
+    });
+
     router.post('/api/viettel/accounts/prepare', jwtAuth, async (req, res) => {
         try {
             const result = await accounts.prepareAccount({

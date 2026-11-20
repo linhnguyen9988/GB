@@ -215,11 +215,14 @@ module.exports = function registerLiveCommentRoutes(router) {
     router.post('/detailcomment', jwtAuth, async function (req, res) {
         const { commentid, userid, refreshProfile } = req.body;
         if (isFakeCommentId(commentid)) {
-            return res.json({ data: { skipped: true, message: 'Comment ảo, bỏ qua.' } });
+            return res.json({
+                success: false,
+                data: { skipped: true, message: 'Đây là comment ảo được tạo từ tin nhắn của khách, không có comment gốc trên Facebook để cập nhật.' }
+            });
         }
         if (typeof commentid !== 'string' || !/^\d+_\d+$/.test(commentid) ||
             typeof userid !== 'string' || !/^\d+$/.test(userid)) {
-            return res.status(400).json({ error: 'Mã bình luận hoặc khách hàng không hợp lệ.' });
+            return res.status(400).json({ success: false, error: 'Mã bình luận hoặc khách hàng không hợp lệ.' });
         }
 
         let page;
@@ -228,9 +231,9 @@ module.exports = function registerLiveCommentRoutes(router) {
                 'SELECT CAST(pageid AS CHAR) AS pageid FROM livecomment WHERE commentid = ? AND userid = ? LIMIT 1',
                 [commentid, userid]
             );
-            if (!comment) return res.status(404).json({ error: 'Không tìm thấy bình luận của khách này.' });
+            if (!comment) return res.status(404).json({ success: false, error: 'Không tìm thấy bình luận của khách này.' });
             const [[account]] = await DBConnection.query('SELECT token FROM usertoken WHERE id = 1');
-            if (!account?.token) return res.status(503).json({ error: 'Thiếu token Facebook để cập nhật bình luận.' });
+            if (!account?.token) return res.status(503).json({ success: false, error: 'Thiếu token Facebook để cập nhật bình luận.' });
 
             const browser = await getBrowser();
             page = await browser.newPage();
@@ -242,8 +245,26 @@ module.exports = function registerLiveCommentRoutes(router) {
                 return JSON.parse(await page.$eval('*', element => element.innerText));
             }
             let data = await readComment(updateProfile ? fields.replace('from,', 'from{id,name,picture{url,is_silhouette}},') : fields);
-            if (updateProfile && data.error) data = await readComment(fields);
-            if (!data.from?.id) return res.json({ data });
+            if (updateProfile && data?.error) data = await readComment(fields);
+            if (data?.error) {
+                const graphError = data.error;
+                const inaccessible = Number(graphError.error_subcode) === 33 ||
+                    /Invalid comment_id|Unsupported get request|does not exist|cannot be loaded/i.test(String(graphError.message || ''));
+                const message = inaccessible
+                    ? 'Không truy cập được bình luận. Bình luận có thể đã bị xóa hoặc token không đủ quyền xem.'
+                    : Number(graphError.code) === 190
+                        ? 'Token Facebook đã hết hạn hoặc không hợp lệ. Vui lòng lấy lại token rồi thử cập nhật.'
+                        : 'Facebook không cập nhật được bình luận: ' + (graphError.message || 'Không có thông tin lỗi.');
+                return res.status(inaccessible ? 404 : 502).json({
+                    success: false, error: message,
+                    facebookError: { code: graphError.code, error_subcode: graphError.error_subcode }
+                });
+            }
+            if (!data || typeof data !== 'object' || !data.id || !data.from?.id) {
+                return res.status(502).json({
+                    success: false, error: 'Facebook chưa trả đủ thông tin bình luận và người bình luận. Chưa cập nhật dữ liệu.'
+                });
+            }
 
             const realId = String(data.from.id);
             const timestamp = data.live_broadcast_timestamp == null ? NaN : Number(data.live_broadcast_timestamp);
@@ -293,10 +314,10 @@ module.exports = function registerLiveCommentRoutes(router) {
                     app=COALESCE(?, app), name=COALESCE(?, name) WHERE commentid=? AND userid=?`,
                 [realId, hasTimestamp ? timestamp : null, time, data.application?.name || null, profile?.name || null, commentid, userid]
             );
-            return res.json({ data, profile });
+            return res.json({ success: true, data, profile });
         } catch (error) {
             console.error('[detailcomment] Lỗi cập nhật:', error.code || error.name);
-            return res.status(502).json({ error: 'Không cập nhật được bình luận từ Facebook hoặc database.' });
+            return res.status(502).json({ success: false, error: 'Không cập nhật được bình luận từ Facebook hoặc database.' });
         } finally {
             if (page) await page.close().catch(() => {});
         }

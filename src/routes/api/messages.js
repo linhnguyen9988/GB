@@ -10,8 +10,13 @@ const { deliver } = require('../../services/chatDeliveryService');
 router.get('/zalo-image/:key', auth, async (req, res) => {
   if (!/^[a-f0-9]{64}$/.test(req.params.key)) return res.sendStatus(404);
   try {
-    const [[image]] = await db.query("SELECT image_data FROM gb_zalo_chat_delivery WHERE send_key = ? AND state = 'sent'",
+    const [[image]] = await db.query("SELECT image_url, IF(image_url IS NULL, image_data, NULL) AS image_data FROM gb_zalo_chat_delivery WHERE send_key = ? AND state = 'sent'",
       [req.params.key]);
+    if (image?.image_url) {
+      const url = image.image_url;
+      if (!/^https:\/\//i.test(url) && !/^\/images\/messpic\/[a-f0-9]{64}\.jpg$/.test(url)) return res.sendStatus(500);
+      return res.set('Cache-Control', 'private, no-store').redirect(302, url);
+    }
     if (!image?.image_data) return res.sendStatus(404);
     return res.type('jpeg').set('Cache-Control', 'private, no-store').send(image.image_data);
   } catch (_) {

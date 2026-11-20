@@ -120,7 +120,8 @@ module.exports = function registerOrderRoutes(router) {
     router.post('/detaildonhang', jwtAuth, function (req, res) {
         var realorderid = req.body.realorderid;
         DBConnection.query(
-            `SELECT lendon.*, khachhang.pageid AS pageid
+            `SELECT lendon.*, khachhang.pageid AS pageid,
+                    CAST(khachhang.id AS CHAR) AS customer_id, khachhang.label AS customer_label
              FROM lendon
              LEFT JOIN khachhang ON khachhang.userid = lendon.userid
              WHERE lendon.realorderid = ?`,

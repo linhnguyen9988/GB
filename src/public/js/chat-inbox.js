@@ -46,13 +46,17 @@ const GBChatInbox = (() => {
       }
 
       let text = msg.messageText || '';
-      if (!text && msg.template) {
-        try {
-          const template = typeof msg.template === 'string' ? JSON.parse(msg.template) : msg.template;
-          text = '🔘 ' + (template.text || 'Tin nhắn có nút bấm');
-        } catch (_) {
-          text = '🔘 Tin nhắn có nút bấm';
-        }
+      let template;
+      if (msg.template) {
+        try { template = typeof msg.template === 'string' ? JSON.parse(msg.template) : msg.template; } catch (_) { }
+      }
+      const zaloAttachments = template?.template_type === 'zalo_media' && Array.isArray(template.attachments)
+        ? template.attachments : [];
+      if (!text && zaloAttachments.length) {
+        const labels = { image: 'Ảnh', video: 'Video', audio: 'Tin thoại', file: 'Tệp đính kèm' };
+        text = labels[zaloAttachments[0].kind] || 'Tệp đính kèm';
+      } else if (!text && template) {
+        text = '🔘 ' + (template.text || 'Tin nhắn có nút bấm');
       }
       preview.append((sentByPage ? 'Bạn: ' : '') + (text || (msg.messageImg ? 'Tệp đính kèm' : '')));
       info.append(name, preview);
@@ -65,12 +69,17 @@ const GBChatInbox = (() => {
         const url = GBChatMessageView.safeUrl(part.trim());
         if (!url) continue;
         const path = new URL(url).pathname.toLowerCase();
-        const kind = /\.(mp4|webm|mov)$/.test(path) ? 'video'
+        const attachment = zaloAttachments.find(item => GBChatMessageView.safeUrl(item.url) === url);
+        if (attachment?.kind === 'file') continue;
+        const declaredKind = attachment?.kind === 'image' ? 'img' : attachment?.kind;
+        const kind = ['img', 'video', 'audio'].includes(declaredKind) ? declaredKind
+          : /\.(mp4|webm|mov)$/.test(path) ? 'video'
           : /\.(mp3|wav|aac|m4a)$/.test(path) || path.includes('audioclip') ? 'audio'
           : msg.channel === 'zalo' || /\.(jpg|jpeg|png|gif|webp)$/.test(path) ? 'img' : null;
         if (!kind) continue;
         const element = document.createElement(kind);
-        element.src = url;
+        element.src = attachment?.sticker?.sprite
+          ? GBChatMessageView.safeUrl(attachment.sticker.previewUrl) || url : url;
         if (kind === 'img') {
           element.alt = '';
           element.loading = 'lazy';

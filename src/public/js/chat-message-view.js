@@ -71,13 +71,14 @@ const GBChatMessageView = (() => {
       return wrapper;
     }
 
-    function renderAttachment(url, kind) {
-      if (kind) return createMedia(url, kind);
+    function renderAttachment(url, kind, name) {
+      if (['image', 'audio', 'video'].includes(kind)) return createMedia(url, kind);
       const attachment = document.createElement('a');
       attachment.href = url;
       attachment.target = '_blank';
       attachment.rel = 'noopener noreferrer';
-      attachment.textContent = 'Mở tệp đính kèm';
+      attachment.textContent = name || 'Mở tệp đính kèm';
+      if (kind === 'file') return attachment;
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 3000);
       fetch(url, { method: 'HEAD', signal: controller.signal }).then(response => {
@@ -102,7 +103,7 @@ const GBChatMessageView = (() => {
     }
 
     function buildTemplateHtml(tpl) {
-      if (!tpl) return '';
+      if (!tpl || tpl.template_type === 'zalo_media') return '';
 
       if (tpl.template_type === 'reel' || tpl.template_type === 'ig_reel') {
         const reelUrl = safeUrl(tpl.url);
@@ -175,6 +176,27 @@ const GBChatMessageView = (() => {
 
     async function renderMessage(msg, shouldShowAvatar) {
       const isZalo = msg.channel === 'zalo';
+      let template = msg.template;
+      if (msg.template_json) {
+        try { template = typeof msg.template_json === 'string' ? JSON.parse(msg.template_json) : msg.template_json; } catch (_) { template = null; }
+      }
+      if (isZalo && template?.template_type === 'zalo_system') {
+        return GBChatZaloView.createSystemMessage(msg, template, customerAvatarEl.src);
+      }
+      if (isZalo && !Number(msg.is_echo) && !msg.image && !template &&
+          GBZaloSystemNotice.isFriendAdded(msg.message, msg.fbname || document.getElementById('customer-name')?.textContent)) {
+        // Keep the old row's identity/cursor for history and polling, without
+        // rendering a second bubble for the already stored friend-event notice.
+        const hidden = document.createElement('div');
+        hidden.hidden = true;
+        hidden.style.display = 'none';
+        hidden.dataset.zaloNoticeDuplicate = 'true';
+        hidden.dataset.channel = 'zalo';
+        hidden.dataset.sender = msg.sender;
+        if (msg.id != null) hidden.dataset.messageId = msg.id;
+        if (msg.messid) hidden.dataset.msgId = msg.messid;
+        return hidden;
+      }
       const isPageSender = isZalo ? Boolean(Number(msg.is_echo)) : pageIds.includes(String(msg.sender));
 
       const messageRow = document.createElement('div');
@@ -224,14 +246,9 @@ const GBChatMessageView = (() => {
         </div>`;
       }
 
-      let templateHtml = '';
-      if (msg.template_json) {
-        try {
-          templateHtml = buildTemplateHtml(JSON.parse(msg.template_json));
-        } catch (e) { }
-      } else if (msg.template) {
-        templateHtml = buildTemplateHtml(msg.template);
-      }
+      const templateHtml = buildTemplateHtml(template);
+      const zaloAttachments = template?.template_type === 'zalo_media' && Array.isArray(template.attachments)
+        ? template.attachments : [];
 
       let mediaHtml = '';
       let messageImagesContainer;
@@ -246,7 +263,12 @@ const GBChatMessageView = (() => {
           for (const source of mediaUrls) {
             const url = safeUrl(source.trim(), Boolean(msg.localId));
             if (!url) continue;
-            messageImagesContainer.appendChild(renderAttachment(url, getMediaKind(url, msg)));
+            const attachment = zaloAttachments.find(item => safeUrl(item.url) === url);
+            const kind = ['image', 'audio', 'video', 'file'].includes(attachment?.kind)
+              ? attachment.kind : getMediaKind(url, msg);
+            messageImagesContainer.appendChild(attachment?.sticker
+              ? GBChatZaloView.createSticker(url, attachment.sticker)
+              : renderAttachment(url, kind, attachment?.name));
           }
         }
       }
@@ -327,6 +349,7 @@ const GBChatMessageView = (() => {
         event.preventDefault();
         jumpToQuotedMessage(quote.dataset.quoteMid, quote);
       });
+      if (isZalo) GBChatZaloActions.bind(messageRow, msg);
       return messageRow;
     }
 

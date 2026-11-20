@@ -197,9 +197,12 @@ function ShowCustomerDetails({ name, userid, phone, diachi, note, label, realfbi
 
 function RefreshCommentCustomer(openmess, selectedRow, facebookIdColumn, nameColumn) {
     var x = selectedRow || $('#comment_table').DataTable().row(getRowIdx()).data();
-    if (!x) return;
-    if (x && isFakeCommentId(x[8])) {
-        if (openmess == 1) ShowCenterToast('info', 'Bình luận này đến từ tin nhắn nên chưa có ID Facebook để mở hộp thư.', 3500);
+    if (!x) {
+        ShowCenterToast('warning', 'Vui lòng chọn một dòng bình luận để cập nhật.', 5000);
+        return;
+    }
+    if (isFakeCommentId(x[8])) {
+        ShowCenterToast('warning', 'Đây là comment ảo được tạo từ tin nhắn của khách, không có comment gốc trên Facebook để cập nhật.', 5000);
         return;
     }
     $.ajax({
@@ -207,15 +210,23 @@ function RefreshCommentCustomer(openmess, selectedRow, facebookIdColumn, nameCol
         method: "POST",
         data: { commentid: x[8], userid: x[12], ...(selectedRow ? { refreshProfile: '1' } : {}) },
         dataType: "JSON",
+        timeout: 60000,
         success: function (data) {
-            if (!data.data) { ShowCenterToast('danger', data.error || 'Không cập nhật được bình luận', 3000); return; }
-            if (data.data.skipped) { return; }
-            if (data.data.hasOwnProperty('error')) {
-                ShowCenterToast('danger', IsDeletedCommentError(data.data.error) ? 'Bình luận đã bị xóa.' : data.data.error.message, 3000);
+            if (data?.data?.skipped) {
+                ShowCenterToast('warning', EditEsc(data.data.message || 'Đây là comment ảo được tạo từ tin nhắn của khách.'), 5000);
+                return;
+            }
+            const upstreamError = data?.data?.error;
+            if (data?.success !== true || upstreamError || !data.data?.id || !data.data.from?.id) {
+                const inaccessible = upstreamError && IsDeletedCommentError(upstreamError);
+                const message = inaccessible
+                    ? 'Không truy cập được bình luận. Bình luận có thể đã bị xóa hoặc token không đủ quyền xem.'
+                    : typeof data?.error === 'string' ? data.error
+                        : upstreamError?.message || 'Không cập nhật được bình luận. Máy chủ chưa xác nhận cập nhật thành công.';
+                ShowCenterToast('danger', EditEsc(message), 5000);
                 return;
             }
             var table = $('#comment_table').DataTable();
-            if (!data.data.from?.id) { ShowCenterToast('warning', 'Facebook chưa trả thông tin người bình luận.', 3000); return; }
             const timestamp = data.data.live_broadcast_timestamp;
             const date = new Date(Number(timestamp) * 1000);
             const profile = data.profile;
@@ -257,8 +268,12 @@ function RefreshCommentCustomer(openmess, selectedRow, facebookIdColumn, nameCol
                 ShowCenterToast('success', profile ? 'Đã cập nhật bình luận và avatar khách.' : 'Đã cập nhật bình luận, có thể mở hộp thư hoặc xem live.', 3000);
             }
         },
-        error: function (xhr) {
-            ShowCenterToast('danger', xhr.responseJSON?.error || 'Không cập nhật được bình luận.', 3500);
+        error: function (xhr, status) {
+            const message = status === 'timeout'
+                ? 'Quá thời gian chờ Facebook phản hồi. Chưa xác nhận được kết quả cập nhật bình luận.'
+                : typeof xhr.responseJSON?.error === 'string'
+                    ? xhr.responseJSON.error : 'Không cập nhật được bình luận. Vui lòng thử lại.';
+            ShowCenterToast('danger', EditEsc(message), 5000);
         }
     });
 }

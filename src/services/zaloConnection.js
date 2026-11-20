@@ -18,14 +18,25 @@ class ZaloActionError extends Error {
 }
 
 function createClient(Zalo, signal) {
-    return new Zalo({
+    let loginSignal = signal;
+    const client = new Zalo({
         logging: false,
+        selfListen: true,
         checkUpdate: false,
         polyfill: (url, options = {}) => fetch(url, {
             ...options,
-            signal: options.signal ? AbortSignal.any([options.signal, signal]) : signal
+            signal: options.signal && loginSignal ? AbortSignal.any([options.signal, loginSignal])
+                : options.signal || loginSignal || AbortSignal.timeout(45000)
         })
     });
+    for (const method of ['login', 'loginQR']) {
+        if (typeof client[method] !== 'function') continue;
+        const login = client[method].bind(client);
+        client[method] = async (...args) => {
+            try { return await login(...args); } finally { loginSignal = undefined; }
+        };
+    }
+    return client;
 }
 
 async function setAttempt(id, status, qrImage = null) {
@@ -327,8 +338,10 @@ async function sendTestMessage({ phone: value, message, uid, accountId }, imageB
     if (!attachment) return sendText(session, recipient.uid, text, session.userThread);
     let result;
     try {
+        require('./zaloFriendRequest').scheduleFriendRequest(session, recipient.uid);
         result = await session.api.sendMessage({ msg: text, attachments: [attachment] }, recipient.uid, session.userThread);
     } catch (error) {
+        require('./zaloMessageCapability').recordSend(session, recipient.uid, false, error);
         if (error.name === 'ZcaApiError' && Number.isInteger(Number(error.code)) && Number(error.code) !== 0) {
             throw new ZaloActionError(422, 'Zalo từ chối gửi ảnh (mã ' + Number(error.code) + ').');
         }
@@ -336,6 +349,7 @@ async function sendTestMessage({ phone: value, message, uid, accountId }, imageB
     if (!result?.attachment?.some(item => item.msgId != null)) {
         throw new ZaloActionError(502, 'Chưa xác nhận được ảnh đã gửi. Kiểm tra cuộc trò chuyện Zalo trước khi gửi lại.');
     }
+    require('./zaloMessageCapability').recordSend(session, recipient.uid, true);
     return { imageSent: true };
 }
 
@@ -354,8 +368,10 @@ async function sendText(session, threadId, text, threadType) {
     if (threadType == null) throw new ZaloActionError(422, 'Thiếu loại cuộc trò chuyện Zalo.');
     let result;
     try {
+        if (threadType === session.userThread) require('./zaloFriendRequest').scheduleFriendRequest(session, threadId);
         result = await session.api.sendMessage(text, threadId, threadType);
     } catch (error) {
+        if (threadType === session.userThread) require('./zaloMessageCapability').recordSend(session, threadId, false, error);
         if (error.name === 'ZcaApiError' && Number.isInteger(Number(error.code)) && Number(error.code) !== 0) {
             throw new ZaloActionError(422, 'Zalo từ chối gửi tin nhắn (mã ' + Number(error.code) + ').');
         }
@@ -364,6 +380,7 @@ async function sendText(session, threadId, text, threadType) {
     if (messageId == null) {
         throw new ZaloActionError(502, 'Chưa xác nhận được tin đã gửi. Kiểm tra cuộc trò chuyện Zalo trước khi gửi lại.');
     }
+    if (threadType === session.userThread) require('./zaloMessageCapability').recordSend(session, threadId, true);
     return { messageId: eventId(messageId) };
 }
 

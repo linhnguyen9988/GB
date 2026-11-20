@@ -1133,3 +1133,42 @@ body.gb-chat-open {
 [data-bs-theme="dark"] .message-template-receipt-total {
     color: #f0f0f0;
 }
+
+.zalo-sticker {
+    display: block;
+    width: 160px;
+    max-width: 100%;
+    height: auto;
+    max-height: 180px;
+    object-fit: contain;
+    border-radius: 0;
+    background: transparent;
+}
+.message-system-row {
+    display: flex;
+    flex-direction: column;
+    align-self: center;
+    align-items: center;
+    max-width: 95%;
+    margin: 14px auto;
+}
+.zalo-system-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 22px;
+    background: var(--bs-tertiary-bg, #f1f3f5);
+    color: var(--bs-body-color, #212529);
+    font-size: 13px;
+    text-align: center;
+}
+.zalo-system-pill img {
+    width: 26px;
+    height: 26px;
+    object-fit: cover;
+    border-radius: 50%;
+}
+
+.zalo-reacting .message-content-wrapper { opacity: .75; }
+[data-channel="zalo"].message-row-messenger { touch-action: manipulation; }

@@ -8,8 +8,20 @@ const { GlobalPageID, GlobalPageID2 } = require('../../configs/constants');
 const { codeToEmoji } = require('../../utils/emoji');
 const { deliver } = require('../../services/chatDeliveryService');
 const { findParts } = require('../../services/chatSendParts');
+const { attachReactionSummaries, zaloReactionUpdates } = require('../../services/reactionService');
 
 module.exports = function registerMessagesRoutes(router) {
+    router.post('/api/zalo-message-heart', require('../../middleware/jwtAuth'), async (req, res) => {
+        if (req.get('X-GB-Zalo-Action') !== '1') return res.status(403).json({ error: 'Yêu cầu không hợp lệ.' });
+        try {
+            return res.json(await require('../../services/zaloSendReaction').heartMessage(req.body?.mid));
+        } catch (error) {
+            const ActionError = require('../../services/zaloConnection').ZaloActionError;
+            return res.status(error instanceof ActionError ? error.status : 502).json({
+                error: error instanceof ActionError ? error.message : 'Zalo chưa xác nhận thả tim. Hãy kiểm tra tin nhắn.'
+            });
+        }
+    });
     router.post('/api/send-message', require('../../middleware/jwtAuth'), (req, res) => {
         upload.single('image')(req, res, async (err) => {
             if (err) {
@@ -96,14 +108,14 @@ ORDER BY t1.id DESC;
         }
         const offset = parseInt(req.query.offset, 10) || 0;
         if (req.query.afterId !== undefined || req.query.afterZaloId !== undefined) {
-            const { afterId, afterZaloId, zaloReadFromId, pending, pageId } = req.query;
+            const { afterId, afterZaloId, zaloReadFromId, pending, pageId, reactionMids } = req.query;
             const cursor = afterId ?? afterZaloId;
             const validId = value => typeof value === 'string' && /^\d{1,20}$/.test(value);
             if (!validId(cursor) || (zaloReadFromId !== undefined && !validId(zaloReadFromId))) {
                 return res.status(400).json([]);
             }
             try {
-                const [[messages], [readRows], deliveries] = await Promise.all([
+                const [[messages], [readRows], deliveries, reactionUpdates] = await Promise.all([
                     DBConnection.query(
                         'SELECT *, CAST(id AS CHAR) AS history_cursor FROM messaging WHERE id > ? AND (sender = ? OR recipient = ?)' +
                         (afterId === undefined ? " AND channel = 'zalo'" : '') + ' ORDER BY id ASC LIMIT 50',
@@ -116,10 +128,12 @@ ORDER BY t1.id DESC;
                     ) : [[]],
                     req.user?.id && typeof pageId === 'string' && typeof pending === 'string' && pending.length <= 2020
                         ? findParts({ user: req.user, pageId, customerId, clientIds: pending.split(',').slice(0, 20) })
-                        : []
+                        : [],
+                    zaloReactionUpdates(customerId, reactionMids)
                 ]);
-                if (zaloReadFromId === undefined && pending === undefined) return res.json(messages);
-                return res.json({ messages, readIds: readRows.map(row => row.id), deliveries });
+                await attachReactionSummaries(messages);
+                if (zaloReadFromId === undefined && pending === undefined && reactionMids === undefined) return res.json(messages);
+                return res.json({ messages, readIds: readRows.map(row => row.id), deliveries, reactionUpdates });
             } catch (_) {
                 return res.status(500).json([]);
             }
@@ -141,7 +155,9 @@ ORDER BY t1.id DESC;
                     DBConnection.query('SELECT * ' + thread + ' AND id < ? ORDER BY id DESC LIMIT 4', [...params, target.history_cursor]),
                     DBConnection.query('SELECT * ' + thread + ' AND id > ? ORDER BY id ASC LIMIT 4', [...params, target.history_cursor])
                 ]);
-                return res.json([...before[0].reverse(), target, ...after[0]]);
+                const messages = [...before[0].reverse(), target, ...after[0]];
+                await attachReactionSummaries(messages);
+                return res.json(messages);
             } catch (error) {
                 console.error('Lỗi tải tin nhắn được trích dẫn:', error.message);
                 return res.status(500).json({ error: 'Không tải được tin nhắn gốc.' });

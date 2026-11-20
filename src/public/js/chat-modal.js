@@ -60,6 +60,10 @@
     if (pill) pill.classList.add('reaction-pop');
   }
 
+  document.addEventListener('gb-zalo-reaction', event => {
+    if (event.detail && Array.isArray(event.detail.reactions)) updateMessageReactions(event.detail.mid, event.detail.reactions);
+  });
+
   socket.on('reaction', (data) => {
     if (data && Array.isArray(data.reactions)) {
       updateMessageReactions(data.mid, data.reactions);
@@ -223,6 +227,18 @@
       return /android|iphone|ipad|ipod|windows phone|iemobile|mobile/i.test(userAgent);
     }
 
+    function openMessageImage(event) {
+      if (!event.target.classList.contains('message-clickable')) return;
+      const image = event.target;
+      const row = image.closest('[data-channel="zalo"]');
+      if (!row) { showFullImage(image.src); return; }
+      if (event.detail > 1) return;
+      const version = conversationVersion;
+      setTimeout(() => {
+        if (image.isConnected && isActiveChat(version) && Number(row.dataset.zaloDoubleTapUntil || 0) < Date.now()) showFullImage(image.src);
+      }, 320);
+    }
+
     function showFullImage(src) {
       fullSizeImage.src = src;
       imageViewerModal.style.display = "flex";
@@ -286,7 +302,7 @@
       const close = panel.querySelector('button');
       close.addEventListener('click', closeQuotedContext);
       body.addEventListener('click', event => {
-        if (event.target.classList.contains('message-clickable')) showFullImage(event.target.src);
+        openMessageImage(event);
       });
       panel.addEventListener('keydown', event => {
         if (event.key !== 'Escape') return;
@@ -424,10 +440,10 @@
         retryZalo.addEventListener('click', () => retryPendingMessage(localId, 'zalo'));
         wrapper.appendChild(retryZalo);
       }
-      const needsFile = Boolean(entry?.hasImage && !entry.imagePartSent);
+      const needsFile = Boolean(entry?.hasImage && (!entry.imagePartSent || entry.zaloRequired || entry.facebookRequired));
       const canRetryZalo = entry && !entry.uncertain &&
-        ((!entry.textPartSent && Boolean(entry.message)) || (needsFile && /^image\//.test(entry.fileType || '')));
-      retryZalo.hidden = !canRetryZalo || Boolean(entry?.orderConfirmation);
+        ((Boolean(entry.message) && (!entry.textPartSent || entry.zaloRequired)) || (needsFile && /^image\//.test(entry.fileType || '')));
+      retryZalo.hidden = !canRetryZalo || Boolean(entry?.orderConfirmation) || Boolean(entry?.facebookRequired);
       let replaceAttachment = wrapper.querySelector('.message-replace-attachment');
       if (!replaceAttachment) {
         replaceAttachment = document.createElement('button');
@@ -474,9 +490,9 @@
         const imageFile = pendingImageFiles.get(entry.localId) || null;
         registerLocalMessage(entry.localId);
         const tempMessage = {
-          sender: entry.pageId || currentPageID,
-          message: entry.zaloTextSent ? null : (entry.message || null),
-          image: imageFile && !entry.zaloImageSent ? createAndTrackBlobUrl(imageFile) : null,
+          sender: entry.pageId || currentPageID, channel: entry.facebookRequired ? 'facebook' : entry.preferredChannel, is_echo: 1,
+          message: entry.zaloTextSent && !entry.facebookTextSent ? null : (entry.message || null),
+          image: imageFile && (!entry.zaloImageSent || entry.facebookImageSent) ? createAndTrackBlobUrl(imageFile) : null,
           fileType: imageFile ? imageFile.type : null,
           time: entry.createdAt,
           timestamp: entry.createdAt,
@@ -505,38 +521,73 @@
       if (!inConversation(customerId, pageId)) return;
       const row = findMessageRowByLocalId(entry.localId);
       hideFailBadge(row);
-      if (entry.zaloImageSent) row?.querySelector('.message-images-container')?.remove();
-      if (entry.zaloTextSent) row?.querySelector('.message-text-messenger')?.remove();
+      if (entry.zaloImageSent && !entry.facebookImageSent) row?.querySelector('.message-images-container')?.remove();
+      if (entry.zaloTextSent && !entry.facebookTextSent) row?.querySelector('.message-text-messenger')?.remove();
       if ((entry.zaloImageSent || entry.zaloTextSent) && !entry.facebookPartSent) row?.remove();
       else setStatusIcon(row, 'sent');
     }
 
-    function updatePendingConfirmation({ customerId, pageId, localId, part, channel, mid }) {
+    function markPendingFacebook(row) {
+      if (!row) return;
+      row.dataset.channel = 'facebook';
+      const icon = row.querySelector('.zalo-message-icon');
+      if (icon) icon.outerHTML = '<i class="fa-brands fa-facebook-messenger messenger-message-icon" role="img" title="Messenger" aria-label="Messenger"></i>';
+    }
+
+    function updatePendingConfirmation({ customerId, pageId, localId, part, channel, mid, requiredChannel }) {
       if (!localId || (part !== 'image' && part !== 'text')) return;
       const entry = PendingMessages.getPending(customerId, pageId).find(item => item.localId === localId);
       if (!entry) return;
       if (mid && inConversation(customerId, pageId)) linkMessengerId(mid, localId);
+      if (requiredChannel === 'facebook') { entry.facebookRequired = true; entry.zaloRequired = false; }
+      if (channel === 'facebook' && inConversation(customerId, pageId)) {
+        markPendingFacebook(findMessageRowByLocalId(localId));
+      }
       GBChatDelivery.confirm(entry, part, channel);
-      if (GBChatDelivery.complete(entry)) settlePending(customerId, pageId, entry);
-      else PendingMessages.save(customerId, pageId, entry);
+      if (GBChatDelivery.complete(entry)) {
+        entry.uncertain = false;
+        if (!retryingIds.has(localId)) {
+          settlePending(customerId, pageId, entry);
+        } else {
+          PendingMessages.save(customerId, pageId, entry);
+          if (inConversation(customerId, pageId)) {
+            const row = findMessageRowByLocalId(localId);
+            hideFailBadge(row);
+            setStatusIcon(row, 'sent');
+          }
+        }
+      } else {
+        PendingMessages.save(customerId, pageId, entry);
+      }
     }
 
     async function submitPendingMessage(customerId, pageId, entry, channel) {
       const { localId } = entry;
       if (retryingIds.has(localId)) return;
       const row = findMessageRowByLocalId(localId);
-      const needsImage = entry.hasImage && !entry.imagePartSent;
+      if (entry.facebookRequired) channel = 'facebook';
+      else if (entry.zaloRequired) channel = 'zalo';
+      const fullMessage = channel === 'zalo' || entry.orderConfirmation || entry.facebookRequired;
+      const needsImage = entry.hasImage && (fullMessage || !entry.imagePartSent);
       const savedFile = needsImage ? pendingImageFiles.get(localId) : null;
       const image = savedFile && (channel !== 'zalo' || /^image\//.test(savedFile.type)) ? savedFile : null;
-      const text = entry.textPartSent ? '' : (entry.message || '');
+      const text = (fullMessage || !entry.textPartSent) ? (entry.message || '') : '';
       const attachmentNote = savedFile
         ? 'Zalo hỗ trợ chữ và ảnh. Có thể thử lại tệp này qua Messenger.'
         : 'Tệp đính kèm cần được chọn lại.';
+      if (fullMessage && needsImage && !image) {
+        showFailBadge(row, localId, attachmentNote);
+        return;
+      }
       if (!text && !image) {
         showFailBadge(row, localId, needsImage ? attachmentNote : 'Không còn phần nào cần gửi lại.');
         return;
       }
 
+      if (channel === 'zalo') {
+        entry.zaloRequired = true;
+        PendingMessages.save(customerId, pageId, entry);
+      }
       retryingIds.add(localId);
       hideFailBadge(row);
       setStatusIcon(row, 'sending');
@@ -545,20 +596,25 @@
         const data = await GBChatDelivery.send({ customerId, pageId, entry, channel, text, image });
         if (inConversation(customerId, pageId)) reconcileSendResponse(localId, data);
         const saved = PendingMessages.getPending(customerId, pageId).find(item => item.localId === localId);
-        if (!saved) return;
-        entry = saved;
+        entry = saved || entry;
+        if (data.facebookRequired) { entry.facebookRequired = true; entry.zaloRequired = false; }
+        else entry.zaloRequired ||= Boolean(data.zaloRequired);
+        if (data.preferredChannel) entry.preferredChannel = data.preferredChannel;
         entry.imagePartSent ||= Boolean(data.imageSent && image);
         entry.textPartSent ||= Boolean(data.textSent && text);
         entry.facebookPartSent ||= Boolean(data.messageIds?.length);
+        entry.facebookImageSent ||= Boolean(data.facebookImageSent);
+        entry.facebookTextSent ||= Boolean(data.facebookTextSent);
         entry.zaloImageSent ||= Boolean(data.zaloImageSent);
         entry.zaloTextSent ||= Boolean(data.zaloTextSent);
         entry.uncertain = Boolean(data.uncertain);
         const currentRow = findMessageRowByLocalId(localId);
-        if (entry.zaloImageSent) currentRow?.querySelector('.message-images-container')?.remove();
-        if (entry.zaloTextSent) currentRow?.querySelector('.message-text-messenger')?.remove();
+        if (entry.facebookRequired) markPendingFacebook(currentRow);
+        if (entry.zaloImageSent && !entry.facebookImageSent) currentRow?.querySelector('.message-images-container')?.remove();
+        if (entry.zaloTextSent && !entry.facebookTextSent) currentRow?.querySelector('.message-text-messenger')?.remove();
         if (GBChatDelivery.complete(entry)) {
           settlePending(customerId, pageId, entry);
-        } else {
+        } else if (saved) {
           entry.failReason = data.error || (data.success && needsImage && !image ? attachmentNote : 'Không thể gửi tin nhắn.');
           PendingMessages.save(customerId, pageId, entry);
           if (inConversation(customerId, pageId)) showFailBadge(currentRow, localId, entry.failReason);
@@ -568,6 +624,10 @@
         const saved = PendingMessages.getPending(customerId, pageId).find(item => item.localId === localId);
         if (!saved) return;
         entry = saved;
+        if (GBChatDelivery.complete(entry)) {
+          settlePending(customerId, pageId, entry);
+          return;
+        }
         entry.failReason = 'Mất kết nối máy chủ. Chưa xác nhận được tin đã gửi.';
         entry.uncertain = true;
         PendingMessages.save(customerId, pageId, entry);
@@ -600,20 +660,32 @@
           afterId: String(history.cursor),
           zaloReadFromId: String(oldestPendingId),
           pageId: history.pageId,
-          pending: waiting.map(entry => entry.localId).join(',')
+          pending: waiting.map(entry => entry.localId).join(','),
+          reactionMids: Array.from(modalMessagesContainer.querySelectorAll('[data-channel="zalo"][data-msg-id]'))
+            .slice(-40).map(row => row.dataset.msgId).join(',')
         });
         const response = await fetch('/api/messages/' + encodeURIComponent(history.customerId) + '?' + query, { cache: 'no-store' });
         if (!response.ok || history !== syncHistory) return;
-        const { messages, readIds, deliveries = [] } = await response.json();
+        const { messages, readIds, deliveries = [], reactionUpdates = [] } = await response.json();
         if (history !== syncHistory) return;
+        for (const update of reactionUpdates) updateMessageReactions(update.mid, update.reactions);
         const partStates = new Map();
         for (const result of deliveries) {
           const states = partStates.get(result.id) || {};
           states[result.part] = result.state;
           partStates.set(result.id, states);
+          if (result.requiredChannel === 'facebook') {
+            const entry = PendingMessages.getPending(history.customerId, history.pageId).find(item => item.localId === result.id);
+            if (entry) {
+              entry.facebookRequired = true;
+              entry.zaloRequired = false;
+              PendingMessages.save(history.customerId, history.pageId, entry);
+              markPendingFacebook(findMessageRowByLocalId(result.id));
+            }
+          }
           if (result.state === 'sent') {
             updatePendingConfirmation({ customerId: history.customerId, pageId: history.pageId,
-              localId: result.id, part: result.part, channel: result.channel, mid: result.messid });
+              localId: result.id, part: result.part, channel: result.channel, mid: result.messid, requiredChannel: result.requiredChannel });
           }
         }
         for (const entry of PendingMessages.getPending(history.customerId, history.pageId)) {
@@ -739,7 +811,9 @@
       const pageId = currentPageID;
       const localId = 'local_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
       registerLocalMessage(localId);
+      const latestIncoming = Array.from(modalMessagesContainer.querySelectorAll('.message-received-messenger')).at(-1);
       const entry = {
+        preferredChannel: latestIncoming?.dataset.channel === 'zalo' ? 'zalo' : 'facebook',
         localId, pageId, message: text || null, hasImage: Boolean(image), fileType: image?.type, createdAt: Date.now(),
         orderConfirmation: Boolean(text) && (orderConfirmationDraft || /(?:^|\\n)\\s*Đơn hàng chị có\\s*:/iu.test(text.normalize('NFC')))
       };
@@ -752,7 +826,7 @@
       PendingMessages.save(customerId, pageId, entry);
 
       const tempMessage = {
-        sender: pageId, message: entry.message, image: image ? createAndTrackBlobUrl(image) : null, timestamp: entry.createdAt,
+        sender: pageId, channel: entry.preferredChannel, is_echo: 1, message: entry.message, image: image ? createAndTrackBlobUrl(image) : null, timestamp: entry.createdAt,
         fileType: image?.type, time: entry.createdAt, localId,
         sent_by_username: messageModalEl.dataset.chatUsername || null
       };
@@ -902,9 +976,7 @@
 
     if (modalMessagesContainer) {
       modalMessagesContainer.addEventListener('click', function (event) {
-        if (event.target.classList.contains('message-clickable')) {
-          showFullImage(event.target.src);
-        }
+        openMessageImage(event);
       });
 
     }
@@ -1030,6 +1102,13 @@
     });
     socket.on('new-message', data => {
       addMessageToTop(data);
+      if (String(data.sent_by_user_id) === String(window.CURRENT_USER_ID) &&
+          PAGE_IDS.includes(String(data.senderId)) && data.part && data.client_message_id) {
+        updatePendingConfirmation({
+          customerId: data.recipientId, pageId: data.senderId,
+          localId: data.client_message_id, part: data.part, channel: data.channel || 'facebook', mid: data.messid
+        });
+      }
       if (!isActiveChat(conversationVersion)) return;
       const participants = [String(data.senderId), String(data.recipientId)];
       if (!participants.includes(String(currentCustomerId))) return;

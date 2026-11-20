@@ -54,6 +54,7 @@ const GBChatDelivery = (() => {
     form.append('currentPageID', pageId);
     if (entry.orderConfirmation) form.append('orderConfirmation', '1');
     if (channel === 'zalo') form.append('deliveryChannel', 'zalo');
+    else if (entry.facebookRequired) form.append('deliveryChannel', 'facebook');
     if (text) form.append('message', text);
     if (image) form.append('image', image);
     const response = await fetch('/api/send-message', { method: 'POST', body: form });
@@ -61,16 +62,23 @@ const GBChatDelivery = (() => {
   }
 
   function complete(entry) {
+    if (entry.facebookRequired) return Boolean((!entry.hasImage || entry.facebookImageSent) && (!entry.message || entry.facebookTextSent));
+    const requireZalo = entry.zaloRequired ||
+      (entry.hasImage && entry.message && (entry.zaloImageSent || entry.zaloTextSent));
+    if (requireZalo) return Boolean((!entry.hasImage || entry.zaloImageSent) && (!entry.message || entry.zaloTextSent));
     return Boolean((!entry.hasImage || entry.imagePartSent) && (!entry.message || entry.textPartSent));
   }
 
   function confirm(entry, part, channel) {
+    entry.zaloRequired ||= channel === 'zalo';
     if (part === 'image') {
       entry.imagePartSent = true;
       entry.zaloImageSent ||= channel === 'zalo';
+      entry.facebookImageSent ||= channel === 'facebook';
     } else if (part === 'text') {
       entry.textPartSent = true;
       entry.zaloTextSent ||= channel === 'zalo';
+      entry.facebookTextSent ||= channel === 'facebook';
     }
     entry.facebookPartSent ||= channel === 'facebook';
   }

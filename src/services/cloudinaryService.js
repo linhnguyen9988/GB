@@ -18,13 +18,18 @@ const cloudinaryAccounts = [1, 2, 3].map(i => ({
 });
 console.log(`[Cloudinary] Số tài khoản hợp lệ: ${cloudinaryAccounts.length}/3`);
 
-function getNextCloudinary() {
+function getNextCloudinaryAccount() {
     if (!cloudinaryAccounts.length) throw new Error('Chưa cấu hình tài khoản Cloudinary nào trong env');
     const account = cloudinaryAccounts[accountIndex % cloudinaryAccounts.length];
     accountIndex++;
     if (accountIndex > 1000000) accountIndex = 0;
+    return { ...account };
+}
+
+function getNextCloudinary() {
+    const account = getNextCloudinaryAccount();
     cloudinary.config(account);
     return account.cloud_name;
 }
 
-module.exports = { getNextCloudinary };
+module.exports = { getNextCloudinary, getNextCloudinaryAccount };

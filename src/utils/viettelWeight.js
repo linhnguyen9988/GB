@@ -6,7 +6,7 @@ function toViettelWeightGrams(value) {
  if (!Number.isFinite(kg) || kg <= 0 || !Number.isSafeInteger(Math.round(kg * 1000))) throw new RangeError('Số ký phải là số hợp lệ lớn hơn 0');
  const grams = Math.round(kg * 1000);
  if (grams <= 3000) return 1000;
- if (grams <= 4000) return 2000;
+ if (grams <= 5000) return 2000;
  if (grams <= 6000) return 3000;
  if (grams <= 7000) return 4000;
  if (grams <= 8000) return 5000;

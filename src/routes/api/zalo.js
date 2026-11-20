@@ -5,6 +5,7 @@ const uploadTestImage = require('multer')({
     limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 4, fieldSize: 8192 }
 }).single('image');
 const zalo = require('../../services/zaloConnection');
+const social = require('../../services/zaloSocialService');
 
 router.use((req, res, next) => {
     res.set('Cache-Control', 'no-store');
@@ -22,8 +23,14 @@ function route(handler) {
             if (error instanceof zalo.ZaloActionError) {
                 return res.status(error.status).json({ message: error.message });
             }
+            if (error.code === 'ER_BAD_FIELD_ERROR' && /zalo_(can_message|message_)/.test(error.sqlMessage || error.message || '')) return res.status(503).json({ message: 'Cần chạy migration 20261120_zalo_friend_queue.sql.' });
             if (error.code === 'ER_BAD_FIELD_ERROR') {
                 return res.status(503).json({ message: 'Cần chạy migration 20261110_zalo_shipment_groups.sql.' });
+            }
+            if (error.code === 'ER_NO_SUCH_TABLE' && /gb_zalo_friend_queue/.test(error.sqlMessage || error.message || '')) return res.status(503).json({ message: 'Cần chạy migration 20261120_zalo_friend_queue.sql.' });
+            if (error.code === 'ER_NO_SUCH_TABLE' && /gb_zalo_(friend_accept|group_add|customer_profile_sync)/.test(error.sqlMessage || error.message || '')) {
+                const migration = /gb_zalo_customer_profile_sync/.test(error.sqlMessage || error.message || '') ? '20261120_zalo_customer_profile_sync.sql' : '20261120_zalo_social.sql';
+                return res.status(503).json({ message: 'Cần chạy migration ' + migration + '.' });
             }
             if (error.code === 'ER_NO_SUCH_TABLE') {
                 return res.status(503).json({ message: 'Cần chạy migration 20261109_zalo_connection.sql.' });
@@ -74,6 +81,21 @@ function parseTestImage(req, res, next) {
 router.post('/send-test', parseTestImage, route(async (req, res) => {
     const result = await zalo.sendTestMessage(req.body || {}, req.file?.buffer);
     return res.json({ success: true, ...result });
+}));
+router.get('/friend-queue', route(async (_req, res) => res.json(await require('../../services/zaloFriendQueue').progress())));
+router.post('/friend-queue/retry', route(async (_req, res) => res.json(await require('../../services/zaloFriendQueue').retryFailed())));
+router.put('/friend-queue', route(async (req, res) => {
+    await require('../../services/zaloFriendQueue').configure(req.body || {});
+    return res.json({ success: true });
+}));
+router.post('/profile-sync', route(async (_req, res) => res.status(202).json(await require('../../services/zaloCustomerProfileSync').queueAll())));
+router.get('/friends', route(async (_req, res) => res.json(await social.listFriends())));
+router.get('/customers', route(async (req, res) => res.json(await social.searchCustomers(req.query.q))));
+router.post('/group-members', route(async (req, res) => res.status(202).json(await social.enqueueGroup(req.body || {}))));
+router.get('/social-progress', route(async (_req, res) => res.json(await social.groupProgress())));
+router.delete('/group-members/:jobId', route(async (req, res) => {
+    await social.cancelGroup(req.params.jobId);
+    return res.json({ success: true });
 }));
 router.get('/groups', route(async (_req, res) => res.json(await zalo.listGroups())));
 router.put('/shipment-group', route(async (req, res) => {

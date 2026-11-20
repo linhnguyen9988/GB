@@ -13,12 +13,18 @@ function partKey({ user, pageId, customerId, clientMessageId }, part) {
     ])).digest('hex');
 }
 
+function facebookFallbackId(clientMessageId) {
+    return 'fb_' + createHash('sha256').update(clientMessageId).digest('hex');
+}
+
 async function findParts({ user, pageId, customerId, clientIds }) {
     const keys = new Map();
     for (const id of clientIds) {
         if (!isClientId(id)) continue;
         for (const part of ['image', 'text']) {
             keys.set(partKey({ user, pageId, customerId, clientMessageId: id }, part), { id, part });
+            keys.set(partKey({ user, pageId, customerId, clientMessageId: facebookFallbackId(id) }, part),
+                { id, part, requiredChannel: 'facebook' });
         }
     }
     if (!keys.size) return [];
@@ -26,7 +32,16 @@ async function findParts({ user, pageId, customerId, clientIds }) {
         'SELECT send_key, state, channel, messid FROM gb_chat_send_parts WHERE send_key IN (?)',
         [[...keys.keys()]]
     );
-    return rows.map(row => ({ ...keys.get(row.send_key), state: row.state, channel: row.channel, messid: row.messid }));
+    const results = new Map();
+    for (const row of rows) {
+        const info = keys.get(row.send_key);
+        if (!info) continue;
+        const key = info.id + ':' + info.part;
+        if (!results.has(key) || info.requiredChannel === 'facebook') results.set(key, {
+            ...info, state: row.state, channel: info.requiredChannel || row.channel, messid: row.messid
+        });
+    }
+    return [...results.values()];
 }
 
 async function claimParts(request, parts) {
@@ -74,4 +89,4 @@ async function finishPart(claim, state, channel, mid = null) {
     );
 }
 
-module.exports = { isClientId, findParts, claimParts, bindAudit, confirmFacebook, finishPart };
+module.exports = { isClientId, facebookFallbackId, findParts, claimParts, bindAudit, confirmFacebook, finishPart };

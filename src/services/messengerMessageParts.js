@@ -37,16 +37,12 @@ async function sendDirectParts({ recipient, parts, uncertain, send }) {
 async function sendPrivateParts({ commentIds, parts, uncertain, send }) {
     const available = [...new Set(commentIds)];
     const sent = { image: false, text: false };
-    const requested = ['image', 'text'].filter(part => parts[part] && !uncertain[part]);
+    const requested = ['image', 'text'].filter(part => parts[part]);
 
-    // A comment can receive one private reply. Pair two different comments or leave the pair for the next channel.
-    if (available.length < requested.length) return { imageSent: false, textSent: false };
-    while (available.length) {
-        const missing = requested.filter(part => !sent[part] && !uncertain[part]);
-        const round = missing.slice(0, available.length);
-        if (!round.length) break;
-        await Promise.all(round.map(async part => {
-            const commentId = available.shift();
+    for (const commentId of available) {
+        const missing = requested.filter(part => !sent[part]);
+        if (!missing.length) break;
+        await Promise.all(missing.map(async part => {
             const result = await postPart(send, {
                 messaging_type: 'RESPONSE',
                 recipient: { comment_id: commentId },

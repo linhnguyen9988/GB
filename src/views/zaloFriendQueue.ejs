@@ -1,0 +1,18 @@
+<section id="zaloFriendQueue" class="mb-3 pb-3 border-bottom" aria-labelledby="zaloFriendQueueTitle">
+  <h6 id="zaloFriendQueueTitle">Tự tra Zalo và kết bạn với khách</h6>
+  <p class="small text-body-secondary">Ưu tiên khách nhắn Messenger gần nhất. Hàng chờ lưu trong DB, tiếp tục sau khi khởi động lại GB.</p>
+  <p class="small mb-1">Giờ hoạt động: <strong>07:00 đến trước 23:00 (GMT+7)</strong>. Ngoài giờ tự nghỉ, hàng chờ được giữ lại.</p>
+  <p data-fq-cadence class="small mb-2">Nghỉ 10–15 giây giữa hai khách. Đủ 10 khách nghỉ ngẫu nhiên 1–2 phút. Các bước trong một khách chạy liền nhau.</p>
+  <div class="d-flex gap-2 flex-wrap mt-2">
+    <button data-fq-retry type="button" class="btn btn-outline-primary btn-sm" disabled>Thử lại các lượt tra lỗi</button>
+    <button data-fq-toggle type="button" class="btn btn-outline-secondary btn-sm" disabled>Tạm dừng</button>
+  </div>
+  <p data-fq-status class="small mt-2 mb-1" role="status" aria-live="polite">Đang tải hàng chờ…</p>
+  <p data-fq-feedback class="small text-danger mb-1" role="status"></p>
+  <p data-fq-counts class="small mb-2"></p>
+  <div data-fq-current class="mb-2" aria-live="polite"></div>
+  <details class="small mb-2"><summary>10 khách ưu tiên tiếp theo</summary><div data-fq-waiting class="mt-2"></div></details>
+  <details class="small"><summary>10 kết quả gần đây và nhật ký từng khách</summary><div data-fq-recent class="mt-2"></div></details>
+  <details class="small mt-2"><summary>Nhật ký hoạt động mới nhất</summary><div data-fq-events class="mt-2 text-break"></div></details>
+</section>
+<script src="/js/admin-zalo-friend-queue.js?v=20261120-friend-hours" defer></script>
