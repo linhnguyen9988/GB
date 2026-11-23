@@ -42,6 +42,9 @@
                         <div class="care-wide"><dt>Địa chỉ giao hàng</dt><dd><%= order.address || '—' %></dd></div>
                         <% if (order.note) { %><div class="care-wide"><dt>Ghi chú giao hàng</dt><dd class="care-note"><%= order.note %></dd></div><% } %>
                     </dl>
+                    <section class="mt-3 border-top pt-3"><h3 class="h6">Tiền hàng, COD và cước</h3><%- order.financialHtml %>
+                        <% if (order.financialHistoryError) { %><p class="text-danger small">Không tải được lịch sử thay đổi.</p><% } %>
+                    </section>
                     <% if (order.issue) { %><p class="alert alert-warning py-2 mt-3 mb-0"><%= order.issue %></p><% } %>
                 </div>
             </section>

@@ -4,6 +4,7 @@ const { SendCanhBao, suppressCustomerShipmentAlert } = require('../../services/s
 const { VIETTEL_WEBHOOK_TOKEN } = require('../../configs/constants');
 const { sendFcmToUser } = require('../fcm');
 const zaloAlerts = require('../../services/zaloShipmentAlerts');
+const financial = require('../../services/orderFinancialService');
 
 function weightStatusTime(value) {
     const match = /^(\d{2})\/(\d{2})\/(\d{4}) ((?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d)$/.exec(value);
@@ -46,15 +47,8 @@ module.exports = function registerViettelWebhook(router) {
                 ? weightStatusTime(data.ORDER_STATUSDATE) : null;
             const reportedKg = weightAt ? weightGrams / 1000 : null;
 
-            if (weightAt) {
-                await db.query(
-                    `UPDATE lendon
-                        SET viettel_input_kg = COALESCE(viettel_input_kg, kg), kg = ?, viettel_weight_status_at = ?
-                      WHERE realorderid = ? AND (provider = 'Viettel' OR provider IS NULL)
-                        AND (viettel_weight_status_at IS NULL OR viettel_weight_status_at < ?)`,
-                    [reportedKg, weightAt, orderNumber, weightAt]
-                );
-            }
+            // Capture money/weight even for duplicate statuses and already-final orders.
+            await financial.syncViettel(orderNumber, data);
 
             const [dupRows] = await db.query(
                 'SELECT 1 FROM order_logs WHERE order_number = ? AND status_code = ? AND status_date_raw = ? LIMIT 1',
@@ -131,14 +125,13 @@ module.exports = function registerViettelWebhook(router) {
                 UPDATE lendon 
                 SET statuscode = ?, 
                     statustext = ?, 
-                    cod = ?,
                     shipper_name = ?, 
                     shipper_phone = ?,
                     reason_code = ?,
                     pod_images = COALESCE(?, pod_images),
                     last_update = NOW()
                 WHERE realorderid = ?`,
-                        [status, statustext, data.MONEY_COLLECTION,
+                        [status, statustext,
                             data.EMPLOYEE_NAME || null, phone || null, reasonCode, podImagesJson, orderNumber]
                     );
                     const NOTIFY_STATUSES = {
@@ -192,6 +185,9 @@ module.exports = function registerViettelWebhook(router) {
                     //console.log(`[Skip Update] Đơn ${orderNumber}: currentStatus=${currentStatus}${isCurrentFinal ? ' (đã chốt)' : ''}, status nhận được=${status} không phải bước tiến hợp lệ`);
                 }
             }
+
+            // A partial-return waybill may only have been created above.
+            if (!order && is1P1) await financial.syncViettel(orderNumber, data);
 
             await db.query(`
         INSERT IGNORE INTO order_logs 

@@ -4,6 +4,7 @@ const SqlString = require('sqlstring');
 const StringBuilder = require('node-stringbuilder');
 const jwtAuth = require('../../middleware/jwtAuth');
 const request = require('request');
+const { facebookRequestJson } = require('../../services/facebookRequestJson');
 const socket = require('../../socket');
 const { AVA_DIR, GlobalPageID } = require('../../configs/constants');
 const { LocDau } = require('../../utils/text');
@@ -226,55 +227,19 @@ module.exports = function registerLiveCommentRoutes(router) {
         }
 
         let page;
+        let profile;
+        let refreshCustomerProfile;
+        const updateProfile = refreshProfile === '1';
         try {
             const [[comment]] = await DBConnection.query(
                 'SELECT CAST(pageid AS CHAR) AS pageid FROM livecomment WHERE commentid = ? AND userid = ? LIMIT 1',
                 [commentid, userid]
             );
             if (!comment) return res.status(404).json({ success: false, error: 'Không tìm thấy bình luận của khách này.' });
-            const [[account]] = await DBConnection.query('SELECT token FROM usertoken WHERE id = 1');
-            if (!account?.token) return res.status(503).json({ success: false, error: 'Thiếu token Facebook để cập nhật bình luận.' });
-
-            const browser = await getBrowser();
-            page = await browser.newPage();
-            const updateProfile = refreshProfile === '1';
-            const fields = 'from,id,created_time,live_broadcast_timestamp,message,application';
-            async function readComment(fieldList) {
-                const params = new URLSearchParams({ fields: fieldList, access_token: account.token });
-                await page.goto(`https://graph.facebook.com/v16.0/${commentid}?${params}`, { timeout: 15000 });
-                return JSON.parse(await page.$eval('*', element => element.innerText));
-            }
-            let data = await readComment(updateProfile ? fields.replace('from,', 'from{id,name,picture{url,is_silhouette}},') : fields);
-            if (updateProfile && data?.error) data = await readComment(fields);
-            if (data?.error) {
-                const graphError = data.error;
-                const inaccessible = Number(graphError.error_subcode) === 33 ||
-                    /Invalid comment_id|Unsupported get request|does not exist|cannot be loaded/i.test(String(graphError.message || ''));
-                const message = inaccessible
-                    ? 'Không truy cập được bình luận. Bình luận có thể đã bị xóa hoặc token không đủ quyền xem.'
-                    : Number(graphError.code) === 190
-                        ? 'Token Facebook đã hết hạn hoặc không hợp lệ. Vui lòng lấy lại token rồi thử cập nhật.'
-                        : 'Facebook không cập nhật được bình luận: ' + (graphError.message || 'Không có thông tin lỗi.');
-                return res.status(inaccessible ? 404 : 502).json({
-                    success: false, error: message,
-                    facebookError: { code: graphError.code, error_subcode: graphError.error_subcode }
-                });
-            }
-            if (!data || typeof data !== 'object' || !data.id || !data.from?.id) {
-                return res.status(502).json({
-                    success: false, error: 'Facebook chưa trả đủ thông tin bình luận và người bình luận. Chưa cập nhật dữ liệu.'
-                });
-            }
-
-            const realId = String(data.from.id);
-            const timestamp = data.live_broadcast_timestamp == null ? NaN : Number(data.live_broadcast_timestamp);
-            const hasTimestamp = Number.isFinite(timestamp) && timestamp >= 0 && timestamp <= 8640000000000;
-            const time = hasTimestamp ? new Date(timestamp * 1000).toISOString().slice(11, 19) : null;
-            let profile;
-            if (updateProfile) {
-                const picture = data.from.picture?.data;
-                let avatar = picture?.is_silhouette ? '' : picture?.url || '';
-                let name = data.from.name || '';
+            refreshCustomerProfile = async (from) => {
+                const picture = from?.picture?.data;
+                let avatar = picture?.url || '';
+                let name = from?.name || '';
                 let avatarSaved = false;
                 if (avatar) {
                     avatarSaved = await downloadAvatar(avatar, userid, AVA_DIR).then(() => true, () => false);
@@ -287,15 +252,60 @@ module.exports = function registerLiveCommentRoutes(router) {
                         avatarSaved = await downloadAvatar(avatar, userid, AVA_DIR).then(() => true, () => false);
                     }
                 }
-                profile = { name, searchName: name ? LocDau(name) : '', avatarSaved };
+                const result = { name, searchName: name ? LocDau(name) : '', avatarSaved };
                 if (name || avatarSaved) {
                     await DBConnection.query(
                         `UPDATE khachhang SET fbname = COALESCE(?, fbname), fbnamex = COALESCE(?, fbnamex),
                             avalink = COALESCE(?, avalink) WHERE userid = ? AND pageid = ?`,
-                        [name || null, profile.searchName || null, avatarSaved ? avatar : null, userid, comment.pageid]
+                        [name || null, result.searchName || null, avatarSaved ? avatar : null, userid, comment.pageid]
                     );
                 }
+                return result;
+            };
+
+            const [[account]] = await DBConnection.query('SELECT token FROM usertoken WHERE id = 1');
+            if (!account?.token) {
+                if (updateProfile) profile = await refreshCustomerProfile();
+                return res.status(503).json({ success: false, error: 'Thiếu user token Facebook để cập nhật bình luận.', profile });
             }
+
+            const browser = await getBrowser();
+            page = await browser.newPage();
+            const fields = 'from,id,created_time,live_broadcast_timestamp,message,application';
+            async function readComment(fieldList) {
+                const params = new URLSearchParams({ fields: fieldList, access_token: account.token });
+                await page.goto(`https://graph.facebook.com/v16.0/${commentid}?${params}`, { timeout: 15000 });
+                return JSON.parse(await page.$eval('*', element => element.innerText));
+            }
+            let data = await readComment(updateProfile ? fields.replace('from,', 'from{id,name,picture{url,is_silhouette}},') : fields);
+            if (updateProfile && data?.error) data = await readComment(fields);
+            if (data?.error) {
+                if (updateProfile) profile = await refreshCustomerProfile();
+                const graphError = data.error;
+                const inaccessible = Number(graphError.error_subcode) === 33 ||
+                    /Invalid comment_id|Unsupported get request|does not exist|cannot be loaded/i.test(String(graphError.message || ''));
+                const message = inaccessible
+                    ? 'Không truy cập được bình luận. Bình luận có thể đã bị xóa hoặc token không đủ quyền xem.'
+                    : Number(graphError.code) === 190
+                        ? 'Token Facebook đã hết hạn hoặc không hợp lệ. Vui lòng lấy lại token rồi thử cập nhật.'
+                        : 'Facebook không cập nhật được bình luận: ' + (graphError.message || 'Không có thông tin lỗi.');
+                return res.status(inaccessible ? 404 : 502).json({
+                    success: false, error: message, profile,
+                    facebookError: { code: graphError.code, error_subcode: graphError.error_subcode }
+                });
+            }
+            if (!data || typeof data !== 'object' || !data.id || !data.from?.id) {
+                if (updateProfile) profile = await refreshCustomerProfile();
+                return res.status(502).json({
+                    success: false, profile, error: 'Facebook chưa trả đủ thông tin bình luận và người bình luận. Chưa cập nhật dữ liệu bình luận.'
+                });
+            }
+
+            const realId = String(data.from.id);
+            const timestamp = data.live_broadcast_timestamp == null ? NaN : Number(data.live_broadcast_timestamp);
+            const hasTimestamp = Number.isFinite(timestamp) && timestamp >= 0 && timestamp <= 8640000000000;
+            const time = hasTimestamp ? new Date(timestamp * 1000).toISOString().slice(11, 19) : null;
+            if (updateProfile) profile = await refreshCustomerProfile(data.from);
 
             const [[oldCustomer]] = await DBConnection.query(
                 'SELECT phone, diachi, note, nuocngoai FROM khachhang WHERE realfbid = ? AND userid != ? LIMIT 1',
@@ -317,99 +327,77 @@ module.exports = function registerLiveCommentRoutes(router) {
             return res.json({ success: true, data, profile });
         } catch (error) {
             console.error('[detailcomment] Lỗi cập nhật:', error.code || error.name);
-            return res.status(502).json({ success: false, error: 'Không cập nhật được bình luận từ Facebook hoặc database.' });
+            if (updateProfile && !profile && refreshCustomerProfile) {
+                try { profile = await refreshCustomerProfile(); }
+                catch (profileError) { console.error('[detailcomment] Lỗi cập nhật avatar:', profileError.code || profileError.name); }
+            }
+            return res.status(502).json({ success: false, profile, error: 'Không cập nhật được bình luận từ Facebook hoặc database.' });
         } finally {
             if (page) await page.close().catch(() => {});
         }
     });
 
-    router.post('/replycomment', jwtAuth, function (req, res) {
-        var cmtid = req.body.commentid;
-        var pageid = req.body.pageid;
-        var userid = req.body.userid;
-        var chat = req.body.chat.replace(/(?:\r\n|\r|\n)/g, '\\n');
-        var type = '';
-        var baseon = '';
-        var id = '';
-        if (isFakeCommentId(cmtid)) {
-            return res.json({ data: { skipped: true, message: 'Comment ảo, bỏ qua.' } });
+    router.post('/replycomment', jwtAuth, async function (req, res) {
+        const { commentid, pageid, userid, chat } = req.body || {};
+        const fail = (status, message) => res.status(status).json({ success: false, error: message, data: { error: { message } } });
+        if (isFakeCommentId(commentid)) return res.json({ data: { skipped: true, message: 'Comment ảo, bỏ qua.' } });
+        if (typeof chat !== 'string' || !chat.trim() || !/^[0-9]{1,64}$/.test(String(pageid || '')) ||
+            !/^[0-9]{1,64}$/.test(String(userid || '')) || typeof commentid !== 'string' || !/^[0-9_]{0,100}$/.test(commentid)) {
+            return fail(400, 'Thiếu hoặc sai nội dung, khách, Page hoặc mã bình luận.');
         }
-        if (cmtid === '' || chat.includes('..')) {
-            type = 'UPDATE';
-            baseon = 'id';
-            id = userid;
-        } else {
-            type = 'RESPONSE';
-            baseon = 'comment_id';
-            id = cmtid;
-        }
-        DBConnection.query(" SELECT accesstoken from pageinfo WHERE pageid='" + pageid + "'",
-            function (error, data) {
-                if (error) {
-                    throw error;
-                }
-                else {
-                    let token = data[0].accesstoken;
-                    var query = `https://graph.facebook.com/v10.0/me/messages?access_token=${token}&recipient={"${baseon}":"${id}"}&messaging_type=${type}&message={"text":"${chat}"}`;
-                    request({
-                        url: encodeURI(query),
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        }
-                    }, function (error, response, bodyx) {
-                        var body = JSON.parse(bodyx.replaceAll(" ", "").replaceAll(/\n/g, " "));
-                        if (error) {
-                            console.log(error + ": " + id);
-                        } else {
-                            res.json({
-                                data: body
-                            });
-                            if (response.statusCode == 200) {
-                                var psid = body.recipient_id;
-                                DBConnection.query(" UPDATE khachhang SET psid='" + psid + "' WHERE userid='" + userid + "'");
-                            } else {
-                                console.log(body.error.message);
-                            }
-                        }
-                    });
-                }
+        try {
+            const [[page]] = await DBConnection.query('SELECT accesstoken FROM pageinfo WHERE pageid = ? LIMIT 1', [pageid]);
+            if (!page?.accesstoken) return fail(409, 'Page chưa có token để gửi tin nhắn.');
+            const direct = commentid === '' || chat.includes('..');
+            const { statusCode, body } = await facebookRequestJson({
+                url: 'https://graph.facebook.com/v10.0/me/messages', method: 'POST',
+                qs: { access_token: page.accesstoken },
+                body: { recipient: direct ? { id: String(userid) } : { comment_id: commentid },
+                    messaging_type: direct ? 'UPDATE' : 'RESPONSE', message: { text: chat } }
             });
+            if (statusCode === 200 && typeof body.message_id === 'string') {
+                const psid = body.recipient_id;
+                if (typeof psid === 'string' && /^[0-9]{1,64}$/.test(psid)) {
+                    try {
+                        await DBConnection.query('UPDATE khachhang SET psid = ? WHERE userid = ? AND pageid = ?', [psid, userid, pageid]);
+                    } catch (error) {
+                        // Facebook has already accepted the message. A local bookkeeping
+                        // failure must not tell the user to send it again.
+                        console.error('[replycomment] Tin đã gửi, chưa lưu được PSID:', error.code || error.name);
+                    }
+                }
+            } else if (!body.error?.message) {
+                return fail(502, 'Facebook chưa trả mã tin nhắn hoặc lý do lỗi. Kiểm tra cuộc trò chuyện trước khi thử lại.');
+            }
+            return res.json({ data: body });
+        } catch (error) {
+            console.error('[replycomment] Không hoàn tất yêu cầu:', error.code || error.name);
+            return fail(error.status || 503, error.status ? error.message : 'Không truy cập được database để gửi tin nhắn.');
+        }
     });
 
-    router.post('/getthread', jwtAuth, function (req, res) {
-        var pageid = req.body.pageid;
-        var threadid = req.body.threadid;
-        var userid = req.body.userid;
-        if (threadid != '0' && userid != '') {
-            DBConnection.query(`UPDATE khachhang SET threadid='${threadid}' WHERE userid='${userid}';`);
+    router.post('/getthread', jwtAuth, async function (req, res) {
+        const { pageid, threadid, userid } = req.body || {};
+        const fail = (status, message) => res.status(status).json({ success: false, error: message, data: { error: { message } } });
+        if (!/^[0-9]{1,64}$/.test(String(pageid || '')) || typeof threadid !== 'string' || !/^[A-Za-z0-9_:-]{1,200}$/.test(threadid)) {
+            return fail(400, 'Page hoặc mã cuộc trò chuyện không hợp lệ.');
         }
-        DBConnection.query(" SELECT accesstoken FROM pageinfo WHERE pageid='" + pageid + "'",
-            function (error, data) {
-                if (error) {
-                    throw error;
-                }
-                else {
-                    let token = data[0].accesstoken;
-                    var query = `https://graph.facebook.com/${threadid}?fields=messages.limit(10){from,attachments,message,created_time,sticker},updated_time&access_token=${token}`;
-                    request({
-                        url: encodeURI(query),
-                        method: 'GET',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        }
-                    }, function (error, response, bodyx) {
-                        var body = JSON.parse(bodyx);
-                        if (error) {
-                            console.log(error);
-                        } else {
-                            res.json({
-                                data: body
-                            });
-                        }
-                    });
-                }
+        try {
+            if (threadid !== '0' && /^[0-9]{1,64}$/.test(String(userid || ''))) {
+                await DBConnection.query('UPDATE khachhang SET threadid = ? WHERE userid = ? AND pageid = ?', [threadid, userid, pageid]);
+            }
+            const [[page]] = await DBConnection.query('SELECT accesstoken FROM pageinfo WHERE pageid = ? LIMIT 1', [pageid]);
+            if (!page?.accesstoken) return fail(409, 'Page chưa có token để tải cuộc trò chuyện.');
+            const { statusCode, body } = await facebookRequestJson({
+                url: 'https://graph.facebook.com/' + encodeURIComponent(threadid), method: 'GET',
+                qs: { fields: 'messages.limit(10){from,attachments,message,created_time,sticker},updated_time', access_token: page.accesstoken }
             });
+            if (statusCode >= 400 && !body.error?.message) return fail(502, 'Không tải được cuộc trò chuyện từ Facebook.');
+            return res.json({ data: body });
+        } catch (error) {
+            console.error('[getthread] Không hoàn tất yêu cầu:', error.code || error.name);
+            return fail(error.status || 503, error.status ? error.message : 'Không truy cập được database để tải cuộc trò chuyện.');
+        }
     });
 
     router.post('/getlivestatus', jwtAuth, function (req, res) {

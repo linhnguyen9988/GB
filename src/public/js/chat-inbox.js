@@ -10,6 +10,7 @@ const GBChatInbox = (() => {
     let refreshing = false;
 
     function addMessageToTop(msg) {
+      if (GBZaloSystemNotice.isSystemMessage(msg)) return;
       const sentByPage = pageIds.includes(String(msg.senderId));
       const customerId = String(sentByPage ? msg.recipientId : msg.senderId);
       const pageId = String(sentByPage ? msg.senderId : msg.recipientId);
@@ -45,6 +46,8 @@ const GBChatInbox = (() => {
         preview.append(badge, ' ');
       }
 
+      const attachments = typeof msg.messageImg === 'string' ? msg.messageImg.split(';') : [];
+      const hasLikeSticker = attachments.some(GBChatMessageView.isLikeSticker);
       let text = msg.messageText || '';
       let template;
       if (msg.template) {
@@ -52,7 +55,9 @@ const GBChatInbox = (() => {
       }
       const zaloAttachments = template?.template_type === 'zalo_media' && Array.isArray(template.attachments)
         ? template.attachments : [];
-      if (!text && zaloAttachments.length) {
+      if (hasLikeSticker) {
+        text = text ? text + ' 👍' : '👍';
+      } else if (!text && zaloAttachments.length) {
         const labels = { image: 'Ảnh', video: 'Video', audio: 'Tin thoại', file: 'Tệp đính kèm' };
         text = labels[zaloAttachments[0].kind] || 'Tệp đính kèm';
       } else if (!text && template) {
@@ -62,10 +67,10 @@ const GBChatInbox = (() => {
       info.append(name, preview);
 
       // Keep the existing attachment previews without loading attachments outside the visible pane.
-      const attachments = typeof msg.messageImg === 'string' ? msg.messageImg.split(';') : [];
       const media = document.createElement('div');
       media.className = 'message-images';
       for (const part of attachments) {
+        if (GBChatMessageView.isLikeSticker(part)) continue;
         const url = GBChatMessageView.safeUrl(part.trim());
         if (!url) continue;
         const path = new URL(url).pathname.toLowerCase();

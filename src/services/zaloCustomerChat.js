@@ -74,10 +74,12 @@ async function withTransaction(write) {
 
 async function resolveCustomer(session, customerId, pageId) {
     const [[customer]] = await db.query(
-        'SELECT id, phone, zaloid, zalo_account_id, zalo_phone FROM khachhang WHERE userid = ? AND pageid = ? LIMIT 1',
+        'SELECT id, phone, zaloid, zalo_account_id, zalo_phone, nuocngoai, label FROM khachhang WHERE userid = ? AND pageid = ? LIMIT 1',
         [customerId, pageId]
     );
     if (!customer) throw new zalo.ZaloActionError(404, 'Không tìm thấy khách trên Page này.');
+    const policy = require('./zaloCustomerMessagePolicy');
+    if (policy.isForeignCustomer(customer)) throw new zalo.ZaloActionError(403, policy.foreignCustomerMessage);
     let phone;
     try {
         phone = zalo.normalizePhone(customer.phone);
@@ -361,11 +363,20 @@ function startListener() {
     let busy = false;
     let lastError;
     let friendQueueBusy = false;
+    let lastFriendQueueError;
+    let lastFriendQueueErrorAt = 0;
     setInterval(async () => {
         if (!current || friendQueueBusy) return;
         friendQueueBusy = true;
-        try { await require('./zaloFriendQueue').tick(current); }
-        catch (error) { console.warn('[Hàng chờ kết bạn Zalo] Lỗi xử lý:', error.code || error.name); }
+        try { await require('./zaloFriendQueue').tick(current); lastFriendQueueError = undefined; }
+        catch (error) {
+            const detail = require('./zaloErrorDetails').zaloErrorDetails(error);
+            if (detail !== lastFriendQueueError || Date.now() - lastFriendQueueErrorAt >= 60000) {
+                console.warn('[Hàng chờ kết bạn Zalo] Lỗi xử lý:', detail);
+                lastFriendQueueError = detail;
+                lastFriendQueueErrorAt = Date.now();
+            }
+        }
         finally { friendQueueBusy = false; }
     }, 1000).unref();
     setInterval(async () => {
@@ -422,9 +433,9 @@ function startListener() {
             }
             lastError = undefined;
         } catch (error) {
-            const code = error.code || error.name;
-            if (code !== lastError) console.warn('[Tin nhắn Zalo] Lỗi mở kết nối:', code);
-            lastError = code;
+            const detail = require('./zaloErrorDetails').zaloErrorDetails(error);
+            if (detail !== lastError) console.warn('[Tin nhắn Zalo] Lỗi kết nối hoặc xử lý hàng chờ:', detail);
+            lastError = detail;
         } finally {
             busy = false;
         }

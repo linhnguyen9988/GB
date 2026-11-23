@@ -62,7 +62,7 @@ async function renderViettelHtml(o) {
                     <tr><td colspan="2"><center>${barcode}<br><p style="font-size:10px;display:inline;vertical-align: top;">${escapeHtml(code)}</p></center></td></tr>
                     <tr><td colspan="2"><h5>${escapeHtml(o.name)} • ${escapeHtml(o.phone)}</h5></td></tr>
                     <tr><td colspan="2"><p style="font-size:10px;display:inline;vertical-align: top;">${escapeHtml(catGonChuoi(o.address, 60))}</p></td></tr>
-                    <tr><td><p style="font-size:10px;display:inline;vertical-align: top;">Cho xem hàng, không nhận thu 30k</p><br>
+                    <tr><td><p style="font-size:10px;display:inline;vertical-align: top;">Cho xem hàng, không nhận thu 30k. Gọi shop ko được xin gọi số: 0913.181.141</p><br>
                     <p style="font-size:10px;display:inline;">1 x Vải</p><br>
                     <p style="font-size:18px;display:inline;">Tiền thu hộ: <b>${cod} đ</b></p></td>
                     <td>${qr}</td></tr>

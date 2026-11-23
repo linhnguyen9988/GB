@@ -4,6 +4,11 @@ const db = require('../../configs/DBConnection');
 const { requireAdmin } = require('../../middleware/jwtAuth');
 const { GetUserToken } = require('../../services/facebookService');
 router.use(requireAdmin);
+router.get('/registration-settings', require('../../services/registrationSettings').show);
+router.put('/registration-settings', require('../../services/registrationSettings').update);
+router.get('/weight-changes', require('../../services/adminWeightChanges').list);
+router.get('/overview', require('../../services/adminDashboardService').overview);
+router.get('/report-day', require('../../services/adminDashboardService').dayDetails);
 router.use('/zalo', require('./zalo'));
 router.post('/facebook/user-token', async (req, res) => {
  const result = await GetUserToken();

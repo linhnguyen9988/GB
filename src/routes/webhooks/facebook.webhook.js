@@ -533,7 +533,7 @@ module.exports = function registerFacebookWebhook(router) {
                     var idx = '';
                     var pageid = entry.id;
                     const suppliedPicture = value.from.picture?.data;
-                    let picture = suppliedPicture?.is_silhouette ? '' : suppliedPicture?.url || '';
+                    let picture = suppliedPicture?.url || '';
                     var userid = value.from.id;
                     var message = value.message;
                     var cmtid = value.comment_id;
@@ -645,15 +645,18 @@ module.exports = function registerFacebookWebhook(router) {
                                         [liveId, fbData.id, status, liveViews, status, liveViews]
                                     );
 
-                                    const sql2 = SqlString.format(
-                                        'INSERT IGNORE INTO livestream (id, name, time, note, luotincuoi, luotlive, livedesc) VALUES(?,?,?,?,?,?,?);',
-                                        [liveId, formatFbTime(fbData.creation_time), '', '', '', '', fbData.description || '']
-                                    );
-
-                                    DBConnection.query(sql);
-                                    DBConnection.query(sql2);
+                                    // Keep all status updates in postlive, including UNPUBLISHED
+                                    // and VOD. Only a broadcast actually going LIVE may create
+                                    // an entry in the working livestream list.
+                                    await DBConnection.query(sql);
 
                                     if (status === 'LIVE') {
+                                        const sql2 = SqlString.format(
+                                            'INSERT IGNORE INTO livestream (id, name, time, note, luotincuoi, luotlive, livedesc) VALUES(?,?,?,?,?,?,?);',
+                                            [liveId, formatFbTime(fbData.creation_time), '', '', '', '', fbData.description || '']
+                                        );
+                                        await DBConnection.query(sql2);
+
                                         const newLivestream = {
                                             liveid: liveId,
                                             name: formatFbTime(fbData.creation_time),

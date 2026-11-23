@@ -1,0 +1,96 @@
+<%- include('headerafterlogin'); -%>
+<% const number = value => Number(value || 0).toLocaleString('vi-VN');
+   const date = value => value.split('-').reverse().join('/'); %>
+<main class="container-xl py-4">
+    <a href="/admin" class="btn btn-sm btn-outline-secondary mb-3">← Quản trị</a>
+    <h1 class="h3">Đơn hoàn thành công</h1>
+    <p class="text-muted">Tính theo ngày giờ trạng thái cuối trong hành trình của hãng, giờ Việt Nam (GMT+7).
+        Gồm đơn hoàn toàn bộ và hoàn một phần; mỗi mã vận đơn tính một lần.</p>
+    <form method="get" action="/admin/returned-orders" class="card card-body mb-3">
+        <div class="row g-3 align-items-end">
+            <div class="col-6 col-md-3">
+                <label for="return-from" class="form-label">Từ ngày</label>
+                <input id="return-from" type="date" class="form-control" name="from" value="<%= from %>" required>
+            </div>
+            <div class="col-6 col-md-3">
+                <label for="return-to" class="form-label">Đến ngày</label>
+                <input id="return-to" type="date" class="form-control" name="to" value="<%= to %>" required>
+            </div>
+            <div class="col-12 col-md-3">
+                <label for="return-carrier" class="form-label">Hãng vận chuyển</label>
+                <select id="return-carrier" name="carrier" class="form-select">
+                    <option value="">Tất cả</option>
+                    <option value="jt" <%= carrier === 'jt' ? 'selected' : '' %>>J&amp;T</option>
+                    <option value="viettel" <%= carrier === 'viettel' ? 'selected' : '' %>>Viettel Post</option>
+                </select>
+            </div>
+            <div class="col-12 col-md-3"><button class="btn btn-primary" type="submit">Xem báo cáo</button></div>
+        </div>
+        <div class="d-flex flex-wrap gap-2 mt-3">
+            <a class="btn btn-sm btn-outline-primary" href="<%= url({from: today, to: today, day: today}) %>">Hôm nay</a>
+            <a class="btn btn-sm btn-outline-primary" href="<%= url({from: yesterday, to: yesterday, day: yesterday}) %>">Hôm qua</a>
+            <a class="btn btn-sm btn-outline-secondary" href="/admin/returned-orders">10 ngày gần nhất</a>
+        </div>
+    </form>
+    <% if (error) { %>
+        <div class="alert alert-danger" role="alert"><%= error %></div>
+    <% } else { %>
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between flex-wrap gap-2">
+                <strong><%= date(from) %> – <%= date(to) %></strong>
+                <span>Tổng: <b><%= number(totals.total) %></b> đơn · Hoàn một phần: <b><%= number(totals.partial) %></b></span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead><tr><th class="text-nowrap">Ngày</th><th class="text-end">J&amp;T</th><th class="text-end text-nowrap">Viettel Post</th><th class="text-end text-nowrap">Tổng hoàn</th><th class="text-end text-nowrap">Trong đó một phần</th><th></th></tr></thead>
+                    <tbody>
+                        <% for (const row of days) { %>
+                            <tr class="<%= row.day === day ? 'table-active' : '' %>">
+                                <th class="text-nowrap"><%= date(row.day) %><% if (row.day === today) { %><small class="d-block fw-normal">Hôm nay</small><% } %></th>
+                                <td class="text-end"><%= number(row.jt) %></td>
+                                <td class="text-end"><%= number(row.viettel) %></td>
+                                <td class="text-end fw-bold"><%= number(row.total) %></td>
+                                <td class="text-end"><%= number(row.partial) %></td>
+                                <td><a class="btn btn-sm btn-outline-secondary text-nowrap" href="<%= url({day: row.day}) %>#return-details">Chi tiết</a></td>
+                            </tr>
+                        <% } %>
+                    </tbody>
+                    <tfoot><tr class="fw-bold"><td>Tổng</td><td class="text-end"><%= number(totals.jt) %></td><td class="text-end"><%= number(totals.viettel) %></td><td class="text-end"><%= number(totals.total) %></td><td class="text-end"><%= number(totals.partial) %></td><td></td></tr></tfoot>
+                </table>
+            </div>
+        </div>
+        <section id="return-details" class="card">
+            <h2 class="h5 card-header mb-0">Đơn hoàn ngày <%= date(day) %></h2>
+            <% if (!orders.length) { %>
+                <p class="p-3 mb-0 text-muted">Không có đơn trong trang này.</p>
+            <% } else { %>
+                <div class="table-responsive">
+                    <table class="table align-middle table-hover mb-0">
+                        <thead><tr><th>Mã vận đơn</th><th>Khách hàng</th><th>Hãng</th><th>Loại hoàn</th><th class="text-nowrap">Thời gian trạng thái cuối</th><th></th></tr></thead>
+                        <tbody><% for (const order of orders) { %>
+                            <tr>
+                                <th class="text-nowrap"><%= order.billcode %></th>
+                                <td><%= order.name || '' %><small class="d-block text-muted"><%= order.phone || '' %></small></td>
+                                <td class="text-nowrap"><%= order.carrier === 'jt' ? 'J&T' : 'Viettel Post' %></td>
+                                <td class="text-nowrap"><%= Number(order.partial) ? 'Một phần' : 'Toàn bộ' %></td>
+                                <td class="text-nowrap"><%= order.final_time %></td>
+                                <td><a class="btn btn-sm btn-outline-primary text-nowrap" href="/journey/<%= encodeURIComponent(order.billcode) %>" target="_blank" rel="noopener">Hành trình</a></td>
+                            </tr>
+                        <% } %></tbody>
+                    </table>
+                </div>
+            <% } %>
+            <% if (page > 1 || hasNext) { %>
+                <nav class="card-footer d-flex gap-3 align-items-center" aria-label="Phân trang đơn hoàn">
+                    <% if (page > 1) { %><a class="btn btn-sm btn-outline-secondary" href="<%= url({page: page - 1}) %>#return-details">Trang trước</a><% } %>
+                    <span>Trang <%= page %></span>
+                    <% if (hasNext) { %><a class="btn btn-sm btn-outline-secondary" href="<%= url({page: page + 1}) %>#return-details">Trang sau</a><% } %>
+                </nav>
+            <% } %>
+        </section>
+        <p class="small text-muted mt-3">Hoàn một phần là một phần của tổng hoàn, không cộng thêm lần nữa.
+            J&amp;T: 117; trạng thái 121 chỉ tính khi có mốc xác nhận hoàn về. Viettel: 504.
+            Đơn thiếu mốc thời gian tương ứng trong hành trình chưa được tính vào báo cáo.</p>
+    <% } %>
+</main>
+<%- include('footer'); -%>

@@ -17,6 +17,11 @@ const GBChatMessageView = (() => {
     return '';
   }
 
+  function isLikeSticker(value) {
+    return typeof value === 'string' && ['like', '39178562_1505197616293642',
+      '851587_369239346556147', '851582_369239386556143'].some(marker => value.includes(marker));
+  }
+
   function buildReactionsHtml(reactions) {
     if (!reactions || !reactions.length) return '';
     const list = reactions
@@ -27,6 +32,35 @@ const GBChatMessageView = (() => {
     const emojis = list.slice(0, 3).map(r => `<span class="reaction-emoji">${escape(r.emoji)}</span>`).join('');
     const countHtml = total > 1 ? `<span class="reaction-count">${total}</span>` : '';
     return `<div class="message-reactions-container" title="${escape(title)}">${emojis}${countHtml}</div>`;
+  }
+
+  function updateChannelGroups(container) {
+    let previous = null;
+    for (const row of container.children) {
+      // Hidden legacy notices are history cursors, not visible group boundaries.
+      if (row.hidden || row.dataset.zaloNoticeDuplicate === 'true') continue;
+      if (!row.classList.contains('message-row-messenger') || !row.dataset.sender) {
+        previous = null;
+        continue;
+      }
+      const sender = row.dataset.sender;
+      const channel = row.dataset.channel || 'facebook';
+      const continued = previous?.sender === sender && previous?.channel === channel;
+      row.classList.toggle('message-channel-continuation', Boolean(continued));
+      previous = { sender, channel };
+    }
+  }
+
+  function observeChannelGroups(container) {
+    const observer = new MutationObserver(records => {
+      // Reactions, media loading and timestamp toggles do not change a group.
+      if (records.some(record => record.type === 'childList' ? record.target === container
+        : record.target.parentElement === container)) updateChannelGroups(container);
+    });
+    observer.observe(container, { childList: true, subtree: true, attributes: true,
+      attributeFilter: ['data-sender', 'data-channel'] });
+    updateChannelGroups(container);
+    return () => observer.disconnect();
   }
 
   function create({ customerAvatarEl, pageIds, jumpToQuotedMessage }) {
@@ -214,7 +248,8 @@ const GBChatMessageView = (() => {
       const channelIcon = isZalo
         ? '<span class="zalo-message-icon" role="img" title="Zalo" aria-label="Zalo">Z</span>'
         : '<i class="fa-brands fa-facebook-messenger messenger-message-icon" role="img" title="Messenger" aria-label="Messenger"></i>';
-      const timestampHtml = `<span class="message-timestamp">${channelIcon}<span class="message-timestamp-text">${formattedTime}${isPageSender ? " · " + escape(msg.sent_by_username || "Chưa ghi nhận") : ""}</span></span>`;
+      const channelBadgeHtml = `<span class="message-channel-badge">${channelIcon}</span>`;
+      const timestampHtml = `<span class="message-timestamp"><span class="message-timestamp-text">${formattedTime}${isPageSender ? " · " + escape(msg.sent_by_username || "Chưa ghi nhận") : ""}</span></span>`;
 
       let textContentHtml = '';
       if (msg.message) {
@@ -253,7 +288,7 @@ const GBChatMessageView = (() => {
       let mediaHtml = '';
       let messageImagesContainer;
       if (msg.image) {
-        if (typeof msg.image === 'string' && (msg.image.includes('like') || msg.image.includes('39178562_1505197616293642') || msg.image.includes('851587_369239346556147') || msg.image.includes('851582_369239386556143'))) {
+        if (isLikeSticker(msg.image)) {
           mediaHtml = `<div class="like-message-container"><span class="like-message-icon">👍</span></div>`;
         } else {
           const mediaUrls = typeof msg.image === 'string' ? msg.image.split(';') : [];
@@ -300,10 +335,11 @@ const GBChatMessageView = (() => {
         messageRow.classList.add('message-sent-messenger');
         let innerHTML = `<div class="message-content-wrapper">`;
         innerHTML += replyQuoteHtml;
+        innerHTML += `<div class="message-bubble-stack">`;
         if (textContentHtml) {
           innerHTML += `<div class="message-text-messenger">${textContentHtml}</div>`;
         }
-        innerHTML += `${mediaHtml}${templateHtml}${reactionsHtml}`;
+        innerHTML += `${mediaHtml}${templateHtml}${channelBadgeHtml}</div>${reactionsHtml}`;
         innerHTML += `<div class="message-status-time-wrapper">${timestampHtml}${statusHtml}</div>`;
         innerHTML += `</div>`;
         messageRow.innerHTML = innerHTML;
@@ -311,18 +347,19 @@ const GBChatMessageView = (() => {
         messageRow.classList.add('message-received-messenger');
         let innerHTML = `${avatarHtml}<div class="message-content-wrapper">`;
         innerHTML += replyQuoteHtml;
+        innerHTML += `<div class="message-bubble-stack">`;
         if (textContentHtml) {
           innerHTML += `<div class="message-text-messenger">${textContentHtml}</div>`;
         }
-        innerHTML += `${mediaHtml}${templateHtml}${reactionsHtml}`;
+        innerHTML += `${mediaHtml}${templateHtml}${channelBadgeHtml}</div>${reactionsHtml}`;
         innerHTML += `<div class="message-status-time-wrapper">${timestampHtml}${statusHtml}</div>`;
         innerHTML += `</div>`;
         messageRow.innerHTML = innerHTML;
       }
 
       if (messageImagesContainer?.childElementCount) {
-        const wrapper = messageRow.querySelector('.message-content-wrapper');
-        wrapper.insertBefore(messageImagesContainer, wrapper.querySelector('.message-template-card, .message-reactions-container, .message-status-time-wrapper'));
+        const stack = messageRow.querySelector('.message-bubble-stack');
+        stack.insertBefore(messageImagesContainer, stack.querySelector('.message-template-card, .message-channel-badge'));
       }
 
       messageRow.addEventListener('click', function (event) {
@@ -356,5 +393,5 @@ const GBChatMessageView = (() => {
     return { renderMessage };
   }
 
-  return { buildReactionsHtml, create, escape, safeUrl };
+  return { buildReactionsHtml, create, escape, safeUrl, isLikeSticker, updateChannelGroups, observeChannelGroups };
 })();

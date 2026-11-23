@@ -132,9 +132,14 @@ module.exports = function registerOrderRoutes(router) {
                     return res.status(500).json({ error: 'Lỗi truy vấn đơn hàng' });
                 }
                 if (data && data.length > 0) {
-                    res.json({
-                        data: data
-                    });
+                    try {
+                        data[0].financial_history = await require('../../services/orderFinancialService').history(data[0].id);
+                    } catch (historyError) {
+                        console.error('Lỗi tải lịch sử tiền đơn:', historyError.code || historyError.message);
+                        data[0].financial_history = [];
+                        data[0].financial_history_error = true;
+                    }
+                    res.json({ data: data });
                 } else {
                     res.json({ data: [] });
                 }

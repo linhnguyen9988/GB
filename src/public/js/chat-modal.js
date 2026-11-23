@@ -326,6 +326,7 @@
         const rows = await Promise.all(messages.map(msg => renderMessage(msg, true)));
         if (quoteContext?.panel !== panel || !isActiveChat(version)) return;
         body.replaceChildren(...rows);
+        GBChatMessageView.updateChannelGroups(body);
         const target = body.querySelector(`[data-msg-id="${CSS.escape(String(mid))}"]`);
         if (target) {
           target.classList.add('message-row-highlight');
@@ -338,6 +339,7 @@
 
     const messageList = document.createElement('div');
     messageList.className = 'chat-message-list';
+    GBChatMessageView.observeChannelGroups(messageList);
     chatScroll = GBChatScroll.create({
       box: modalMessagesContainer, messageList,
       getVersion: () => conversationVersion, isActive: isActiveChat,
@@ -1029,7 +1031,10 @@
       void loadConversation();
     };
     messageModalEl.addEventListener('show.bs.modal', beginConversation);
-    messageModalEl.addEventListener('shown.bs.modal', loadConversation);
+    messageModalEl.addEventListener('shown.bs.modal', () => {
+      autoResizeInput();
+      void loadConversation();
+    });
 
     messageModalEl.addEventListener('hidden.bs.modal', function () {
       document.body.classList.remove('gb-chat-open');
@@ -1044,15 +1049,21 @@
       chatState.isFetchingMessages = false;
       chatState.hasMoreMessages = true;
       chatState.beforeId = null;
-      autoResizeInput();
+      messageInput?.style.removeProperty('height');
     });
 
     function autoResizeInput() {
-      if (messageInput) {
-        messageInput.style.height = 'auto';
-        const newHeight = messageInput.scrollHeight;
-        messageInput.style.height = `${newHeight}px`;
-      }
+      // Bootstrap may still be showing the backdrop when open/paste dispatches
+      // input. Hidden textareas report zero scrollHeight; measure after shown.
+      if (!messageInput || !messageInput.getClientRects().length) return;
+      messageInput.style.height = 'auto';
+      const style = window.getComputedStyle(messageInput);
+      const number = value => parseFloat(value) || 0;
+      const adjustment = style.boxSizing === 'border-box'
+        ? number(style.borderTopWidth) + number(style.borderBottomWidth)
+        : -number(style.paddingTop) - number(style.paddingBottom);
+      const newHeight = Math.ceil(messageInput.scrollHeight + adjustment);
+      messageInput.style.height = `${newHeight}px`;
     }
 
     document.addEventListener('click', function (event) {

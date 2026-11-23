@@ -13,9 +13,7 @@ async function getPreferredChannel(customerId, pageId) {
             before ? [customerId, pageId, before] : [customerId, pageId]);
         for (const row of rows) {
             if (row.channel !== 'zalo') return 'facebook';
-            let template;
-            try { template = typeof row.template_json === 'string' ? JSON.parse(row.template_json) : row.template_json; } catch (_) { }
-            if (template?.template_type === 'zalo_system' || (!template && !row.image && notices.isFriendAdded(row.message))) continue;
+            if (notices.isSystemMessage(row)) continue;
             return 'zalo';
         }
         if (rows.length < 25) return 'facebook';

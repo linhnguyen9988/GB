@@ -6,6 +6,7 @@ const jwtAuth = require('../../middleware/jwtAuth');
 const { toViettelWeightGrams } = require('../../utils/viettelWeight');
 const shipping = require('../../services/shippingAccounts');
 const viettelOrderEdit = require('../../services/viettelOrderEdit');
+const financial = require('../../services/orderFinancialService');
 const { CreateOrderID } = require('../../utils/orderId');
 const { PrintBillViettel } = require('../../services/viettelService');
 const { getActiveAccountById, getAccountForOrder } = require('../../services/viettelAccountService');
@@ -409,8 +410,9 @@ module.exports = function registerViettelRoutes(router) {
 
             const viettelOrder = body.data;
             const finalRealOrderId = viettelOrder.ORDER_NUMBER;
+            const receiverWard = viettelOrder.RECEIVER_WARDS ?? viettelOrder.RECEIVER_WARD;
 
-            if (!viettelOrder.RECEIVER_WARDS || viettelOrder.RECEIVER_WARDS == 0) {
+            if (!receiverWard || receiverWard == 0) {
                 await axios.post('https://partner.viettelpost.vn/v2/order/UpdateOrder',
                     { "TYPE": 4, "ORDER_NUMBER": finalRealOrderId, "NOTE": "Không tìm được tên Phường/Xã" },
                     { headers: { 'token': token } }
@@ -422,7 +424,7 @@ module.exports = function registerViettelRoutes(router) {
             const [resTinh, resHuyen, resXa] = await Promise.all([
                 axios.get(`https://partner.viettelpost.vn/v2/categories/listProvinceById?provinceId=${viettelOrder.RECEIVER_PROVINCE}`),
                 axios.get(`https://partner.viettelpost.vn/v2/categories/districtByIdAndProvince?districtId=${viettelOrder.RECEIVER_DISTRICT}&provinceById=${viettelOrder.RECEIVER_PROVINCE}`),
-                axios.get(`https://partner.viettelpost.vn/v2/categories/wardByDistrictAndId?districtId=${viettelOrder.RECEIVER_DISTRICT}&wardsId=${viettelOrder.RECEIVER_WARDS}`)
+                axios.get(`https://partner.viettelpost.vn/v2/categories/wardByDistrictAndId?districtId=${viettelOrder.RECEIVER_DISTRICT}&wardsId=${receiverWard}`)
             ]);
             tinh = (resTinh.data && resTinh.data.data && resTinh.data.data[0]) ? resTinh.data.data[0].PROVINCE_NAME : '';
             huyen = (resHuyen.data && resHuyen.data.data) ? resHuyen.data.data.DISTRICT_NAME : 'Không xác định';
@@ -435,9 +437,11 @@ module.exports = function registerViettelRoutes(router) {
             const now = new Date();
             const userId = req.user.id;
             const declaredKg = kg / 1000;
-            const sql = SqlString.format('INSERT INTO lendon (name,phone,address,cod,kg,status,date,orderid,realorderid,khid,userid,realfbid,time,provider,useraccountid,viettelaccountid,sortcode,xa,huyen,tinh,original_kg,viettel_input_kg) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);',
-                [fbname, phone, address, cod, declaredKg, 1, timenow, matuquan, finalRealOrderId, khid, userid, realfbid, now,
-                 'Viettel', userId, account.userid, sortCode, xa, huyen, tinh, declaredKg, Number(String(kgreal).replace(',', '.'))]);//useraccountid la user GB, viettelaccountid la userid Viettel Post
+            const financialAt = financial.localNow();
+            const money = financial.changes({}, viettelOrder, 'create', financialAt, Number(cod));
+            const sql = SqlString.format('INSERT INTO lendon (name,phone,address,cod,kg,status,date,orderid,realorderid,khid,userid,realfbid,time,provider,useraccountid,viettelaccountid,sortcode,xa,huyen,tinh,original_kg,viettel_input_kg,original_cod,goods_value_original,carrier_cod_origin,shipping_fee,shipping_fee_original,shipping_fee_details,financial_status_at,financial_updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);',
+                [fbname, phone, address, money.cod ?? Number(cod), declaredKg, 1, timenow, matuquan, finalRealOrderId, khid, userid, realfbid, now,
+                 'Viettel', userId, account.userid, sortCode, xa, huyen, tinh, declaredKg, Number(String(kgreal).replace(',', '.')), money.original_cod, money.goods_value_original, money.carrier_cod_origin ?? null, money.shipping_fee ?? null, money.shipping_fee_original ?? null, money.shipping_fee_details ?? null, financialAt, financialAt]);//useraccountid la user GB, viettelaccountid la userid Viettel Post
 
             await DBConnection.query(require('../../services/orderAuditService').withCreator(sql, req.user));
 

@@ -16,6 +16,7 @@ function OnUpdateLiveNote() {
     });
 }
 $("#gia").on("keydown", function (e) {
+    if (e.ctrlKey || e.metaKey) return;
     var keyCode = (e.keyCode ? e.keyCode : e.which);
     if (keyCode == 67 && e.shiftKey) {
         e.preventDefault();
@@ -66,6 +67,23 @@ function OpenMessenger(pageid, realid) {
 function isFakeCommentId(id) {
     return !!id && (String(id).match(/_/g) || []).length !== 1;
 }
+// Keep the stored comment untouched: printing and sorting use the original content.
+function renderCommentSource(data, type, row) {
+    if (type === 'copy') {
+        const content = document.createElement('div');
+        content.innerHTML = data == null ? '' : String(data);
+        content.querySelectorAll('.comment-source-icon').forEach(icon => icon.remove());
+        content.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+        return content.textContent || '';
+    }
+    if (type !== 'display') return data;
+    const content = data == null ? '' : data;
+    if (!row || !row[8]) return content;
+    const messenger = isFakeCommentId(row[8]);
+    const icon = messenger ? 'messenger' : 'facebook';
+    const label = messenger ? 'Tin nhắn Messenger' : 'Bình luận Facebook';
+    return `<i class="bi bi-${icon} comment-source-icon" title="${label}" aria-label="${label}"></i>${content}`;
+}
 function UpdateComment(openmess, selectedRow) {
     RefreshCommentCustomer(openmess, selectedRow, 22, 26);
 }
@@ -73,6 +91,7 @@ function UpdateComment(openmess, selectedRow) {
 function InItKeys() {
     var t = $('#comment_table').DataTable();
     t.on('key', function (e, datatable, keyCode, cell, originalEvent) {
+        if (originalEvent && (originalEvent.ctrlKey || originalEvent.metaKey)) return;
         var x = datatable.row(cell.index().row).data();
         if ($('.modal.show').is('#modaledit, #message-modal, #modalxaconfirm, #modalalertx, #modalchot2')) {
             return;
@@ -387,7 +406,8 @@ async function LoadLive() {
             $('#comment_table').DataTable(
                 {
                     keys: {
-                        blurable: false
+                        blurable: false,
+                        clipboardOrthogonal: 'copy'
                     },
                     language: {
                         "decimal": "",
@@ -446,6 +466,7 @@ async function LoadLive() {
                         {
                             target: 2,
                             searchable: true,
+                            render: renderCommentSource,
                         },
                         {
                             target: 3,
@@ -1478,6 +1499,11 @@ function SendMessage(chat, selectedRow) {
                     ShowCenterToast('danger', data[1].split('avatar">').pop().split('<br')[0] + ': ' + mess, 3000);
                 }
             }
+        },
+        error: function (xhr) {
+            const result = xhr.responseJSON || {};
+            const reason = result.error || result.data?.error?.message || 'Không nhận được phản hồi gửi tin. Kiểm tra cuộc trò chuyện trước khi thử lại.';
+            ShowCenterToast('danger', reason, 5000);
         }
     });
 };

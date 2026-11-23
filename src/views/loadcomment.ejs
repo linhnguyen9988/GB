@@ -1,4 +1,29 @@
 <%- include('headerafterlogin'); -%>
+<style>
+    .comment-source-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 10px;
+        height: 10px;
+        font-size: 10px;
+        line-height: 1;
+        margin-right: 4px;
+        color: #0866ff;
+        vertical-align: middle;
+        transform: translateY(-1.5px);
+        -webkit-user-select: none;
+        user-select: none;
+    }
+    .comment-source-icon::before {
+        display: block;
+        line-height: 1;
+        vertical-align: 0;
+    }
+    @media print {
+        .comment-source-icon { display: none !important; }
+    }
+</style>
     <div id="notetoshow">
     </div>
     <div class="table-responsive">
@@ -126,6 +151,6 @@
         </div>
     </div>
     <script src="/js/live-comment-shared.js?v=20261117-rejoin"></script>
-    <script src="/js/loadcomment.js?v=20261117-rejoin"></script>
+    <script src="/js/loadcomment.js?v=20261123-copy-comment-text"></script>
 <script src="/js/lucky.js?v=20261117-rejoin"></script>
 <%- include('footer'); -%>

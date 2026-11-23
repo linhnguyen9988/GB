@@ -1,6 +1,7 @@
 'use strict';
 const DBConnection = require('../configs/DBConnection');
 const axios = require('axios');
+const financial = require('./orderFinancialService');
 const { getAccountForOrder } = require('./viettelAccountService');
 
 const VIETTEL_DETAIL_URL = 'https://partner.viettelpost.vn/v2/order/detail-v2';
@@ -73,6 +74,7 @@ async function fetchViettelOrderStatus(order) {
     if (Number.isNaN(status)) {
         throw new StatusRefreshError('Viettel trả về dữ liệu không có ORDER_STATUS', 502);
     }
+    await financial.syncViettel(order.realorderid, body.data, { source: 'refresh' });
     return status;
 }
 

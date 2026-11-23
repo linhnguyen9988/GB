@@ -6,6 +6,8 @@ const { get: getOrderStatus } = require('../public/js/order-status');
 const { formatOrderDetailWeight, getJTOrderIssue } = require('../public/js/orderstatusrefresh');
 const { customerOrderFilter } = require('../utils/customerOrderFilter');
 const { getCarePath } = require('../utils/carePath');
+const financial = require('../services/orderFinancialService');
+const financialView = require('../public/js/order-financial-view');
 
 const knownPages = new Set([GlobalPageID, GlobalPageID2]);
 const number = new Intl.NumberFormat('vi-VN');
@@ -79,6 +81,9 @@ async function show(req, res) {
              FROM lendon l WHERE ${filter.where} ORDER BY l.time DESC, l.id DESC LIMIT 5`, filter.params
         ) : [[]];
 
+        let moneyHistory = [], moneyHistoryError = false;
+        try { moneyHistory = await financial.history(row.id); }
+        catch (error) { console.error('[Care lịch sử tiền]', error.code || error.message); moneyHistoryError = true; }
         return res.render('orderCare', {
             user: req.user,
             order: {
@@ -86,7 +91,9 @@ async function show(req, res) {
                 creator: row.created_by_username,
                 weight: formatOrderDetailWeight(row),
                 issue: getJTOrderIssue(row),
-                note: row.ordernote
+                note: row.ordernote,
+                financialHtml: financialView.render(row, moneyHistory),
+                financialHistoryError: moneyHistoryError
             },
             customer: {
                 id: customerId, pageId, name: profile?.fbname || row.name || 'Khách hàng',

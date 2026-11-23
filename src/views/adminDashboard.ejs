@@ -1,0 +1,264 @@
+<%- include('headerafterlogin'); -%>
+<link rel="stylesheet" href="/css/admin-dashboard.css?v=20261122-management">
+<div class="admin-dashboard" data-today="<%= today %>" data-current-user="<%= user.id %>">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+<symbol id="i-truck" viewBox="0 0 24 24"><path d="M3 6h11v11H3zM14 10h4l3 4v3h-7"/><circle cx="7" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></symbol>
+<symbol id="i-chat" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 1-8 8H4l-2 2V11a9 9 0 0 1 18 0Z"/><path d="M7 10h8M7 14h5"/></symbol>
+<symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></symbol>
+<symbol id="i-wallet" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="15" rx="2"/><path d="M17 10h4v5h-4a2.5 2.5 0 0 1 0-5ZM4 5l12-3v3"/></symbol>
+<symbol id="i-box" viewBox="0 0 24 24"><path d="m3 7 9-5 9 5v10l-9 5-9-5Zm0 0 9 5 9-5M12 12v10M7 4l10 6"/></symbol>
+<symbol id="i-return" viewBox="0 0 24 24"><path d="m8 4-5 5 5 5M3 9h11a6 6 0 0 1 0 12h-3"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+<symbol id="i-adjust" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="var(--surface)"/><circle cx="15" cy="12" r="2" fill="var(--surface)"/><circle cx="8" cy="18" r="2" fill="var(--surface)"/></symbol>
+<symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 3v17h17M8 16v-4M13 16V7M18 16v-7"/></symbol>
+<symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14A9 9 0 0 1 10 3a9 9 0 1 0 10 11Z"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5M19 11a7 7 0 0 0-12-5M5 13a7 7 0 0 0 12 5"/></symbol>
+</defs></svg>
+<div class="app"><nav class="sidebar" aria-label="Quản trị"><p class="nav-caption">KHÔNG GIAN QUẢN TRỊ</p>
+<button class="nav-item active" data-view="overview"><svg class="icon"><use href="#i-grid"/></svg>Tổng quan</button>
+<button class="nav-item" data-view="shipping"><svg class="icon"><use href="#i-truck"/></svg>Vận chuyển</button>
+<button class="nav-item" data-view="zalo"><svg class="icon"><use href="#i-chat"/></svg>Zalo</button>
+<button class="nav-item" data-view="tools"><svg class="icon"><use href="#i-adjust"/></svg>Công cụ</button>
+<button type="button" class="nav-item" data-view="weight"><svg class="icon"><use href="#i-adjust"/></svg>Cân nặng</button>
+<button type="button" class="nav-item" data-view="users"><svg class="icon"><use href="#i-user"/></svg>Tài khoản</button>
+<div class="sidebar-note">GB · Quản trị nội bộ<br><span style="font-size:10px">Giờ Việt Nam · GMT+7</span></div></nav>
+<main class="workspace"><div class="pagehead"><div><h1 id="page-title">Tổng quan quản trị</h1><p id="page-description">Đơn hàng, tiền thu hộ và vận hành trong một màn hình.</p></div><div class="date-actions"><button id="today">Hôm nay</button><button id="yesterday">Hôm qua</button><input aria-label="Ngày báo cáo" type="date" id="report-date" value="<%= today %>"><button id="refresh" aria-label="Làm mới"><svg class="icon" style="width:15px;height:15px"><use href="#i-refresh"/></svg></button></div></div>
+<p id="dashboard-status" class="dashboard-status" role="status" aria-live="polite">Đang tải số liệu…</p>
+<section data-panel="overview">
+<div class="tabs"><button type="button" class="tab active" data-view="overview">Vận hành đơn hàng</button><button class="tab" data-view="shipping">Cấu hình vận chuyển</button><button class="tab" data-view="zalo">Kết nối & chăm sóc</button></div>
+<div class="metrics">
+<div class="metric"><div class="metric-top">Hãng đã nhận kiện<span class="metric-icon"><svg class="icon"><use href="#i-box"/></svg></span></div><div class="metric-value"><span id="metric-orders">—</span><small>đơn</small></div><p class="metric-foot" id="metric-carriers">Đang tải…</p></div>
+<div class="metric"><div class="metric-top">COD gốc<span class="metric-icon"><svg class="icon"><use href="#i-wallet"/></svg></span></div><div class="metric-value"><span id="metric-original-cod">—</span><small>₫</small></div><p class="metric-foot">COD gốc đã ghi nhận</p></div>
+<div class="metric"><div class="metric-top">COD hiện tại<span class="metric-icon"><svg class="icon"><use href="#i-wallet"/></svg></span></div><div class="metric-value"><span id="metric-cod">—</span><small>₫</small></div><p class="metric-foot"><span id="cod-change-note">Đang tải…</span></p></div>
+<div class="metric"><div class="metric-top">Tổng cước gồm VAT<span class="metric-icon"><svg class="icon"><use href="#i-truck"/></svg></span></div><div class="metric-value"><span id="metric-fee">—</span><small>₫</small></div><p class="metric-foot" id="metric-fee-note">Đang tải…</p></div>
+</div>
+<div class="columns">
+<section class="panel"><div class="panel-head"><div class="panel-title"><svg class="icon"><use href="#i-box"/></svg><h2>Nhận kiện trong ngày</h2></div><span class="mini-total"><span id="list-total">—</span> <small>đơn</small></span></div><p class="panel-sub">Đơn được hãng lấy gần nhất · <span class="selected-day"><%= today.split('-').reverse().join('/') %></span></p><div class="rows" id="pickup-list"></div><div class="panel-footer"><span>Theo mốc xác nhận của hãng</span><button type="button" class="tiny-link" data-report="pickup">Xem tất cả →</button></div></section>
+<section class="panel"><div class="panel-head"><div class="panel-title"><svg class="icon"><use href="#i-wallet"/></svg><h2>COD đã thay đổi</h2></div><span class="pill" id="cod-change-total">—</span></div><p class="panel-sub">Tiền COD ban đầu → COD hiện tại</p><div class="rows" id="cod-list"></div><div class="panel-footer"><span><span id="cod-change-footer">Theo các đơn nhận kiện trong ngày</span></span><button type="button" class="tiny-link" data-report="cod">Xem chi tiết →</button></div></section>
+<section class="panel"><div class="panel-head"><div class="panel-title"><svg class="icon"><use href="#i-return"/></svg><h2>Hoàn thành công</h2></div><span class="mini-total"><span id="return-total">—</span> <small>đơn</small></span></div><p class="panel-sub">Gồm <b id="partial-total">— đơn hoàn một phần</b> · Theo trạng thái cuối</p><div class="rows" id="return-list"></div><div class="panel-footer"><span>Hoàn một phần nằm trong tổng</span><button type="button" class="tiny-link" data-report="return">Báo cáo hoàn →</button></div></section>
+</div>
+<div class="bottom-grid"><section class="panel"><div class="panel-head"><div class="panel-title"><svg class="icon"><use href="#i-chart"/></svg><h2>Báo cáo theo ngày</h2></div><span class="muted" style="font-size:10px">7 ngày gần nhất</span></div><div class="table-scroll"><table><thead><tr><th>Ngày</th><th class="numeric">Nhận kiện</th><th class="numeric">Hoàn về</th><th class="numeric">COD gốc</th><th class="numeric">COD hiện tại</th><th class="numeric">Cước</th></tr></thead><tbody id="daily-table"></tbody></table></div><div class="panel-footer"><span>Bấm một dòng để xem đơn nhận kiện hoặc hoàn về.</span><button type="button" class="tiny-link" data-report="pickup">Báo cáo đầy đủ →</button></div></section>
+<section class="panel"><div class="panel-head"><div class="panel-title"><svg class="icon"><use href="#i-chart"/></svg><h2>Nhận kiện & hoàn về</h2></div><span class="muted" style="font-size:10px">Đơn hàng</span></div><div class="chart" id="activity-chart"></div><div class="chart-legend"><span><i class="dot"></i>Hãng nhận kiện</span><span><i class="dot return"></i>Hoàn thành công</span></div><div class="panel-footer"><span>Theo từng ngày · GMT+7</span><span><span id="chart-period">7 ngày</span></span></div></section></div>
+<div class="shortcuts"><button type="button" class="shortcut" data-view="weight"><svg class="icon"><use href="#i-adjust"/></svg><span><strong>Đối chiếu cân nặng</strong><small>Ký gốc, ký hãng sửa và chênh lệch</small></span><span class="arrow">›</span></button><button class="shortcut" data-view="zalo"><svg class="icon"><use href="#i-chat"/></svg><span><strong>Chăm sóc qua Zalo</strong><small>Kết nối, nhóm cảnh báo và hàng chờ kết bạn</small></span><span class="arrow">›</span></button><button class="shortcut" data-view="shipping"><svg class="icon"><use href="#i-truck"/></svg><span><strong>Tài khoản vận chuyển</strong><small>Hãng mặc định, J&T và Viettel Post</small></span><span class="arrow">›</span></button></div>
+</section>
+
+<section data-panel="shipping" hidden>
+  <div class="shipping-grid"><div><%- include('shippingAccounts'); -%></div><div>          <div class="card mt-3" id="viettelAccountPanel">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                <div>
+                  <h5 class="mb-1">Tài khoản Viettel Post</h5>
+                  <div class="text-muted small">Mỗi tài khoản có kho mặc định và dịch vụ chính dùng khi lên đơn.</div>
+                </div>
+                <span class="badge text-bg-light"><%= viettelAccounts.length %> tài khoản</span>
+              </div>
+              <% if (viettelAccountError) { %>
+                <div class="alert alert-warning mb-3"><%= viettelAccountError %></div>
+              <% } %>
+              <div class="row g-3" id="viettelAccountCards">
+                <% viettelAccounts.forEach(function(a) {
+            const sender = a.sender || { name: a.warehouse_name || '', address: a.warehouse_address || '', phone: '' };
+          %>
+                  <div class="col-12 col-xl-6">
+                    <div class="card h-100 border">
+                      <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start gap-2">
+                          <div class="min-w-0">
+                            <div class="fw-semibold text-break"><i class="bi bi-truck me-1"></i><%= a.username || ('Viettel #' + a.accountId) %></div>
+                            <div class="small text-muted">CUS_ID: <%= a.cusId %></div>
+                          </div>
+                        </div>
+                        <hr>
+                        <div class="small mb-2"><strong>Kho:</strong> <%= a.warehouse_name || 'Chưa đặt tên' %></div>
+                        <div class="small text-muted mb-2"><%= a.warehouse_address || 'Chưa có địa chỉ kho' %></div>
+                  <div class="small mb-1"><strong>Người gửi:</strong> <%= sender.name || 'Chưa có tên' %> · <%= sender.phone || 'Chưa có số điện thoại' %></div>
+                  <div class="small text-muted mb-2"><%= sender.address || 'Chưa có địa chỉ người gửi' %></div>
+                        <div class="small mb-1"><strong>Dịch vụ:</strong> <%= a.order_service_name || a.order_service || 'Chưa chọn' %> (<%= a.order_service || '—' %>)</div>
+                        <div class="small text-muted mb-3"><%= Number(a.order_service_price || 0).toLocaleString('vi-VN') %> đ · <%= a.order_service_time || 'Chưa có thời gian dự kiến' %></div>
+                        <div class="d-flex flex-wrap gap-2">
+                          <button class="btn btn-sm btn-outline-primary" type="button" data-vt-action="sender" data-account-id="<%= a.accountId %>"
+                      data-sender-name="<%= sender.name %>" data-sender-phone="<%= sender.phone %>" data-sender-address="<%= sender.address %>">Người gửi</button>
+                    <button class="btn btn-sm btn-primary" type="button" data-vt-action="edit" data-account-id="<%= a.accountId %>" data-username="<%= a.username %>">Cập nhật</button>
+                          <button class="btn btn-sm btn-outline-danger" type="button" data-vt-action="delete" data-account-id="<%= a.accountId %>">Xóa</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                <% }); %>
+                <div class="col-12 col-xl-6">
+                  <button type="button" class="card h-100 w-100 border border-2 border-dashed bg-body-tertiary text-secondary" style="min-height:220px" onclick="openViettelModal('add')">
+                    <span class="card-body d-flex flex-column justify-content-center align-items-center">
+                      <i class="bi bi-plus-circle" style="font-size:2.2rem"></i>
+                      <span class="fw-semibold mt-2">Thêm tài khoản Viettel</span>
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div></div></div>
+</section>
+<section data-panel="zalo" hidden><%- include('zaloConnection'); -%></section>
+<section data-panel="tools" hidden>
+  <div class="form-grid">
+    <section class="panel form-panel"><h2>Facebook</h2><p>Cập nhật token dùng cho các chức năng Facebook.</p>
+      <div class="account-tools"><button type="button" class="btn btn-primary" onclick="GetUserToken(this)">Get User Token</button><button type="button" class="btn btn-outline-primary" onclick="TokenPage()">Token Page</button></div>
+    </section>
+    <section class="panel form-panel"><h2>Dữ liệu & tài khoản</h2><p>Địa chỉ vận chuyển và thông tin tài khoản quản trị.</p>
+      <div class="account-tools"><button type="button" class="btn btn-outline-primary" onclick="GetAllAddress()">Cập nhật địa chỉ</button><button type="button" class="btn btn-outline-primary" onclick="OpenChangePass()">Đổi mật khẩu</button><button type="button" class="btn btn-outline-secondary" data-view="users">Quản lý tài khoản</button></div>
+      <p class="mt-3 mb-0"><%= user.fullname || user.username %> · ADGB000.<%= user.id %></p>
+    </section>
+  </div>
+</section>
+
+
+<section data-panel="users" hidden>
+  <div class="panel">
+    <div class="panel-head"><h2>Tài khoản GB</h2><div class="d-flex gap-2 flex-wrap">
+      <% if (typeof registerPath !== 'undefined' && registerPath) { %><a class="btn btn-sm btn-primary" href="<%= registerPath %>">Tạo tài khoản staff</a><% } %>
+      <button type="button" class="btn btn-sm btn-outline-primary" data-users-refresh>Tải lại</button>
+    </div></div>
+    <div class="mx-3 mb-3 p-3 border rounded-3">
+      <div class="form-check form-switch mb-2">
+        <input type="checkbox" role="switch" class="form-check-input" id="adminRegistrationOpen" data-registration-switch disabled>
+        <label class="form-check-label fw-semibold" for="adminRegistrationOpen">Cho phép đăng ký tài khoản mới</label>
+      </div>
+      <p class="small mb-1" data-registration-status role="status" aria-live="polite">Đang tải trạng thái đăng ký…</p>
+      <p class="small text-muted mb-0">Trang đăng ký: <a href="/register" target="_blank" rel="noopener">/register</a> · Tài khoản mới có quyền nhân viên.</p>
+    </div>
+    <p class="px-3 small text-muted">Thay đổi quyền tại đây. Tài khoản được đổi quyền cần đăng nhập lại; bạn không thể tự đổi quyền của tài khoản đang dùng.</p>
+    <p class="px-3" data-users-status role="status" aria-live="polite"></p>
+    <div class="table-responsive"><table class="table mb-0 admin-users-table"><thead><tr><th>Tài khoản</th><th>Họ tên</th><th>Quyền truy cập</th></tr></thead><tbody data-users-body></tbody></table></div>
+  </div>
+</section>
+<section data-panel="weight" hidden>
+  <div class="panel">
+    <div class="panel-head"><h2>Đơn bị thay đổi cân nặng</h2><button type="button" class="btn btn-sm btn-outline-primary" data-weight-refresh>Tải lại</button></div>
+    <p class="px-3 small text-muted">Đơn J&amp;T nhập 3 kg và gửi 2 kg được so với mức gửi 2 kg. Nếu hãng sửa lại thành 3 kg thì vẫn xuất hiện tại đây.</p>
+    <form class="row g-3 p-3 pt-0" data-weight-form>
+      <div class="col-12 col-md-5"><label for="adminWeightSearch" class="form-label">Mã đơn hoặc mã vận đơn</label><input id="adminWeightSearch" class="form-control" maxlength="64" placeholder="Không bắt buộc" data-weight-search></div>
+      <div class="col-6 col-md-3"><label for="adminWeightPeriod" class="form-label">Cập nhật đơn</label><select id="adminWeightPeriod" class="form-select" data-weight-period><option value="recent">10 ngày gần nhất</option><option value="all">Tất cả thời gian</option></select></div>
+      <div class="col-6 col-md-2"><label for="adminWeightCarrier" class="form-label">Hãng</label><select id="adminWeightCarrier" class="form-select" data-weight-carrier><option value="">Tất cả</option><option value="jt">J&amp;T</option><option value="viettel">Viettel Post</option></select></div>
+      <div class="col-12 col-md-2 d-flex align-items-end"><button type="submit" class="btn btn-primary">Lọc đơn</button></div>
+    </form>
+    <p class="px-3" data-weight-status role="status" aria-live="polite"></p>
+    <div class="table-responsive"><table class="table mb-0 admin-weight-table"><thead><tr><th>Đơn hàng</th><th>Cân nặng</th><th>Cập nhật đơn</th></tr></thead><tbody data-weight-body></tbody></table></div>
+    <div class="panel-footer"><span data-weight-page>Trang 1</span><div class="d-flex gap-2"><button type="button" class="btn btn-sm btn-outline-secondary" data-weight-prev disabled>Trang trước</button><button type="button" class="btn btn-sm btn-outline-secondary" data-weight-next disabled>Trang sau</button></div></div>
+  </div>
+</section>
+<div class="modal fade admin-day-modal" id="adminDayModal" tabindex="-1" aria-labelledby="adminDayTitle" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable modal-fullscreen-sm-down">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div><h2 class="modal-title h5" id="adminDayTitle">Chi tiết báo cáo ngày</h2><p class="small text-muted mb-0">Giờ Việt Nam · GMT+7</p></div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex flex-wrap gap-2 align-items-end mb-3">
+          <div class="btn-group flex-wrap" role="group" aria-label="Loại đơn báo cáo">
+            <button type="button" class="btn btn-outline-primary" data-day-kind="pickup">Nhận kiện</button>
+            <button type="button" class="btn btn-outline-primary" data-day-kind="return">Hoàn thành công</button>
+            <button type="button" class="btn btn-outline-primary" data-day-kind="cod">COD đã sửa</button>
+          </div>
+          <label class="small ms-sm-auto">Ngày<input type="date" class="form-control" data-day-date aria-label="Ngày xem chi tiết" required></label>
+          <label class="small">Hãng<select class="form-select" data-day-carrier aria-label="Lọc hãng vận chuyển"><option value="">Tất cả</option><option value="jt">J&amp;T</option><option value="viettel">Viettel Post</option></select></label>
+        </div>
+        <div data-day-summary class="row g-2 mb-3"></div>
+        <p data-day-status class="small mb-2" role="status" aria-live="polite"></p>
+        <div class="table-responsive"><table class="table align-middle mb-0"><thead data-day-head></thead><tbody data-day-orders></tbody></table></div>
+      </div>
+      <div class="modal-footer justify-content-between gap-2">
+        <span data-day-page class="small text-muted"></span>
+        <div class="d-flex flex-wrap gap-2">
+          <button type="button" class="btn btn-outline-secondary" data-day-prev>Trang trước</button>
+          <button type="button" class="btn btn-outline-secondary" data-day-next>Trang sau</button>
+          <button type="button" class="btn btn-outline-primary" data-day-retry>Tải lại</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</main></div></div>
+  <div class="modal fade" id="viettelSenderModal" tabindex="-1" aria-labelledby="viettelSenderTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <form class="modal-content" id="viettelSenderForm">
+        <div class="modal-header">
+          <h5 class="modal-title" id="viettelSenderTitle">Thông tin người gửi Viettel</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+        </div>
+        <div class="modal-body">
+          <div class="alert alert-danger d-none" id="viettelSenderError" role="alert"></div>
+          <div class="mb-3">
+            <label class="form-label" for="viettelSenderName">Tên người gửi</label>
+            <input class="form-control" id="viettelSenderName" maxlength="255" autocomplete="name" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="viettelSenderPhone">Số điện thoại</label>
+            <input class="form-control" id="viettelSenderPhone" type="tel" inputmode="tel" maxlength="32" autocomplete="tel" required>
+          </div>
+          <div>
+            <label class="form-label" for="viettelSenderAddress">Địa chỉ người gửi</label>
+            <textarea class="form-control" id="viettelSenderAddress" rows="3" minlength="10" maxlength="1000" autocomplete="street-address" required></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+          <button type="submit" class="btn btn-primary" id="viettelSenderSave">Lưu người gửi</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal fade" id="viettelAccountModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content rounded-4">
+        <div class="modal-header">
+          <div>
+            <h5 class="modal-title mb-1" id="viettelModalTitle">Thêm tài khoản Viettel Post</h5>
+            <div class="small text-muted" id="viettelModalStepLabel">Bước 1/2 · Xác thực tài khoản</div>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+        </div>
+        <div class="modal-body">
+          <div id="viettelModalError" class="alert alert-danger d-none" role="alert"></div>
+          <section id="viettelStepCredentials">
+            <div class="mb-3">
+              <label class="form-label" for="viettelUsername">Username Viettel Post</label>
+              <input class="form-control" id="viettelUsername" autocomplete="username" placeholder="Nhập username Viettel Post">
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="viettelPassword">Mật khẩu Viettel Post</label>
+              <input class="form-control" id="viettelPassword" type="password" autocomplete="new-password" placeholder="Nhập mật khẩu Viettel Post">
+            </div>
+            <button type="button" class="btn btn-primary" id="viettelPrepareBtn" onclick="prepareViettelAccount()">
+              <span class="spinner-border spinner-border-sm me-2 d-none" id="viettelPrepareSpinner"></span>
+              Kiểm tra và tiếp tục
+            </button>
+          </section>
+          <section id="viettelStepSelection" class="d-none">
+            <div class="alert alert-success py-2"><i class="bi bi-check-circle me-1"></i>Đã xác thực và lấy token dài hạn cùng danh sách kho Viettel Post. Chọn kho để tải bảng giá.</div>
+            <div class="mb-4">
+              <label class="form-label fw-semibold" for="viettelWarehouseSelect">Kho mặc định để lên đơn</label>
+              <select class="form-select" id="viettelWarehouseSelect"></select>
+              <div class="form-text">Mỗi tài khoản cần chọn một kho mặc định (GROUPADDRESS_ID).</div>
+            </div>
+            <div class="mb-3">
+              <div class="fw-semibold mb-2">Dịch vụ chính</div>
+              <div class="small text-muted mb-2" id="viettelServiceHint">Chọn kho để hệ thống gọi API lấy bảng giá.</div>
+              <div class="row g-2" id="viettelServiceChoices"></div>
+              <div class="form-text mt-2">Dịch vụ được sắp xếp theo giá từ thấp đến cao; dịch vụ rẻ nhất sẽ được chọn sẵn.</div>
+            </div>
+          </section>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary d-none" id="viettelBackBtn" onclick="backToViettelCredentials()">Quay lại</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+          <button type="button" class="btn btn-success d-none" id="viettelSaveBtn" onclick="saveViettelAccount()">Lưu tài khoản</button>
+        </div>
+      </div>
+    </div>
+  </div>
+<script src="/js/admin-dashboard.js?v=20261122-remove-viewing"></script>
+<script src="/js/admin-management.js?v=20261122-registration"></script>
+<%- include('footer'); -%>

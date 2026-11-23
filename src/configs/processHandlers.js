@@ -1,5 +1,4 @@
 'use strict';
-process.on('uncaughtException', function (error) {
-    console.log(error.stack);
-});
 
+// Kept for existing imports. src/server.js owns process error logging so an
+// uncaught exception is not printed twice by two different listeners.

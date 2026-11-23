@@ -1,54 +1,29 @@
 'use strict';
-const DBConnection = require("./../configs/DBConnection");
-const bcrypt = require("bcryptjs");
+const db = require('../configs/DBConnection');
+const bcrypt = require('bcryptjs');
+const settings = require('./registrationSettings');
 
-let createNewUser = (data) => {
-    return new Promise(async (resolve, reject) => {
-        let isUserExist = await checkExistUser(data.username);
-        if (isUserExist) {
-            reject(`Tên "${data.username}" đã tồn tại. Hãy chọn tên khác`);
-        } else {
-            let salt = bcrypt.genSaltSync(10);
-            let userItem = {
-                role: 'staff',
-                fullname: data.fullname,
-                username: data.username,
-                password: bcrypt.hashSync(data.password, salt),
-            };
+async function createNewUser(data) {
+    // Hash before locking, then recheck the setting and insert atomically.
+    const password = await bcrypt.hash(data.password, 10);
+    const connection = await db.getConnection();
+    try {
+        await connection.beginTransaction();
+        if (!await settings.isOpen(connection, true)) {
+            const error = new Error('Đăng ký tài khoản hiện đang khóa.');
+            error.code = 'REGISTRATION_CLOSED';
+            throw error;
+        }
+        const [existing] = await connection.query('SELECT id FROM users WHERE username = ? LIMIT 1', [data.username]);
+        if (existing.length) throw new Error('Tên đăng nhập đã tồn tại. Hãy chọn tên khác.');
+        await connection.query('INSERT INTO users SET ?', [{ role: 'staff', fullname: data.fullname, username: data.username, password }]);
+        await connection.commit();
+        return 'Tạo tài khoản thành công';
+    } catch (error) {
+        await connection.rollback();
+        if (error.code === 'ER_DUP_ENTRY') throw new Error('Tên đăng nhập đã tồn tại. Hãy chọn tên khác.');
+        throw error;
+    } finally { connection.release(); }
+}
 
-            DBConnection.query(
-                ' INSERT INTO users set ? ', userItem,
-                function(err, rows) {
-                    if (err) {
-                        reject(false)
-                    }
-                    resolve("Tạo tài khoản thành công");
-                }
-            );
-        }
-    });
-};
-let checkExistUser = (username) => {
-    return new Promise( (resolve, reject) => {
-        try {
-            DBConnection.query(
-                ' SELECT * FROM `users` WHERE `username` = ?  ', username,
-                function(err, rows) {
-                    if (err) {
-                        reject(err)
-                    }
-                    if (rows.length > 0) {
-                        resolve(true)
-                    } else {
-                        resolve(false)
-                    }
-                }
-            );
-        } catch (err) {
-            reject(err);
-        }
-    });
-};
-module.exports = {
-    createNewUser: createNewUser
-};
+module.exports = { createNewUser };

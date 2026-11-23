@@ -205,6 +205,36 @@ function RefreshCommentCustomer(openmess, selectedRow, facebookIdColumn, nameCol
         ShowCenterToast('warning', 'Đây là comment ảo được tạo từ tin nhắn của khách, không có comment gốc trên Facebook để cập nhật.', 5000);
         return;
     }
+    function applyProfile(profile) {
+        if (!profile) return null;
+        const table = $('#comment_table').DataTable();
+        const avatarVersion = Date.now();
+        table.rows().every(function (rowIdx) {
+            if (String(table.cell(rowIdx, 12).data()) !== String(x[12]) ||
+                String(table.cell(rowIdx, 18).data()) !== String(x[18])) return;
+            const display = document.createElement('div');
+            display.innerHTML = table.cell(rowIdx, 1).data();
+            const image = display.querySelector('img');
+            if (profile.avatarSaved && image) image.src = '/images/ava/' + encodeURIComponent(x[12]) + '.jpg?t=' + avatarVersion;
+            if (profile.name) {
+                const nameNode = Array.from(display.childNodes).find(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+                if (nameNode) nameNode.textContent = profile.name;
+                else if (image) image.after(document.createTextNode(profile.name));
+                table.cell(rowIdx, 15).data(profile.searchName);
+                if (nameColumn !== undefined) table.cell(rowIdx, nameColumn).data(profile.name);
+                const actions = document.createElement('div');
+                actions.innerHTML = table.cell(rowIdx, 11).data();
+                const chat = actions.querySelector('.open-message-modal');
+                if (chat) chat.dataset.customerName = profile.name;
+                table.cell(rowIdx, 11).data(actions.innerHTML);
+            }
+            table.cell(rowIdx, 1).data(display.innerHTML);
+        });
+        return table;
+    }
+    function partialMessage(message, profile) {
+        return profile?.avatarSaved ? 'Đã cập nhật avatar. ' + message : message;
+    }
     $.ajax({
         url: "/detailcomment",
         method: "POST",
@@ -216,6 +246,7 @@ function RefreshCommentCustomer(openmess, selectedRow, facebookIdColumn, nameCol
                 ShowCenterToast('warning', EditEsc(data.data.message || 'Đây là comment ảo được tạo từ tin nhắn của khách.'), 5000);
                 return;
             }
+            const profileTable = applyProfile(data?.profile);
             const upstreamError = data?.data?.error;
             if (data?.success !== true || upstreamError || !data.data?.id || !data.data.from?.id) {
                 const inaccessible = upstreamError && IsDeletedCommentError(upstreamError);
@@ -223,14 +254,14 @@ function RefreshCommentCustomer(openmess, selectedRow, facebookIdColumn, nameCol
                     ? 'Không truy cập được bình luận. Bình luận có thể đã bị xóa hoặc token không đủ quyền xem.'
                     : typeof data?.error === 'string' ? data.error
                         : upstreamError?.message || 'Không cập nhật được bình luận. Máy chủ chưa xác nhận cập nhật thành công.';
-                ShowCenterToast('danger', EditEsc(message), 5000);
+                profileTable?.draw(false);
+                ShowCenterToast('danger', EditEsc(partialMessage(message, data?.profile)), 5000);
                 return;
             }
-            var table = $('#comment_table').DataTable();
+            var table = profileTable || $('#comment_table').DataTable();
             const timestamp = data.data.live_broadcast_timestamp;
             const date = new Date(Number(timestamp) * 1000);
             const profile = data.profile;
-            const avatarVersion = Date.now();
             table.rows().every(function (rowIdx) {
                 if (String(table.cell(rowIdx, 8).data()) === String(x[8])) {
                     table.cell(rowIdx, facebookIdColumn).data(data.data.from.id);
@@ -239,25 +270,6 @@ function RefreshCommentCustomer(openmess, selectedRow, facebookIdColumn, nameCol
                         table.cell(rowIdx, 7).data(timestamp);
                     }
                 }
-                if (!profile || String(table.cell(rowIdx, 12).data()) !== String(x[12]) ||
-                    String(table.cell(rowIdx, 18).data()) !== String(x[18])) return;
-                const display = document.createElement('div');
-                display.innerHTML = table.cell(rowIdx, 1).data();
-                const image = display.querySelector('img');
-                if (profile.avatarSaved && image) image.src = '/images/ava/' + encodeURIComponent(x[12]) + '.jpg?t=' + avatarVersion;
-                if (profile.name) {
-                    const nameNode = Array.from(display.childNodes).find(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
-                    if (nameNode) nameNode.textContent = profile.name;
-                    else if (image) image.after(document.createTextNode(profile.name));
-                    table.cell(rowIdx, 15).data(profile.searchName);
-                    if (nameColumn !== undefined) table.cell(rowIdx, nameColumn).data(profile.name);
-                    const actions = document.createElement('div');
-                    actions.innerHTML = table.cell(rowIdx, 11).data();
-                    const chat = actions.querySelector('.open-message-modal');
-                    if (chat) chat.dataset.customerName = profile.name;
-                    table.cell(rowIdx, 11).data(actions.innerHTML);
-                }
-                table.cell(rowIdx, 1).data(display.innerHTML);
             }).draw(false);
             if (openmess == 1) {
                 OpenMessenger(x[18], data.data.from.id);
@@ -269,11 +281,13 @@ function RefreshCommentCustomer(openmess, selectedRow, facebookIdColumn, nameCol
             }
         },
         error: function (xhr, status) {
+            const profile = xhr.responseJSON?.profile;
+            applyProfile(profile)?.draw(false);
             const message = status === 'timeout'
                 ? 'Quá thời gian chờ Facebook phản hồi. Chưa xác nhận được kết quả cập nhật bình luận.'
                 : typeof xhr.responseJSON?.error === 'string'
                     ? xhr.responseJSON.error : 'Không cập nhật được bình luận. Vui lòng thử lại.';
-            ShowCenterToast('danger', EditEsc(message), 5000);
+            ShowCenterToast('danger', EditEsc(partialMessage(message, profile)), 5000);
         }
     });
 }

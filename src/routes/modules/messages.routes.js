@@ -7,6 +7,7 @@ const upload = require('../../middleware/upload');
 const { GlobalPageID, GlobalPageID2 } = require('../../configs/constants');
 const { codeToEmoji } = require('../../utils/emoji');
 const { deliver } = require('../../services/chatDeliveryService');
+const { conversationMessageSql, conversationMessageParams } = require('../../services/chatSystemMessageFilter');
 const { findParts } = require('../../services/chatSendParts');
 const { attachReactionSummaries, zaloReactionUpdates } = require('../../services/reactionService');
 
@@ -59,14 +60,14 @@ INNER JOIN (
     FROM (
         (SELECT id, recipient AS khach_id
          FROM messaging 
-         WHERE sender IN (?, ?)
+         WHERE sender IN (?, ?) AND ${conversationMessageSql}
          ORDER BY id DESC LIMIT 100)
         
         UNION ALL
         
         (SELECT id, sender AS khach_id
          FROM messaging 
-         WHERE recipient IN (?, ?)
+         WHERE recipient IN (?, ?) AND ${conversationMessageSql}
          ORDER BY id DESC LIMIT 100)
     ) AS tmp
     GROUP BY khach_id
@@ -78,8 +79,8 @@ ORDER BY t1.id DESC;
     `;
 
         const queryParams = [
-            GlobalPageID, GlobalPageID2,
-            GlobalPageID, GlobalPageID2,
+            GlobalPageID, GlobalPageID2, ...conversationMessageParams,
+            GlobalPageID, GlobalPageID2, ...conversationMessageParams,
             GlobalPageID, GlobalPageID2
         ];
 

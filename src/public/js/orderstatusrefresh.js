@@ -100,6 +100,10 @@ function RefreshStatusInDetail(btn, orderNumber, provider) {
         if (!modal.isConnected) return;
         if (weight) weight.textContent = formatOrderDetailWeight(order);
         updateJTOrderIssue(issue, order);
+        var money = modal.querySelector('.order-detail-financial');
+        if (money) money.innerHTML = GBOrderFinancialView.render(order, order.financial_history || []) +
+          (order.financial_history_error ? '<p class="text-danger small">Không tải được lịch sử thay đổi.</p>' : '');
+
       });
     }
     if (res.isFinal && provider !== 'J&T') btn.remove();

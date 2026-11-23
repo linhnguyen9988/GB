@@ -401,11 +401,11 @@ async function createJTOrder(input) {
     try {
         await DBConnection.query(
             `INSERT INTO lendon
-                (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, sortline, sortcode, statuscode, statustext, useraccountid, last_update, xa, huyen, tinh, created_by_user_id, created_by_username, jtaccountid, original_kg)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'J&T', ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?)`,
+                (name, phone, address, cod, kg, status, date, orderid, realorderid, khid, userid, realfbid, time, provider, sortline, sortcode, statuscode, statustext, useraccountid, last_update, xa, huyen, tinh, created_by_user_id, created_by_username, jtaccountid, original_kg, original_cod, goods_value_original)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'J&T', ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [fbname, phone, address, codStr, weight, 1, timenow, txlogisticId, body.data.billCode,
              khid, userid, realfbid, sortLine, sortCode, 100, 'Mới tạo', accountId ?? null,
-             xa, huyen, tinh, actor.id, actor.username, account.id, weight]
+             xa, huyen, tinh, actor.id, actor.username, account.id, weight, Number(codStr), Number(codStr)]
         );
     } catch (dbErr) {
         console.error(`Lỗi lưu đơn J&T ${body.data.billCode} vào DB:`, dbErr.message);

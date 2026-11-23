@@ -103,7 +103,7 @@
         input.note.value = order.note || '';
 
         var box = q('evStatus');
-        var statusText = order.statustext || (order.statuscode === null || order.statuscode === undefined ? 'Mới tạo' : 'Mã ' + order.statuscode);
+        var statusText = GBOrderStatus.get(order.provider, order.statuscode, order.statustext || (order.statuscode === null || order.statuscode === undefined ? 'Mới tạo' : 'Mã ' + order.statuscode)).label;
         var editable = FIELDS.filter(function (f) { return policy.fields.indexOf(f) !== -1; });
         if (policy.editable) {
             box.className = 'alert alert-info py-2 small mb-3';

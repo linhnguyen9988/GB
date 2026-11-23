@@ -330,6 +330,10 @@ async function sendTestMessage({ phone: value, message, uid, accountId }, imageB
     if (!session || session.accountId !== accountId) {
         throw new ZaloActionError(409, 'Kết nối Zalo đã thay đổi. Hãy kiểm tra lại số điện thoại.');
     }
+    const policy = require('./zaloCustomerMessagePolicy');
+    if (await policy.hasForeignRecipient({ phone, uid, accountId })) {
+        throw new ZaloActionError(403, policy.foreignCustomerMessage);
+    }
     const recipient = await findRecipient(session, phone);
     const attachment = imageBuffer && await prepareTestImage(imageBuffer);
     if (recipient.uid !== uid || !await isSavedSessionCurrent(session)) {

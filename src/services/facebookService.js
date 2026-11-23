@@ -96,16 +96,33 @@ async function fetchFbProfile(fbuserid, pageid, { saveAvatar = true } = {}) {
             console.error(`[fetchFbProfile] ${fbuserid}: ${e.message}`);
             return null;
         }
-        if (res.ok && data && !data.error) {
-            const picture = data.picture?.data;
-            const picUrl = picture?.is_silhouette ? '' : picture?.url;
-            if (picUrl && saveAvatar) downloadAvatar(picUrl, fbuserid, AVA_DIR).catch(() => { });
-            return { id: data.id, name: data.name || '', pic: picUrl || '' };
+        const profileOk = res.ok && data && !data.error;
+        if (profileOk && data.picture?.data?.url) {
+            const picUrl = data.picture.data.url;
+            if (saveAvatar) downloadAvatar(picUrl, fbuserid, AVA_DIR).catch(() => { });
+            return { id: data.id, name: data.name || '', pic: picUrl };
         }
         const e = (data && data.error) || {};
+        if (attempt === 0 && isTokenError(e) && await refreshPageTokensOnce()) continue;
+        // A token may read /picture even when name/profile fields are denied.
+        // Keep the customer ID and use the token belonging to this customer's Page.
+        try {
+            const params = new URLSearchParams({ redirect: 'false', type: 'large', access_token: token });
+            const pictureRes = await fetch(`https://graph.facebook.com/${encodeURIComponent(fbuserid)}/picture?${params}`, {
+                signal: AbortSignal.timeout(10000)
+            });
+            const pictureData = await pictureRes.json().catch(() => null);
+            const picUrl = pictureData?.data?.url;
+            if (pictureRes.ok && typeof picUrl === 'string' && picUrl) {
+                if (saveAvatar) downloadAvatar(picUrl, fbuserid, AVA_DIR).catch(() => { });
+                return { id: fbuserid, name: profileOk ? data.name || '' : '', pic: picUrl };
+            }
+        } catch (error) {
+            console.error(`[fetchFbProfile] ${fbuserid}: không đọc được /picture:`, error.code || error.name);
+        }
+        if (profileOk) return { id: data.id, name: data.name || '', pic: '' };
         console.error(`[fetchFbProfile] ${fbuserid}: HTTP ${res.status} | ${e.message || 'không có dữ liệu'}` +
             `${e.code ? ' | code=' + e.code : ''}${e.error_subcode ? ' | subcode=' + e.error_subcode : ''}`);
-        if (attempt === 0 && isTokenError(e) && await refreshPageTokensOnce()) continue;
         return null;
     }
     return null;

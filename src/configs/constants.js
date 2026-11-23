@@ -9,7 +9,7 @@ const JT_CUSTOMER_CODE = process.env.JT_CUSTOMER_CODE;
 const JT_PASSWORD = process.env.JT_PASSWORD;
 const VIETTEL_WEBHOOK_TOKEN = process.env.VIETTEL_WEBHOOK_TOKEN;
 const FB_WEBHOOK_VERIFY_TOKEN = process.env.FB_WEBHOOK_VERIFY_TOKEN;
-const REGISTER_PATH = process.env.REGISTER_PATH;
+const REGISTER_PATH = '/register';
 
 const SHIP_LABEL_ALIASES = { html: 'gb', gb: 'gb', jt: 'jt' };
 const SHIP_LABEL_RAW = String(process.env.SHIP_LABEL || 'gb').trim().toLowerCase();

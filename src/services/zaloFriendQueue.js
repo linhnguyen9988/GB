@@ -4,6 +4,7 @@ const { createHash, randomInt } = require('node:crypto');
 const db = require('../configs/DBConnection');
 const capability = require('./zaloMessageCapability');
 const { getFriendWindow } = require('./zaloFriendHours');
+const capacity = require('./zaloFriendCapacity');
 const idOk = value => typeof value === 'string' && /^[1-9]\d{0,63}$/.test(value);
 const sleepUntil = new Map();
 const greeting = 'Áo Dài Gia Bảo xin kết bạn để hỗ trợ đơn hàng của chị.';
@@ -185,9 +186,24 @@ async function checkStatus(session, job) {
     return advance(session, job, 'invite', 'Chưa kết bạn, chuyển sang gửi lời mời.');
 }
 
+async function hasInviteCapacity(session) {
+    let snapshot;
+    try { snapshot = await capacity.check(session); }
+    catch (_) {
+        await db.query('UPDATE gb_zalo_friend_queue_settings SET paused_until = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 5 MINUTE) WHERE account_id = ?', [session.accountId]);
+        await event(session.accountId, 'system', 'Chưa đọc được số lời mời đang chờ. Tạm dừng kết bạn, kiểm tra lại sau 5 phút.');
+        return false;
+    }
+    if (snapshot.count < snapshot.limit) return true;
+    await db.query('UPDATE gb_zalo_friend_queue_settings SET paused_until = DATE_ADD(UTC_TIMESTAMP(), INTERVAL 5 MINUTE) WHERE account_id = ?', [session.accountId]);
+    await event(session.accountId, 'system', 'Đang có ' + snapshot.count + '/' + snapshot.limit + ' lời mời chưa được chấp nhận. Dừng gửi thêm, kiểm tra lại sau 5 phút.');
+    return false;
+}
+
 async function sendInvite(session, job, config) {
     if (!withinHours()) return deferUntilMorning(session, job);
     if (!await validateJob(session, job)) return;
+    if (!await hasInviteCapacity(session)) return finish(session, job, 'waiting', 'Chờ có chỗ trống cho lời mời kết bạn.', { stage: 'status', delay: 300 });
     const [reserve] = await db.query(`UPDATE gb_zalo_friend_queue_settings SET
         invite_count = IF(invite_day = DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 7 HOUR)), invite_count, 0) + 1,
         invite_day = DATE(DATE_ADD(UTC_TIMESTAMP(), INTERVAL 7 HOUR))
@@ -200,8 +216,10 @@ async function sendInvite(session, job, config) {
         if (!await require('./zaloConnection').isSavedSessionCurrent(session)) throw new Error('Kết nối Zalo đã thay đổi.');
         if (!withinHours()) return deferUntilMorning(session, job, true);
         await session.api.sendFriendRequest(greeting, job.uid);
+        capacity.sent(session, job.uid);
         await finish(session, job, 'sent', 'Zalo đã nhận lời mời kết bạn. Chờ khách đồng ý.');
     } catch (error) {
+        capacity.invalidate(session.accountId);
         if (Number(error.code) === 225) return finish(session, job, 'friends', 'Zalo xác nhận đã là bạn.');
         if (Number(error.code) === 222) return finish(session, job, 'pending_request', 'Zalo xác nhận đã có lời mời/đã tiếp nhận quan hệ bạn bè.');
         await finish(session, job, 'waiting', 'Chưa xác nhận kết quả gửi: ' + details(error) + '. Chờ kiểm tra lại, không tự gửi lại.', { stage: 'status', delay: 600, error: true });
@@ -237,6 +255,7 @@ async function tick(session) {
             WHERE account_id = ? AND enabled = 1 AND next_api_at <= UTC_TIMESTAMP(3)
               AND (paused_until IS NULL OR paused_until <= UTC_TIMESTAMP())`, [session.accountId]);
         if (!ready) { sleepUntil.set(session.accountId, Date.now() + Math.max(100, Number(config.wait_ms) || 1000)); return; }
+        if (!await hasInviteCapacity(session)) return;
         await seed(session, config);
         if (!withinHours()) return;
         const [[job]] = await db.query(`SELECT q.*, CAST(q.priority_message_id AS CHAR) AS priority_message_id, CAST(q.customer_id AS CHAR) AS customer_id FROM gb_zalo_friend_queue q JOIN gb_zalo_friend_queue_settings s ON s.account_id = q.account_id
@@ -289,7 +308,7 @@ async function progress() {
     const [waiting] = await db.query("SELECT q.*, CAST(q.priority_message_id AS CHAR) AS priority_message_id, CAST(q.customer_id AS CHAR) AS customer_id, k.zalo_can_message, k.zalo_message_status, k.zalo_message_note, m.timestamp AS messenger_timestamp FROM gb_zalo_friend_queue q LEFT JOIN khachhang k ON k.id = q.customer_id LEFT JOIN messaging m ON m.id = q.priority_message_id WHERE q.account_id = ? AND q.state = 'waiting' ORDER BY q.priority_message_id DESC, q.customer_id DESC LIMIT 10", [accountId]);
     const [recent] = await db.query("SELECT q.*, CAST(q.priority_message_id AS CHAR) AS priority_message_id, CAST(q.customer_id AS CHAR) AS customer_id, k.zalo_can_message, k.zalo_message_status, k.zalo_message_note, m.timestamp AS messenger_timestamp FROM gb_zalo_friend_queue q LEFT JOIN khachhang k ON k.id = q.customer_id LEFT JOIN messaging m ON m.id = q.priority_message_id WHERE q.account_id = ? AND q.state NOT IN ('working','waiting') ORDER BY q.updated_at DESC LIMIT 10", [accountId]);
     const [events] = await db.query('SELECT CAST(e.id AS CHAR) AS id, e.job_key, e.detail, e.created_at, q.customer_name, CAST(q.customer_id AS CHAR) AS customer_id, q.phone FROM gb_zalo_friend_queue_events e LEFT JOIN gb_zalo_friend_queue q ON q.account_id = e.account_id AND q.job_key = e.job_key WHERE e.account_id = ? ORDER BY e.id DESC LIMIT 80', [accountId]);
-    return { accountId, config, counts, current, waiting, recent, events, schedule: getFriendWindow(Date.now()) };
+    return { accountId, config, counts, current, waiting, recent, events, schedule: getFriendWindow(Date.now()), capacity: capacity.status(accountId) };
 }
 
 async function configure(body) {
@@ -312,6 +331,7 @@ async function retryFailed() {
 }
 
 async function friendAccepted(session, uid) {
+    capacity.invalidate(session.accountId);
     const [[job]] = await db.query('SELECT job_key FROM gb_zalo_friend_queue WHERE account_id = ? AND uid = ? LIMIT 1', [session.accountId, uid]);
     if (!job) return;
     const [result] = await db.query(`UPDATE gb_zalo_friend_queue SET state = 'friends', stage = 'status', last_error = NULL,

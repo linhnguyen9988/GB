@@ -25,7 +25,7 @@ module.exports = function registerStreamlabsWebhook(router) {
             const message = payload.message;
             const cmtid = payload.id;
             const suppliedPicture = payload.from.picture?.data;
-            let picture = suppliedPicture?.is_silhouette ? '' : suppliedPicture?.url || '';
+            let picture = suppliedPicture?.url || '';
             const timelocal = new Date(payload.created_time)
                 .toLocaleString("en-US", { timeZone: "Asia/Saigon" });
 

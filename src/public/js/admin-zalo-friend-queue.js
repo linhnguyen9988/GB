@@ -44,6 +44,14 @@
       status = 'Ngoài giờ kết bạn (07:00–23:00 GMT+7). Tự chạy lại sớm nhất ' + next + ' (GMT+7).';
     } else if (config.paused_until && new Date(config.paused_until).getTime()>Date.now()) status += ' Zalo báo giới hạn, đang tự nghỉ đến ' + date(config.paused_until) + '.';
     else if (Number(config.enabled) && !state.current.length) status += ' Bước tiếp theo sớm nhất ' + date(config.next_api_at) + '.';
+    const capacity = state.capacity;
+    if (capacity) {
+      if (capacity.error) status += ' ' + capacity.error;
+      else if (capacity.count !== null) {
+        status += ' Lời mời chưa được chấp nhận: ' + capacity.count + '/' + capacity.limit + '.';
+        if (capacity.count >= capacity.limit) status += ' Đã đầy, dừng gửi thêm; kiểm tra lại sau mỗi 5 phút trong giờ hoạt động.';
+      } else status += ' Chưa đọc số lời mời đang chờ; sẽ kiểm tra trước khi kết bạn.';
+    }
     el('status').textContent = status;
     el('current').replaceChildren(...state.current.map(job=>jobCard(job,state.events,true)));
     if (!state.current.length) el('current').appendChild(text('div','Chưa có bước đang chạy; đang chờ đến lượt tiếp theo.','small text-body-secondary'));

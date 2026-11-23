@@ -3,6 +3,7 @@
 const { toViettelWeightGrams: toViettelWeight } = require('../utils/viettelWeight');
 const VIETTEL_BASE = 'https://partner.viettelpost.vn';
 const { getAccountForOrder } = require('./viettelAccountService');
+const financial = require('./orderFinancialService');
 const DEFAULT_ORDER_NOTE = 'Ko giao được gọi shop. Cho xem hàng. Ko nhận hàng thu 30k';
 const MAX_COD = 100000000;
 const MAX_KG = 100;
@@ -421,9 +422,9 @@ async function editOrder({ db, axios, realorderid, input, preprocess, appUserId 
             { source: 'viettel', viettelStatus: body && body.status !== undefined ? body.status : null });
     }
 
-    const dbSet = {};
+    const dbSet = { realorderid: ctx.order.realorderid };
     const colOf = { name: 'name', phone: 'phone', address: 'address', cod: 'cod', kg: 'viettel_input_kg', note: 'ordernote' };
-    v.changed.forEach(f => { dbSet[colOf[f]] = v.values[f]; });
+    v.changed.forEach(f => { if (f !== 'cod') dbSet[colOf[f]] = v.values[f]; });
     const vo = body.data || {};
     const warnings = [];
     if (vo.SORT_CODE) dbSet.sortcode = vo.SORT_CODE;
@@ -432,6 +433,10 @@ async function editOrder({ db, axios, realorderid, input, preprocess, appUserId 
         warnings.push('Viettel không trả về Xã/Phường cho địa chỉ mới, hãy kiểm tra lại trên Viettel.');
     }
     try {
+        await financial.syncViettel(ctx.order.realorderid, {
+            ...vo, MONEY_COLLECTION: vo.MONEY_COLLECTION ?? v.values.cod,
+            ...(v.changed.includes('kg') ? { PRODUCT_WEIGHT: payload.PRODUCT_WEIGHT } : {})
+        }, { source: 'edit', expectedWeightAt: ctx.order.viettel_weight_status_at ?? null });
         if (v.changed.includes('kg')) {
             await db.query(
                 `UPDATE lendon SET ?, kg = CASE WHEN viettel_weight_status_at <=> ? THEN ? ELSE kg END,

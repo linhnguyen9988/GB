@@ -17,12 +17,13 @@
               <% errors.forEach((item) => { %>
                 <div class="alert alert-danger d-flex align-items-center gap-2 py-2">
                   <i class="bi bi-exclamation-circle-fill"></i>
-                  <div><%- item %></div>
+                  <div><%= item %></div>
                 </div>
               <% }); %>
             <% } %>
 
-            <form method="POST" class="needs-validation" novalidate autocomplete="off">
+            <% if (registrationOpen) { %>
+            <form action="/register" method="POST" class="needs-validation" novalidate autocomplete="off">
               <div class="mb-3">
                 <label class="mb-2 text-muted small fw-bold" for="username">Tên tài khoản</label>
                 <input id="username" type="text" class="form-control" name="username" value="" required autofocus>
@@ -47,6 +48,9 @@
                 Đăng ký <i class="bi bi-arrow-right-short"></i>
               </button>
             </form>
+            <% } else { %>
+              <div class="alert alert-warning mb-0" role="status"><%= registrationMessage %></div>
+            <% } %>
 
           </div>
           <div class="card-footer bg-white text-center py-3 border-0">
