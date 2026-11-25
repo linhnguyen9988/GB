@@ -175,8 +175,6 @@ function InItKeys() {
             document.body.removeChild(link);
         } else if (keyCode == 78) {
             LuckyAdd(x[12], x[15] || $('<div>').html(x[1]).text(), String(x[3] || '').replace(/<[^>]*>?/gm, '').trim(), x[25], $('<div>').html(x[1]).find('img').attr('src') || '');
-        } else if (keyCode == 79) {
-            clearAllToasts();
         } else if (keyCode == 85) {
             ShowCustomerDetails({
                 name: EditPlainName(x[1], x[12]), userid: x[12], phone: x[3], diachi: x[10],

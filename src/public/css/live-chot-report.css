@@ -1,0 +1,29 @@
+#modalLiveChotReport .modal-body { overscroll-behavior: contain; }
+#modalLiveChotReport .modal-title { overflow-wrap: anywhere; }
+#liveChotReportScope { overflow-wrap: anywhere; }
+.live-chot-totals { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+.live-chot-totals > div { background: var(--ink-100, #f4f5f8); color: var(--ink-900, #16181d); border-radius: 10px; padding: 12px; }
+.live-chot-totals small, .live-chot-totals strong { display: block; }
+.live-chot-totals strong { font-size: 1.2rem; overflow-wrap: anywhere; }
+.live-chot-table { width: 100%; table-layout: fixed; }
+.live-chot-table th, .live-chot-table td { overflow-wrap: anywhere; }
+.live-chot-table td:first-child { width: 38%; }
+.live-chot-table .btn { text-align: left; white-space: normal; }
+.live-chot-codes { max-height: 4.5em; overflow: auto; }
+#modalLiveChotReport .live-chot-table {
+    --bs-table-bg: var(--surface, #fff);
+    --bs-table-color: var(--ink-900, #16181d);
+    --bs-table-striped-bg: var(--ink-100, #f4f5f8);
+    --bs-table-striped-color: var(--ink-900, #16181d);
+    --bs-table-border-color: var(--ink-300, #c9cdd6);
+    color: var(--ink-900, #16181d);
+    border-color: var(--ink-300, #c9cdd6);
+}
+#modalLiveChotReport .btn-outline-primary:hover,
+#modalLiveChotReport .btn-outline-primary:focus-visible { color: #fff; }
+@media (max-width: 575px) {
+    .live-chot-totals { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .live-chot-table { font-size: 13px; }
+    .live-chot-table .btn { font-size: 13px; padding: 4px; }
+    #modalLiveChotReport .modal-body { padding: 10px; }
+}

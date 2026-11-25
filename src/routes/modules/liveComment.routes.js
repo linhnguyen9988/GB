@@ -21,6 +21,24 @@ module.exports = function registerLiveCommentRoutes(router) {
     var currentlivetime;
     ensureChot2().catch(function () { });
 
+    router.get('/api/live-comments/chot-report', jwtAuth, async (req, res) => {
+        const liveIds = typeof req.query.liveIds === 'string'
+            ? [...new Set(req.query.liveIds.split(',').map(id => id.trim()).filter(Boolean))] : [];
+        const userid = req.query.userid;
+        if (!liveIds.length || liveIds.length > 100 || liveIds.some(id => !/^[0-9_]{1,100}$/.test(id)) ||
+            (userid !== undefined && (typeof userid !== 'string' || !/^\d{1,30}$/.test(userid)))) {
+            return res.status(400).json({ error: 'Mã live hoặc khách hàng không hợp lệ.' });
+        }
+        try {
+            const report = await require('../../services/liveChotReport').getReport(
+                DBConnection, liveIds, userid, await ensureChot2());
+            res.set('Cache-Control', 'no-store').json(report);
+        } catch (err) {
+            console.error('[Báo cáo chốt live]', err.code || err.message);
+            res.status(500).json({ error: 'Không tải được danh sách chốt. Vui lòng thử lại.' });
+        }
+    });
+
     router.post("/scancomment", jwtAuth, function (request, response, next) {
         currentlivetime = 0;
         const sb = new StringBuilder();

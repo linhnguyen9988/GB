@@ -58,6 +58,10 @@
                             <div class="mt-1">
                                 <span id="liveStatusBadge" class="badge bg-light text-dark border">Chưa chọn live</span>
                             </div>
+                            <div class="d-flex flex-wrap gap-1 mt-2">
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="liveChotReportAll">Tổng chốt (I)</button>
+                                <button type="button" class="btn btn-sm btn-outline-primary" id="liveChotReportCustomer">Khách đang chọn (O)</button>
+                            </div>
                             <form class="was-validated">
                                 <div class="input-group mb-1">
                                     <span class="input-group-text" hidden>ID</span>
@@ -151,6 +155,8 @@
         </div>
     </div>
     <script src="/js/live-comment-shared.js?v=20261117-rejoin"></script>
-    <script src="/js/loadcomment.js?v=20261123-copy-comment-text"></script>
+    <script src="/js/loadcomment.js?v=20261123-chot-report"></script>
+    <link rel="stylesheet" href="/css/live-chot-report.css?v=20261123-dark">
+    <script src="/js/live-chot-report.js?v=20261123" defer></script>
 <script src="/js/lucky.js?v=20261117-rejoin"></script>
 <%- include('footer'); -%>
